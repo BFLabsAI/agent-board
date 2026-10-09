@@ -1,0 +1,39 @@
+{
+  "versao": 1,
+  "projeto": "<project-name>",
+  "prefixo": "<project-prefix>",
+  "papeis": {
+    "master": {
+      "tipos": [
+        "pedido",
+        "resposta",
+        "aviso"
+      ],
+      "pode_pedir_a": [
+        "manager",
+        "researcher"
+      ]
+    },
+    "manager": {
+      "tipos": [
+        "pedido",
+        "resposta",
+        "aviso",
+        "escalacao",
+        "entrega"
+      ],
+      "pode_pedir_a": [
+        "manager",
+        "researcher"
+      ]
+    },
+    "researcher": {
+      "tipos": [
+        "resposta",
+        "aviso",
+        "escalacao"
+      ],
+      "pode_pedir_a": []
+    }
+  }
+}
