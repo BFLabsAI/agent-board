@@ -30,7 +30,8 @@ import time
 import notificar
 from avisos import avisar, disparar, uma_vez
 from base import (CONFIG_REL, HOME, LOG_REL, NOME_RE, PAINEIS, VERSAO, Barrado, achar_orca, agora,  # noqa: F401
-                  carregar_config, carregar_paineis, ler_json, master_do_projeto, papel_do_nome, registrar_aviso)
+                  carregar_config, carregar_paineis, eh_maestri, ler_json, master_do_projeto, meu_handle, papel_do_nome,
+                  registrar_aviso)
 from politica import MODOS, TIPOS, escolher_por_papel, pendentes_de, validar_envio  # noqa: F401
 from protecao import PROTEGIDOS, escreve_em_protegido
 from registro import gravar_log, ler_log
@@ -47,6 +48,8 @@ FLAGS_TIME = {"--modo": "modo", "--issues": "issues", "--responde-a": "responde_
               "--veredito": "veredito", "--prazo": "prazo"}
 COM_VALOR = {"--to", "--from", "--type", "--subject", "--body", "--terminal", "--text"} | set(FLAGS_TIME)
 
+BOARD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board.py")
+MAESTRI_RE = re.compile(r"""(?:^|[\s;&|(`/"'])(?:maestri|\$\{?MAESTRI_CLI\}?)["']?\s+ask\b""")
 ORCA_RE = re.compile(r"(?:^|[\s;&|(`/])orca\s+(?:orchestration\s+(?:send|reply|ask)|terminal\s+send)\b")
 
 
@@ -61,13 +64,15 @@ ORCA_RE = re.compile(r"(?:^|[\s;&|(`/])orca\s+(?:orchestration\s+(?:send|reply|a
 # ---------------------------------------------------------------------------
 # Leitura do comando
 # ---------------------------------------------------------------------------
-def separar(cmd):
+def separar(cmd, do_envio=False):
     """Devolve argv do comando orca, exigindo que ele esteja sozinho.
 
     Operadores de shell (; && | > etc.) fora de aspas indicam mais de um comando.
     Texto entre aspas pode ter qualquer coisa, inclusive quebras de linha.
+    `do_envio`: comando montado pelo envio.py (MCP, board.py), que nunca passa por
+    um shell; aí crase e $( ) no texto são só texto.
     """
-    if re.search(r"`|\$\(", cmd):
+    if not do_envio and re.search(r"`|\$\(", cmd):
         raise Barrado("não use ` nem $( ) no comando orca; escreva o texto direto")
     try:
         lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
@@ -139,6 +144,11 @@ def parece_do_time(alvo):
     return bool(papel_do_nome(alvo))
 
 
+def cmd_envio(handle):
+    """Como o agente desse painel manda mensagem ao time: Orca no shell, Maestri pelo board.py (ou board_send)."""
+    return f"python3 {BOARD} send" if eh_maestri(handle) else "orca orchestration send"
+
+
 def novo_id():
     return f"c-{agora():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
 
@@ -172,6 +182,9 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         raise Barrado("não dá para enviar mensagem para si mesmo")
     if para.get("projeto") != eu.get("projeto"):
         raise Barrado(f"{para['agente']} é de outro projeto ({para.get('projeto')}); mensagem entre projetos é barrada")
+    if eh_maestri(para_handle) and not ev["raw"].get("agent_board_envio"):
+        raise Barrado(f"{para['agente']} está no Maestri: o orca não entrega lá. Envie com "
+                      f"{cmd_envio(para_handle)} (mesmas flags) ou com a ferramenta MCP board_send")
 
     tipo = d.get("--type")
     if tipo not in TIPOS:
@@ -188,11 +201,11 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         issues = [int(x) for x in re.findall(r"\d+", d["--issues"])]
 
     cid = novo_id()
-    extra = notificar.extras_entrega(tipo, eu)
+    extra = notificar.extras_entrega(tipo, eu, ev.get("cwd"))
     rotulo = tipo + (f"·{modo}" if modo else "")
     corpo = d.get("--body") if isinstance(d.get("--body"), str) else ""
     corpo += (f"\n\n---\n[agent-board {cid}] de {eu['agente']} para {para['agente']}. "
-              f"Para responder: orca orchestration send --to {eu['agente']} --type resposta "
+              f"Para responder: {cmd_envio(para_handle)} --to {eu['agente']} --type resposta "
               f"--responde-a {cid}" + (" --veredito aprovado|rejeitado" if tipo == "entrega" else "")
               + " --subject \"...\" --body \"...\"")
     if tipo == "pedido":
@@ -334,6 +347,9 @@ def post_send(ev, paineis):
             gravar_log(p["raiz"], {"id": p["id"], "ts": agora().isoformat(timespec="seconds"), "status": "falhou"})
         return None
     para_handle = p["para_handle"]
+    if eh_maestri(para_handle):  # no Maestri o próprio `maestri ask` já digitou a mensagem no destino
+        notificar.disparar(p)
+        return None
     disparar(para_handle, p["id"], f"[agent-board] Nova mensagem {p['id']} ({p['tipo']}) de {p['de']}. "
              f"Leia com: orca orchestration check --terminal {para_handle} --format")
     notificar.disparar(p)  # webhook e GitHub, em outro processo
@@ -363,7 +379,7 @@ MAX_COBRANCAS = 3  # quantas vezes o Stop segura o agente pelas mesmas pendênci
 def decide_stop(ev):
     if ev["raw"].get("agent_id"):
         return None  # subagent não responde mensagens do time
-    eu_handle = os.environ.get("ORCA_TERMINAL_HANDLE")
+    eu_handle = meu_handle()
     eu = carregar_paineis().get(eu_handle)
     if eu is None:
         return None
@@ -388,21 +404,23 @@ def decide_stop(ev):
     for de, ls in por_remetente.items():
         lista = ",".join(x["id"] for x in ls)
         assuntos = "; ".join(f"{x['id']} ({x['tipo']}): {x['assunto']}" for x in ls)
-        cmds.append(f"- De {de}: {assuntos}\n  Responda: orca orchestration send --to {de} --type resposta "
+        cmds.append(f"- De {de}: {assuntos}\n  Responda: {cmd_envio(eu_handle)} --to {de} --type resposta "
                     f"--responde-a {lista} --subject \"...\" --body \"...\"")
     return {"action": "continue", "reason": (
         "agent-board: regra do time - toda mensagem recebida precisa de resposta antes de encerrar: "
         "pedido se responde com o resultado ou o bloqueio (sem 'Recebido'); aviso, com uma resposta curta. "
         "Pedido longo ainda em curso: mande --type andamento --responde-a <id> com o progresso (para a cobrança; "
-        "o pedido segue aberto até a resposta). Leia com orca orchestration check --terminal "
-        f"{eu_handle} --format se ainda não leu, e responda:\n" + "\n".join(cmds))}
+        "o pedido segue aberto até a resposta). "
+        + ("A mensagem chegou digitada neste terminal (role a tela se não leu)"
+           if eh_maestri(eu_handle) else f"Leia com orca orchestration check --terminal {eu_handle} --format "
+           "se ainda não leu") + ", e responda:\n" + "\n".join(cmds))}
 
 
 def decide_sendmessage(ev):
     """Canal nativo do Claude entre sessões: fechado entre agentes do time (sem log, pede aprovação)."""
     alvo = re.sub(r"\s*\[[^\]]*\]$", "", str(ev["tool_input"].get("to") or "")).strip()
     paineis = carregar_paineis()
-    eu = paineis.get(os.environ.get("ORCA_TERMINAL_HANDLE"))
+    eu = paineis.get(meu_handle())
     nomes = {p.get("agente") for p in paineis.values()}
     do_time = alvo in nomes
     if eu is not None and not do_time:
@@ -417,7 +435,7 @@ def decide_sendmessage(ev):
         return None  # subagent da própria sessão, ou fora do time
     return {"action": "deny", "reason": (
         f"Barrado pelo agent-board: entre agentes do time não use SendMessage (fica sem registro e pode "
-        f"travar esperando aprovação). Use: orca orchestration send --to {alvo or '<agente>'} "
+        f"travar esperando aprovação). Use: {cmd_envio(meu_handle())} --to {alvo or '<agente>'} "
         "--type <pedido|resposta|aviso|escalacao|entrega|andamento> --subject \"...\" --body \"...\"")}
 
 
@@ -431,13 +449,74 @@ def decide_protecao(ev):
     toca = [n for n in PROTEGIDOS if n in alvo_cmd or alvo_arq.endswith(n)]
     if not toca:
         return None
-    if carregar_paineis().get(os.environ.get("ORCA_TERMINAL_HANDLE")) is None:
+    if carregar_paineis().get(meu_handle()) is None:
         return None  # só vale para agentes do time
     if ev["tool"] == "edit" or (ev["tool"] == "shell" and escreve_em_protegido(alvo_cmd)):
         return {"action": "deny", "reason": (
             f"Barrado pelo agent-board: {', '.join(toca)} não se edita à mão. O log é escrito só pelo hook "
             "a cada orca orchestration send, e o cadastro só pelo master com painel.py. Para ler, use cat, jq ou grep.")}
     return None
+
+
+def alvos_maestri_ask(cmd):
+    """([nomes no canvas], tem --raw?) de cada `maestri ask` do comando, ou None se não deu para ler."""
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return None
+    alvos, raw = [], False
+    for i, t in enumerate(tokens):
+        if not (os.path.basename(t) == "maestri" or t.strip("${}") == "MAESTRI_CLI") or tokens[i + 1:i + 2] != ["ask"]:
+            continue
+        resto = tokens[i + 2:]
+        if resto[:1] == ["--batch"]:
+            try:
+                alvos += list(json.loads(resto[1]))
+            except (IndexError, ValueError, TypeError):
+                return None
+        elif resto:
+            alvos.append(resto[0])
+            raw = raw or "--raw" in resto[1:3]
+    return alvos, raw
+
+
+def do_time_no_canvas(nome, paineis):
+    """Cadastro do agente cujo nome no canvas (ou nome do time) é `nome` ("Nome @ Workspace" também vale)."""
+    nome = re.sub(r"\s+@\s+.*$", "", nome or "").strip()
+    for p in paineis.values():
+        if nome and nome in (p.get("nome_canvas"), p.get("agente")):
+            return p
+    return None
+
+
+def decide_maestri_ask(ev):
+    """`maestri ask` direto para um agente do time fica sem registro, regra e cobrança: só pelo agent-board."""
+    paineis = carregar_paineis()
+    eu = paineis.get(meu_handle())
+    lido = alvos_maestri_ask(ev["command"] or "")
+    if lido is None:
+        if eu is None:
+            return None
+        return {"action": "deny", "reason": "Barrado pelo agent-board: não consegui ler o maestri ask "
+                                            "(confira as aspas e o JSON do --batch) e rode-o sozinho"}
+    alvos, raw = lido
+    do_time = [(a, do_time_no_canvas(a, paineis)) for a in alvos]
+    do_time = [(a, p) for a, p in do_time if p is not None]
+    if not do_time:
+        return None  # ajudante fora do time (recruta, terminal avulso)
+    if (raw and eu is not None and eu.get("papel") == "master" and not ev["raw"].get("agent_id")
+            and all(p.get("projeto") == eu.get("projeto") for _, p in do_time)):
+        return None  # o master pode digitar nos painéis do próprio time (ex.: /clear)
+    nomes = ", ".join(sorted({p["agente"] for _, p in do_time}))
+    if raw:
+        motivo = (f"não digite no painel de outro agente ({nomes}). Só o master digita, e só nos painéis do "
+                  "próprio time")
+    else:
+        motivo = (f"{nomes} é do time: mensagem entre agentes do time passa pelo agent-board (registro, regras, "
+                  f"cobrança de resposta). Use: {cmd_envio(meu_handle())} --to <agente> "
+                  "--type <pedido|resposta|aviso|escalacao|entrega|andamento> --subject \"...\" --body \"...\" "
+                  "(ou a ferramenta MCP board_send)")
+    return {"action": "deny", "reason": f"Barrado pelo agent-board: {motivo}"}
 
 
 def decide(ev):
@@ -448,17 +527,19 @@ def decide(ev):
         return protecao
     if ev["event"] == "pre_tool" and ev["tool_name"] == "SendMessage":
         return decide_sendmessage(ev)
+    if ev["event"] == "pre_tool" and ev["tool"] == "shell" and MAESTRI_RE.search(ev["command"] or ""):
+        return decide_maestri_ask(ev)
     if not envolve_orca(ev):
         return None
     if ev["event"] not in ("pre_tool", "post_tool"):
         return None
     paineis = carregar_paineis()
-    eu_handle = os.environ.get("ORCA_TERMINAL_HANDLE")
+    eu_handle = meu_handle()
     eu = paineis.get(eu_handle)
     if not envolve_time(ev["command"], paineis, eu):
         return None  # comando orca de quem não é do time, para quem não é do time
     try:
-        argv = separar(ev["command"])
+        argv = separar(ev["command"], do_envio=bool(ev["raw"].get("agent_board_envio")))
         if len(argv) < 3:
             return None
         grupo, verbo = argv[1], argv[2]

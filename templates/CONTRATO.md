@@ -4,7 +4,7 @@ Vale para todo projeto que tem `docs/agent-board/agent-board.json`. Os hooks da 
 
 ## Em uma frase
 
-Agente fala com agente **só** por `orca orchestration send`, usando o **nome** do destino. O hook confere, registra no log, entrega e avisa na tela do destino. Toda mensagem recebida precisa de resposta.
+Agente fala com agente **só** pelo agent-board (`orca orchestration send` no Orca, `board.py send` no Maestri, ou a ferramenta `board_send`), usando o **nome** do destino. O hook confere, registra no log, entrega e avisa na tela do destino. Toda mensagem recebida precisa de resposta.
 
 ## Como mandar
 
@@ -32,11 +32,25 @@ orca orchestration send --to <nome-do-agente> --type <tipo> --subject "assunto c
 
 O hook troca o nome pelo ID atual do painel, converte o tipo para um tipo aceito pelo Orca e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). No corpo, ele acrescenta um rodapé com o comando de resposta pronto.
 
+### No Maestri
+
+Num terminal do canvas do Maestri (`$MAESTRI_TERMINAL_ID` definido), o `orca` não entrega. Use o `board.py`, com **as mesmas flags e as mesmas regras** do comando acima:
+
+```bash
+python3 ~/.agents/skills/agent-board/scripts/board.py send --to <nome-do-agente> --type <tipo> --subject "assunto curto" --body "texto"
+python3 ~/.agents/skills/agent-board/scripts/board.py send --to master --type entrega --subject "Login pronto" --body-file relatorio.md
+```
+
+- A mensagem chega **digitada no terminal do destino** pelo `maestri ask`, com o id no assunto e o rodapé com o comando de resposta pronto.
+- Só entrega entre terminais **ligados por uma corda** no canvas. Sem corda, o envio falha na hora, o log marca `falhou` e o master liga os dois (`painel.py maestri conectar`).
+- **Não use `maestri ask` direto com um agente do time** (nem `--batch`): fica sem registro, sem regra e sem cobrança, e o hook barra. `maestri ask` com ajudantes de fora do time continua livre. `maestri check` (só leitura) também.
+- O corpo é texto puro: crase e `$( )` chegam como texto.
+
 ### Pelas ferramentas MCP (Claude Code)
 
 Se a sessão tiver as ferramentas `board_*` do servidor MCP `agent-board`, use-as no lugar do comando acima: os parâmetros são tipados e não há problema de aspas.
 
-- `board_send(para, tipo, assunto, corpo, modo, issues, responde_a)`: envia. Mesmas regras: `modo` em pedido para manager, `responde_a` em resposta. O corpo não pode ter crase nem `$( )`.
+- `board_send(para, tipo, assunto, corpo, modo, issues, responde_a)`: envia. Mesmas regras: `modo` em pedido para manager, `responde_a` em resposta. O corpo é texto puro (crase e `$( )` chegam como texto).
 - `board_inbox()`: lê o seu correio inteiro (o mesmo `check --format`).
 - `board_pendentes()`: o que você recebeu e ainda não respondeu.
 - `board_historico(agente, sobre, n, tudo)` e `board_status()`: log do projeto e quem você é no time.
@@ -45,7 +59,9 @@ As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e avisam o 
 
 ## Como receber
 
-1. Uma linha aparece na sua tela: `[agent-board] Nova mensagem <id> (<tipo>) de <agente>. Leia com: orca orchestration check --terminal <seu painel> --format`.
+No Maestri, a mensagem inteira já chega digitada no seu terminal: pule para o passo 3 e responda com `board.py send`.
+
+1. No Orca, uma linha aparece na sua tela: `[agent-board] Nova mensagem <id> (<tipo>) de <agente>. Leia com: orca orchestration check --terminal <seu painel> --format`.
 2. Rode esse `check` **com `--format`**, porque sem ele aparece só o assunto, e leia a mensagem inteira.
 3. **Pedido não leva confirmação de recebimento.** Se o pedido vai demorar (subagents, testes longos), mande `--type andamento --responde-a <id>` com o progresso: o hook para de cobrar no fim do turno, e a `resposta` vem quando terminar. Responda a ele só com o resultado ou com o bloqueio (`--type resposta --responde-a <id>`), nunca com "Recebido". **Aviso exige uma resposta curta**, também com `--type resposta --responde-a <id>`. Se um aviso não pede nada a fazer, responda "recebido, nada a fazer".
    - **Resposta fecha a conversa: resposta não se responde.** Não mande "recebido" para uma resposta. Se a resposta deixou algo pendente, abra uma mensagem nova (`pedido` ou `aviso`). O hook barra resposta a resposta.
@@ -108,6 +124,12 @@ O cadastro fica em `~/.agent-hooks/agent-board/paineis.json`, fora do git, porqu
    Recadastrar um agente substitui o painel antigo dele.
 4. Um painel reaberto tem um ID novo. Se ele tentar enviar, o hook barra com o aviso "peça ao master para recadastrar", e o master repete o passo 2.
 5. Para tirar um painel do cadastro: `painel.py remover term_...`. O passo a passo completo está na skill `agent-board`.
+
+**No Maestri** o master não vê o ID dos terminais. O cadastro começa no agente:
+
+1. No terminal do agente: `python3 ~/.agents/skills/agent-board/scripts/painel.py solicitar --raiz <project-path> --agente <project-prefix>-manager01-cc`. Isso registra o ID e o nome do terminal no canvas.
+2. O master roda `painel.py solicitacoes`, mostra a lista ao CEO e, **depois da confirmação**, cadastra com o comando que a lista sugere (`maestri:<id>=<agente>`).
+3. Renomeou o terminal no canvas? Rode `solicitar` de novo e o master recadastra.
 
 Um painel sem cadastro não é afetado em nada, a menos que tente falar com um agente cadastrado.
 

@@ -73,6 +73,19 @@ def agora():
     return datetime.datetime.now().astimezone()
 
 
+def meu_handle():
+    """Painel deste terminal: Orca ($ORCA_TERMINAL_HANDLE) ou Maestri (maestri:<$MAESTRI_TERMINAL_ID>)."""
+    h = os.environ.get("ORCA_TERMINAL_HANDLE")
+    if h:
+        return h
+    m = os.environ.get("MAESTRI_TERMINAL_ID")
+    return f"maestri:{m}" if m else None
+
+
+def eh_maestri(handle):
+    return str(handle or "").startswith("maestri:")
+
+
 def achar_orca():
     """O hook roda com PATH reduzido: procura o orca nos lugares conhecidos."""
     for c in (os.environ.get("ORCA_BIN", ""),

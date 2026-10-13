@@ -7,8 +7,8 @@ painel.py: cadastro de painéis do agent-board. Uso exclusivo do master.
       merge=union no .gitattributes. Não sobrescreve o que já existe; com
       --atualizar-contrato, troca o CONTRATO.md pela versão atual da skill.
   painel.py listar [--formato toon]
-      Mostra os terminais abertos no Orca, com o cadastro de cada um.
-  painel.py cadastrar --raiz <project-path> [--worktree] <term_...>=<agente> [<term_...>=<agente> ...]
+      Mostra os terminais abertos no Orca, o cadastro de cada um e os pedidos de cadastro do Maestri.
+  painel.py cadastrar --raiz <project-path> [--worktree] <term_...|maestri:<id>>=<agente> [...]
       Cadastra (ou recadastra) painéis do projeto. Só depois de o CEO confirmar a lista.
       --worktree: cada manager ganha um git worktree em <raiz>/../<projeto>-worktrees/<agente>
       na branch ab/<agente>. O log continua no checkout principal (a raiz).
@@ -45,6 +45,13 @@ Recursos do time:
 Painel web (só leitura, 127.0.0.1; ver docs/userguide/painel.md):
   painel.py servir --raiz <path> [--porta 8765]
 
+Maestri (canvas; ver docs/adr/0006-maestri-como-transporte.md):
+  painel.py eu                                   handle e nome no canvas deste terminal
+  painel.py solicitar --raiz <path> --agente <nome>   o agente pede o próprio cadastro
+  painel.py solicitacoes                         o master vê os pedidos (cadastra depois do CEO)
+  painel.py maestri conectar --raiz <path> [--aplicar]   cordas do canvas que a política exige
+  painel.py maestri rotina --raiz <path> [--a-cada 10m] [--aplicar]   vigiar como routine
+
 O cadastro fica em $AGENT_BOARD_HOME/paineis.json (padrão ~/.agent-hooks/agent-board).
 """
 import datetime
@@ -58,6 +65,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
 import cmd_log  # noqa: E402
+import cmd_maestri  # noqa: E402
 import cmd_tarefas  # noqa: E402
 import cmd_time  # noqa: E402
 import cmd_web  # noqa: E402
@@ -82,8 +90,12 @@ def com_trava(alterar):
 
 
 def terminais():
-    out = subprocess.run([ORCA, "terminal", "list", "--json"], capture_output=True, text=True, timeout=30)
-    d = json.loads(out.stdout)
+    """Terminais abertos no Orca, ou None quando o orca não está disponível (ex.: só Maestri)."""
+    try:
+        out = subprocess.run([ORCA, "terminal", "list", "--json"], capture_output=True, text=True, timeout=30)
+        d = json.loads(out.stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
     t = d.get("result", d)
     return t.get("terminals", t) if isinstance(t, dict) else t
 
@@ -96,21 +108,34 @@ def listar(args=()):
     except FileNotFoundError:
         cad = {}
     vistos, linhas = set(), []
-    for t in terminais():
+    abertos = terminais()
+    for t in abertos or []:
         h = t.get("handle") or t.get("id")
         vistos.add(h)
         c = cad.get(h) or {}
         linhas.append({"handle": h, "titulo": str(t.get("title", "")), "projeto": c.get("projeto"),
                        "agente": c.get("agente"), "situacao": "cadastrado" if c else "sem cadastro"})
     for h, c in cad.items():
-        if h not in vistos:
+        if h in vistos:
+            continue
+        if c.get("transporte") == "maestri":  # o Maestri não lista terminais por ID: vale o cadastro
+            linhas.append({"handle": h, "titulo": c.get("nome_canvas", ""), "projeto": c["projeto"],
+                           "agente": c["agente"], "situacao": "maestri"})
+        elif abertos is not None:
             linhas.append({"handle": h, "titulo": "", "projeto": c["projeto"], "agente": c["agente"],
                            "situacao": "fechado: recadastrar"})
+    for s in cmd_maestri.pendentes_de_cadastro():
+        linhas.append({"handle": s["handle"], "titulo": s["nome_canvas"], "projeto": s.get("projeto"),
+                       "agente": s["agente"], "situacao": "pediu cadastro"})
     if formato == "toon":
         print(toon.tabela("paineis", linhas, ["handle", "titulo", "projeto", "agente", "situacao"]))
         return
+    if abertos is None:
+        print("(orca indisponível: mostrando só o cadastro e os pedidos do Maestri)")
     for l in linhas:
         marca = f"{l['projeto']}/{l['agente']}" if l["agente"] else "(sem cadastro)"
+        if l["situacao"] == "pediu cadastro":
+            marca = f"pediu para ser {l['projeto']}/{l['agente']}"
         if l["situacao"].startswith("fechado"):
             print(f"{l['handle']}  (painel fechado ou reaberto)  {marca}  -> recadastrar")
         else:
@@ -128,11 +153,17 @@ def cadastrar(args):
     with open(os.path.join(raiz, CONFIG_REL)) as f:
         cfg = json.load(f)
     projeto, prefixo = cfg["projeto"], cfg["prefixo"]
-    novos = {}
+    novos, canvas = {}, {}
     for par in pares:
         h, _, agente = par.partition("=")
-        if not h.startswith("term_") or not agente:
-            sys.exit(f"formato esperado term_...=<agente>, recebi: {par}")
+        if not h.startswith(("term_", "maestri:")) or not agente:
+            sys.exit(f"formato esperado term_...=<agente> ou maestri:<id>=<agente>, recebi: {par}")
+        if h.startswith("maestri:"):  # o nome no canvas vem do pedido que o próprio terminal fez
+            s = cmd_maestri.solicitacao(h)
+            if not s or not s.get("nome_canvas"):
+                sys.exit(f"{h} não pediu cadastro: no terminal do agente, rode painel.py solicitar --raiz {raiz} "
+                         f"--agente {agente}")
+            canvas[h] = s["nome_canvas"]
         if not agente.startswith(prefixo + "-") or not papel_do_nome(agente):
             sys.exit(f"nome fora do padrão {prefixo}-master | {prefixo}-<manager|researcher><NN>-<runtime>: {agente}")
         novos[h] = agente
@@ -151,6 +182,8 @@ def cadastrar(args):
                 sys.exit(f"{h} já está cadastrado no projeto {paineis[h]['projeto']}")
             paineis[h] = {"projeto": projeto, "agente": agente, "papel": papel_do_nome(agente),
                           "raiz": raiz, "cadastrado_em": ts}
+            if h in canvas:
+                paineis[h].update(transporte="maestri", nome_canvas=canvas[h])
             if wt:
                 paineis[h]["worktree"] = wt
     com_trava(alterar)
@@ -200,7 +233,9 @@ COMANDOS = {"historico": cmd_log.historico, "verificar": cmd_log.verificar,
             "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar,
             "nota": cmd_time.nota, "notas": cmd_time.notas, "resumo": cmd_time.resumo,
             "servir": cmd_web.servir,
-            "tarefas": cmd_tarefas.tarefas, "vigiar": cmd_tarefas.vigiar, "simular": cmd_tarefas.simular}
+            "tarefas": cmd_tarefas.tarefas, "vigiar": cmd_tarefas.vigiar, "simular": cmd_tarefas.simular,
+            "eu": cmd_maestri.eu, "solicitar": cmd_maestri.solicitar, "solicitacoes": cmd_maestri.solicitacoes,
+            "maestri": cmd_maestri.maestri_cmd}
 
 
 def main():

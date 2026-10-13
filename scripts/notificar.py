@@ -44,12 +44,30 @@ def branch_de(worktree):
     return b if r.returncode == 0 and b and b != "HEAD" else None
 
 
-def extras_entrega(tipo, eu):
-    """Campos a mais na linha de log: {"branch": ...} numa entrega de quem tem worktree."""
-    if tipo != "entrega" or not eu.get("worktree"):
+def extras_entrega(tipo, eu, cwd=None):
+    """Campos a mais na linha de log: {"branch": ...} numa entrega de quem tem worktree.
+
+    O worktree vem do cadastro (cadastrar --worktree) ou, num floor do Maestri, do
+    diretório em que o agente está, quando ele é um checkout diferente da raiz.
+    """
+    if tipo != "entrega":
         return {}
-    b = branch_de(eu["worktree"])
+    pasta = eu.get("worktree") or (cwd if cwd and _outro_checkout(cwd, eu.get("raiz")) else None)
+    b = branch_de(pasta) if pasta else None
     return {"branch": b} if b else {}
+
+
+def _outro_checkout(cwd, raiz):
+    """True quando cwd está num checkout git (ex.: floor do Maestri) que não é o da raiz do projeto."""
+    def topo(pasta):
+        try:
+            r = subprocess.run(["git", "-C", pasta, "rev-parse", "--show-toplevel"], capture_output=True,
+                               text=True, timeout=5, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return os.path.realpath(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
+    a = topo(cwd)
+    return bool(a) and a != topo(raiz or "")
 
 
 def tipos_webhook():
@@ -70,6 +88,25 @@ def quer_webhook(p):
 def quer_github(p):
     return p.get("tipo_time") == "entrega" and bool(p.get("issues")) and bool(p.get("raiz")) \
         and comentar_entregas(p["raiz"])
+
+
+def quer_floor(p):
+    """Entrega feita de um terminal do Maestri, com "maestri": {"status_do_floor": true} na config."""
+    if p.get("tipo_time") != "entrega" or not p.get("raiz") or not os.environ.get("MAESTRI_TERMINAL_ID"):
+        return False
+    try:
+        return bool(carregar_config(p["raiz"]).get("maestri", {}).get("status_do_floor"))
+    except Barrado:
+        return False
+
+
+def status_do_floor(p):
+    """Põe o floor do remetente em revisão (o Maestri notifica o usuário)."""
+    import maestri
+    texto = f"Entrega {p.get('id')}: {p.get('assunto') or ''}"[:120]
+    codigo, saida = maestri.rodar(["floor", "status", texto, "--state", "review"], timeout=15)
+    if codigo != 0:
+        registrar_aviso(f"{p.get('id')} status do floor não postado: {saida.strip()[:200]}")
 
 
 def texto_de(p):
@@ -121,12 +158,14 @@ def notificar(p):
         enviar_webhook(os.environ["AGENT_BOARD_WEBHOOK"], texto)
     if quer_github(p):
         comentar_issues(p, texto)
+    if quer_floor(p):
+        status_do_floor(p)
 
 
 def disparar(p):
     """Chamado pelo post_send. Só abre processo se houver algo a fazer; nunca levanta exceção."""
     try:
-        if not (quer_webhook(p) or quer_github(p)):
+        if not (quer_webhook(p) or quer_github(p) or quer_floor(p)):
             return
         os.makedirs(HOME, exist_ok=True)
         with open(os.path.join(HOME, "avisos.log"), "a") as erros:

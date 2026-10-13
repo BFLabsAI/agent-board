@@ -46,5 +46,9 @@
   },
   "github": {
     "comentar_entregas": false
+  },
+  "maestri": {
+    "espelhar_notas": false,
+    "status_do_floor": false
   }
 }

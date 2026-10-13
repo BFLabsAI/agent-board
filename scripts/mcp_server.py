@@ -21,7 +21,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from base import VERSAO  # noqa: E402
+from base import VERSAO, meu_handle  # noqa: E402
 import mcp_ferramentas  # noqa: E402
 
 VERSOES = ("2025-06-18", "2025-03-26", "2024-11-05")  # a primeira é a padrão
@@ -108,7 +108,7 @@ def main():
     entrada = sys.stdin.buffer
     saida = sys.stdout.buffer
     sys.stdout = sys.stderr  # print perdido de qualquer módulo não pode sujar o protocolo
-    log(f"agent-board {VERSAO}, painel {os.environ.get('ORCA_TERMINAL_HANDLE') or '(sem handle)'}")
+    log(f"agent-board {VERSAO}, painel {meu_handle() or '(sem handle)'}")
     for bruta in entrada:
         if not bruta.strip():
             continue

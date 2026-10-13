@@ -2,7 +2,7 @@
 agent-board: ferramentas do servidor MCP (board_send, board_inbox, board_pendentes,
 board_historico, board_status).
 
-A regra não mora aqui. board_send monta o mesmo comando `orca orchestration send`
+A regra não mora aqui. board_send (envio.enviar) monta o mesmo comando `orca orchestration send`
 que o agente escreveria e passa por hook_core.decide() com eventos PreToolUse e
 PostToolUse sintéticos, como o hook faria. Precisa ser assim porque ferramenta MCP
 não passa pelo PreToolUse do hook (o matcher é só Bash, Edit/Write e SendMessage).
@@ -10,32 +10,27 @@ não passa pelo PreToolUse do hook (o matcher é só Bash, Edit/Write e SendMess
 Cada ferramenta devolve (texto, erro?). Erro de regra ou de envio é resultado com
 isError, não erro de protocolo: o agente lê o motivo e corrige.
 """
-import os
-import re
-import secrets
-import shlex
 import subprocess
-import sys
 
 import cmd_log
+import envio
 import hook_core
-import registro
 import toon
-from base import VERSAO, Barrado, achar_orca, carregar_paineis
+from base import VERSAO, Barrado, achar_orca, carregar_paineis, eh_maestri
+from envio import quem_sou
 
 VEREDITOS = ("aprovado", "rejeitado")
-CID_RE = re.compile(r"\[(c-\d{8}-\d{6}-[0-9a-f]+) ")
 
 _ID = {"type": "string", "description": "id de mensagem do agent-board (c-AAAAMMDD-HHMMSS-xxxx)"}
 
 FERRAMENTAS = [
     {"name": "board_send",
      "description": (
-         "Envia uma mensagem a outro agente do time pelo correio do Orca, com as mesmas regras do hook "
+         "Envia uma mensagem a outro agente do time pelo transporte do destino (Orca ou Maestri), com as mesmas regras do hook "
          "(papel, projeto, tipo, log). Use no lugar de `orca orchestration send` no shell. `para` é o nome "
          "do agente (o nome curto vale: manager01-cc). Pedido a manager exige `modo`. Resposta exige "
          "`responde_a` com o id da mensagem recebida, e resposta não se responde. escalacao e entrega vão "
-         "só para o master. O corpo não pode ter crase nem $( ). Devolve o id da mensagem (c-...)."),
+         "só para o master. O corpo é texto puro (crase e $( ) não são executados). Devolve o id da mensagem (c-...)."),
      "inputSchema": {
          "type": "object",
          "properties": {
@@ -115,68 +110,15 @@ def validar(schema, args):
 # ---------------------------------------------------------------------------
 # Ferramentas
 # ---------------------------------------------------------------------------
-def quem_sou():
-    """(handle, cadastro) do painel deste servidor. Sem cadastro, explica e para."""
-    handle = os.environ.get("ORCA_TERMINAL_HANDLE")
-    eu = carregar_paineis().get(handle)
-    if eu is None:
-        raise Barrado(f"este painel ({handle or 'sem $ORCA_TERMINAL_HANDLE'}) não está cadastrado no "
-                       "agent-board. Peça ao master para cadastrar o painel com painel.py cadastrar")
-    return handle, eu
-
-
-def evento(nome, cmd, tid, resposta=None):
-    """Evento do hook como o Claude Code mandaria para uma chamada do Bash."""
-    p = {"hook_event_name": nome, "tool_name": "Bash", "tool_input": {"command": cmd}, "tool_use_id": tid}
-    if resposta is not None:
-        p["tool_response"] = resposta
-    return hook_core.normalize(p, "claude")
-
-
 def board_send(a):
-    handle, eu = quem_sou()
-    argv = ["orca", "orchestration", "send", "--to", a["para"], "--type", a["tipo"], "--subject", a["assunto"]]
-    if a.get("corpo"):
-        argv += ["--body", a["corpo"]]
-    for chave, flag in (("modo", "--modo"), ("responde_a", "--responde-a"), ("prazo", "--prazo"),
-                        ("veredito", "--veredito")):
-        if a.get(chave):
-            argv += [flag, a[chave]]
-    if a.get("issues"):
-        argv += ["--issues", ",".join(str(i) for i in a["issues"])]
-    cmd = shlex.join(argv)
-    tid = "mcp_" + secrets.token_hex(8)
-    try:
-        d = hook_core.decide(evento("PreToolUse", cmd, tid))
-    except Exception as exc:  # a política quebrou: barra, como o FAIL_CLOSED do hook
-        return f"Barrado: o hook agent-board falhou ({exc!r}); avise o master.", True
-    if d is None or d.get("action") != "allow":
-        motivo = d["reason"] if d else f"{a['para']} não é um agente do time; board_send é só para o time"
-        return motivo, True
-    traduzido = d["updated_input"]["command"]
-    final = shlex.split(traduzido)
-    final[0] = achar_orca()
-    try:
-        r = subprocess.run(final, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
-        saida, codigo = (r.stdout or "") + (r.stderr or ""), r.returncode
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        saida, codigo = f"error: {exc}", -1
-    if codigo != 0 and not re.search(r"\berror\b", saida, re.I):
-        saida += f"\nerror: orca saiu com código {codigo}"  # para o post_send marcar a falha no log
-    try:  # aviso na tela do destino, ou a marca de falha no log
-        hook_core.decide(evento("PostToolUse", traduzido, tid, saida))
-    except Exception as exc:
-        print(f"[agent-board] decide() pós-envio falhou: {exc!r}", file=sys.stderr)
-    m = CID_RE.search(traduzido)
-    cid = m.group(1) if m else "?"
-    # quem decide se falhou é o post_send do hook: mensagem que falhou some do log ativo
-    if codigo != 0 or cid not in {l["id"] for l in registro.ler_log(eu["raiz"])}:
-        return f"{cid} NÃO entregue (o log marca como falhou; o master pode reenviar).\n{saida.strip()}", True
-    return f"{cid} enviada para {a['para']} ({a['tipo']}).\n{saida.strip()}", False
+    return envio.enviar(a)
 
 
 def board_inbox(a):
     handle, _ = quem_sou()
+    if eh_maestri(handle):  # no Maestri a mensagem chega digitada no terminal; o que falta é responder
+        texto, erro = board_pendentes(a)
+        return "No Maestri as mensagens chegam direto neste terminal. Ainda sem resposta:\n" + texto, erro
     try:
         r = subprocess.run([achar_orca(), "orchestration", "check", "--terminal", handle, "--format"],
                            capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)

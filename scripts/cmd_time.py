@@ -17,9 +17,10 @@ import subprocess
 import sys
 import unicodedata
 
+import maestri
 import registro
 import toon
-from base import HOME, agora, carregar_config, carregar_paineis, papel_do_nome, trava
+from base import HOME, agora, carregar_config, carregar_paineis, meu_handle, papel_do_nome, registrar_aviso, trava
 from cmd_log import raiz_de
 
 NOTAS_REL = "docs/agent-board/notas"
@@ -50,7 +51,7 @@ def trava_da_nota(caminho):
 
 def autor_da_nota(raiz, de):
     """Agente cadastrado é sempre ele mesmo (--de é ignorado); fora do cadastro (humano), --de é obrigatório."""
-    eu = carregar_paineis().get(os.environ.get("ORCA_TERMINAL_HANDLE"))
+    eu = carregar_paineis().get(meu_handle())
     if eu is not None:
         if eu.get("projeto") != carregar_config(raiz).get("projeto"):
             sys.exit(f"{eu['agente']} é do projeto {eu.get('projeto')}; não escreve notas em {raiz}")
@@ -90,6 +91,18 @@ def nota(args):
         registro.gravar_log(raiz, {"id": nid, "ts": ts, "de": autor, "tipo": "nota",
                                    "tema": tema, "decisao": bool(a.decisao)})
     print(f"{nid} gravada em {os.path.relpath(caminho, raiz)}")
+    espelhar_no_canvas(raiz, tema, caminho)
+
+
+def espelhar_no_canvas(raiz, tema, caminho):
+    """Com "maestri": {"espelhar_notas": true}, o tema também aparece como nota no canvas do Maestri."""
+    if not carregar_config(raiz).get("maestri", {}).get("espelhar_notas") or not maestri.disponivel():
+        return
+    with open(caminho) as f:
+        ok, msg = maestri.espelhar_nota(tema, f.read())
+    print(msg)
+    if not ok:
+        registrar_aviso(msg)
 
 
 def blocos(caminho):

@@ -11,7 +11,7 @@ import sys
 
 import registro
 import toon
-from base import CONFIG_REL, HOME, LOG_REL, achar_orca, agora, carregar_paineis, ler_json
+from base import CONFIG_REL, HOME, LOG_REL, achar_orca, agora, carregar_paineis, ler_json, meu_handle
 
 CAMPOS = ("id", "ts", "de", "para", "tipo", "modo", "assunto", "responde_a", "issues")
 
@@ -25,7 +25,7 @@ def raiz_de(valor):
 
 def exigir_master(comando):
     """Comando que escreve no log: só o master, ou um humano num terminal fora do cadastro."""
-    eu = carregar_paineis().get(os.environ.get("ORCA_TERMINAL_HANDLE"))
+    eu = carregar_paineis().get(meu_handle())
     if eu is not None and eu.get("papel") != "master":
         sys.exit(f"painel.py {comando} é só do master; {eu['agente']} pode pedir a ele")
 

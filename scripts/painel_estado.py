@@ -11,7 +11,7 @@ import os
 import cmd_tarefas
 import politica
 import registro
-from base import VERSAO
+from base import VERSAO, eh_maestri
 
 TIPOS_TAREFA = ("pedido", "entrega")
 PERIODOS = {"hoje": None, "24h": datetime.timedelta(hours=24), "7d": datetime.timedelta(days=7)}
@@ -157,7 +157,8 @@ def montar(raiz, projeto, paineis, periodo="hoje", agora=None, abertos=None, cad
     agentes = sorted(({"handle": h, **p} for h, p in paineis.items() if p.get("projeto") == projeto),
                      key=lambda a: ({"master": 0, "manager": 1}.get(a.get("papel"), 2), a["agente"]))
     for a in agentes:
-        a["aberto"] = None if abertos is None else a["handle"] in abertos
+        # o Maestri não lista terminais por ID: sem como saber, fica None (nem aberto nem fechado)
+        a["aberto"] = None if abertos is None or eh_maestri(a["handle"]) else a["handle"] in abertos
         a.pop("raiz", None)
     pend = pendentes(msgs, agentes)
     tar = tarefas(msgs, agora)
