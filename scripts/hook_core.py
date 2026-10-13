@@ -204,10 +204,14 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
     extra = notificar.extras_entrega(tipo, eu, ev.get("cwd"))
     rotulo = tipo + (f"·{modo}" if modo else "")
     corpo = d.get("--body") if isinstance(d.get("--body"), str) else ""
-    corpo += (f"\n\n---\n[agent-board {cid}] de {eu['agente']} para {para['agente']}. "
-              f"Para responder: {cmd_envio(para_handle)} --to {eu['agente']} --type resposta "
-              f"--responde-a {cid}" + (" --veredito aprovado|rejeitado" if tipo == "entrega" else "")
-              + " --subject \"...\" --body \"...\"")
+    corpo += f"\n\n---\n[agent-board {cid}] de {eu['agente']} para {para['agente']}. "
+    if tipo in ("resposta", "andamento"):  # resposta e andamento não se respondem (o hook barraria)
+        corpo += ("Não responda a esta mensagem: " + ("ela fecha a conversa; para algo novo, mande um pedido ou aviso."
+                  if tipo == "resposta" else "é o progresso de um pedido seu; a resposta final ainda vem."))
+    else:
+        corpo += (f"Para responder: {cmd_envio(para_handle)} --to {eu['agente']} --type resposta "
+                  f"--responde-a {cid}" + (" --veredito aprovado|rejeitado" if tipo == "entrega" else "")
+                  + " --subject \"...\" --body \"...\"")
     if tipo == "pedido":
         corpo += (f"\nPedido longo: mande antes --type andamento --responde-a {cid} com o progresso"
                   + (f". Prazo: {r['prazo']}" if r["prazo"] else ""))
