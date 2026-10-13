@@ -177,6 +177,11 @@ class Envio(Base):
         log = registro.ler_log(self.raiz)
         self.assertEqual((log[-1]["para"], log[-1]["tipo"]), (G, "pedido"))
 
+    def test_corpo_que_cita_maestri_ask_nao_desvia_a_regra(self):
+        r = self.rodar(BOARD, "send", "--to", "manager01-cc", "--type", "aviso", "--subject", "x",
+                       "--body", 'rode: maestri ask "Forja" "oi"')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_rodape_de_resposta_e_andamento_nao_manda_responder(self):
         self.rodar(BOARD, "send", "--to", "manager01-cc", "--type", "pedido", "--modo", "executar", "--subject", "x")
         pid = registro.ler_log(self.raiz)[-1]["id"]

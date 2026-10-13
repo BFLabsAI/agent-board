@@ -540,7 +540,9 @@ def decide(ev):
     if ev["event"] == "pre_tool" and ev["tool_name"] == "SendMessage":
         return decide_sendmessage(ev)
     if ev["event"] == "pre_tool" and ev["tool"] == "shell" and MAESTRI_RE.search(ev["command"] or ""):
-        return decide_maestri_ask(ev)
+        d = decide_maestri_ask(ev)
+        if d is not None:  # sem maestri ask para o time (ex.: o texto só cita o comando), segue o fluxo
+            return d
     if not envolve_orca(ev):
         return None
     if ev["event"] not in ("pre_tool", "post_tool"):
