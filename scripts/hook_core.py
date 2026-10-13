@@ -247,6 +247,7 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
     })
     novo_input = dict(ev["tool_input"])
     novo_input["command"] = shlex.join(novo)
+    guardar_envio(cid, novo)
     guardar_pendente(ev, novo_input["command"], {"id": cid, "tipo": rotulo, "de": eu["agente"],
                                                  "para_handle": para_handle, "raiz": eu["raiz"]})
     return {"action": "allow", "updated_input": novo_input}
@@ -284,6 +285,27 @@ def guardar_pendente(ev, cmd_novo, dados):
             json.dump(dados, f)
 
 
+ENVIOS_DIAS = 7  # quanto tempo o comando de cada envio fica guardado para o painel.py reenviar
+
+
+def guardar_envio(cid, argv):
+    """Guarda o comando traduzido (com o corpo) fora do git, para o painel.py reenviar."""
+    pasta = os.path.join(HOME, "envios")
+    os.makedirs(pasta, exist_ok=True)
+    with open(os.path.join(pasta, cid + ".json"), "w") as f:
+        json.dump({"argv": argv}, f, ensure_ascii=False)
+
+
+def limpar_velhos(pasta, segundos):
+    try:
+        for nome in os.listdir(pasta):
+            c = os.path.join(pasta, nome)
+            if time.time() - os.path.getmtime(c) > segundos:
+                os.remove(c)
+    except OSError:
+        pass
+
+
 def tirar_pendente(ev):
     pasta = os.path.join(HOME, "pendentes")
     achado = None
@@ -294,14 +316,8 @@ def tirar_pendente(ev):
                 with open(caminho) as f:
                     achado = json.load(f)
             os.remove(caminho)
-    # limpa pendentes velhos (envio que falhou e nunca teve post)
-    try:
-        for nome in os.listdir(pasta):
-            c = os.path.join(pasta, nome)
-            if time.time() - os.path.getmtime(c) > 3600:
-                os.remove(c)
-    except OSError:
-        pass
+    limpar_velhos(pasta, 3600)  # envio que falhou e nunca teve post
+    limpar_velhos(os.path.join(HOME, "envios"), ENVIOS_DIAS * 86400)
     return achado
 
 

@@ -329,6 +329,31 @@ Cada linha do log tem este formato:
 
 O log fica sempre no checkout principal do projeto. Quem faz merge inclui o log no commit.
 
+Cada linha também leva `"prev"`, o sha256 da linha anterior (cadeia de hash). Linhas só com `{"id", "ts", "status"}` registram o destino de um envio: `falhou` tira a mensagem da cobrança, `reenviado` devolve.
+
+**Pelo painel.py** (saída em [TOON](https://github.com/toon-format/toon) por padrão, que gasta bem menos tokens no contexto de um agente):
+
+```bash
+python3 $S/painel.py historico --raiz <project-path> --agente <project-prefix>-manager01-cc --n 20
+python3 $S/painel.py historico --raiz <project-path> --sobre pagamentos --tudo --formato json
+```
+
+```
+mensagens[2]{id,ts,de,para,tipo,modo,assunto,responde_a,issues}:
+  c-20261007-101256-ab68,"2026-10-07T10:12:56+02:00",alpha-manager01-cc,alpha-researcher01-cc,pedido,null,Analisar pagamentos,null,412
+  c-20261007-113000-0c1d,"2026-10-07T11:30:00+02:00",alpha-researcher01-cc,alpha-manager01-cc,resposta,null,Pagamentos analisados,c-20261007-101256-ab68,""
+```
+
+### Integridade, arquivo morto e reenvio (master)
+
+| Comando | O que faz |
+|---|---|
+| `painel.py verificar --raiz <path>` | Confere a cadeia de hash do log e do arquivo morto. Linha editada ou apagada no meio aparece como `PROBLEMA`, e o comando sai com 1. Bifurcação de `merge=union` é normal. |
+| `painel.py arquivar --raiz <path> [--dias 30]` | Move conversas fechadas e antigas para `docs/agent-board/arquivo/AAAA-MM.jsonl`. Mensagem que ainda espera resposta nunca sai do log ativo. Mantém o hook rápido. |
+| `painel.py reenviar --raiz <path> <id>` | Reenvia a mensagem para o painel **atual** do destino (ex.: painel fechou antes de ler, ou o envio falhou). O comando completo de cada envio fica guardado por 7 dias em `~/.agent-hooks/agent-board/envios/`, fora do git. |
+
+`arquivar` e `reenviar` escrevem no log: só o master (ou um humano num terminal fora do cadastro) roda.
+
 ---
 
 ## O que o hook barra
@@ -360,9 +385,10 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 |---|---|---|
 | `scripts/hook_core.py` | skill | Todas as regras: antes do envio, depois do envio e ao encerrar |
 | `scripts/omp-agent-board.ts` | skill | Adaptador do OMP para o mesmo core |
-| `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover` |
+| `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, e os comandos de log de `cmd_log.py` |
+| `scripts/base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, proteção do log, aviso na tela, saída TOON |
 | `scripts/install.sh` | skill | Liga os hooks (idempotente, com backup) |
-| `scripts/test_agent_board.py` | skill | Testes a seco |
+| `scripts/test_agent_board.py`, `test_registro.py` | skill | Testes a seco |
 | `templates/CONTRATO.md` | skill → projeto | Vira `docs/agent-board/CONTRATO.md` |
 | `templates/agent-board.json` | skill → projeto | Vira `docs/agent-board/agent-board.json` |
 | `SKILL.md` | skill | Procedimento do master, que o agente lê ao usar a skill |
@@ -370,7 +396,10 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `~/.agent-hooks/agent-board/avisos.log` | máquina | Avisos digitados, suprimidos e encerramentos sem resposta |
 | `~/.agent-hooks/agent-board/avisos-estado.json` | máquina | Controle do limite de 1 aviso por destino a cada 60 s |
 | `~/.agent-hooks/agent-board/pendentes/`, `cobrancas/` | máquina | Estado interno entre o pré e o pós-envio, e contagem das cobranças |
+| `~/.agent-hooks/agent-board/envios/` | máquina | Comando completo de cada envio (7 dias), para o `reenviar` |
+| `~/.agent-hooks/agent-board/travas/` | máquina | Arquivos de trava do log de cada projeto |
 | `docs/agent-board/comunicacoes.jsonl` | projeto, no git | O log das mensagens |
+| `docs/agent-board/arquivo/AAAA-MM.jsonl` | projeto, no git | Arquivo morto do log (`painel.py arquivar`) |
 
 ---
 
@@ -438,7 +467,8 @@ Para só **desligar** sem desinstalar, esvazie o cadastro: com `paineis.json` va
 ## Limites conhecidos
 
 - O hook só vê o que passa pelas ferramentas de shell e pelo `SendMessage`. Um script que chama o `orca` por dentro escapa da checagem, e o contrato proíbe isso.
-- O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e dá para reenviar.
+- O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e `painel.py reenviar` manda de novo.
+- A cadeia de hash acusa linha editada ou apagada no meio do log, mas não a remoção da **última** linha. Ela torna a adulteração visível, não impossível.
 - O aviso na tela é digitado como se fosse texto do usuário. Por isso, o hook não digita quando há um diálogo aberto no destino.
 - Num pedido longo, com subagents rodando em segundo plano, o hook de fim de turno pode cobrar a resposta antes de o trabalho terminar. Depois de 3 cobranças, ele libera.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.

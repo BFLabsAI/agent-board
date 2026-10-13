@@ -22,7 +22,7 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 |---|---|---|
 | [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta) |
 | [`scripts/omp-agent-board.ts`](scripts/omp-agent-board.ts) | skill | Adaptador do OMP para o mesmo core |
-| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover` |
+| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar` |
 | [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks no servidor (idempotente, com backup) |
 | [`scripts/test_agent_board.py`](scripts/test_agent_board.py) | skill | Testes a seco, sem envio real |
 | [`scripts/VERSION`](scripts/VERSION) | skill | Versão do pacote |
@@ -97,7 +97,10 @@ A resposta de cada um confirma que leu. Na mesma virada, aposente os canais para
   - destino de outro projeto.
 - **Aviso que não apareceu na tela:** veja `~/.agent-hooks/agent-board/avisos.log`. Se havia uma pergunta aberta na tela do destino, o aviso não é digitado, mas a mensagem continua no correio. O aviso também é limitado a 1 por destino a cada 60 s (estado em `avisos-estado.json`): dentro da janela, o hook espera e só digita se o destino ainda tiver mensagem não lida.
 - **Agente encerrando sem responder:** o hook segura até 3 vezes e depois registra no `avisos.log`. Cobre o agente pelo próprio canal.
-- **Consultar o log:** `jq -c 'select(.para=="<agente>")' docs/agent-board/comunicacoes.jsonl`.
+- **Consultar o log:** `python3 $S/painel.py historico --raiz <project-path> --agente <agente>` (TOON, econômico para o contexto) ou `jq -c 'select(.para=="<agente>")' docs/agent-board/comunicacoes.jsonl`.
+- **Mensagem que não chegou** (painel fechou antes de ler, envio falhou): `python3 $S/painel.py reenviar --raiz <project-path> <id>`.
+- **Integridade do log:** `python3 $S/painel.py verificar --raiz <project-path>` antes de um merge importante ou se suspeitar de edição à mão.
+- **Log grande:** `python3 $S/painel.py arquivar --raiz <project-path>` uma vez por mês, numa branch, com commit.
 
 ## 6. Atualizar ou desinstalar
 

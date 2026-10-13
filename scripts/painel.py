@@ -6,12 +6,22 @@ painel.py: cadastro de painéis do agent-board. Uso exclusivo do master.
       Cria docs/agent-board/ no projeto (config, CONTRATO.md, log vazio) e a linha
       merge=union no .gitattributes. Não sobrescreve o que já existe; com
       --atualizar-contrato, troca o CONTRATO.md pela versão atual da skill.
-  painel.py listar
+  painel.py listar [--formato toon]
       Mostra os terminais abertos no Orca, com o cadastro de cada um.
   painel.py cadastrar --raiz <project-path> <term_...>=<agente> [<term_...>=<agente> ...]
       Cadastra (ou recadastra) painéis do projeto. Só depois de o CEO confirmar a lista.
   painel.py remover <term_...> [...]
       Tira painéis do cadastro.
+
+Log do projeto (cada um aceita --help):
+  painel.py historico --raiz <path> [--agente X] [--sobre texto] [--n 20] [--tudo] [--formato toon|json]
+      Últimas mensagens, em TOON por padrão (economiza tokens no contexto do agente).
+  painel.py verificar --raiz <path>
+      Confere a cadeia de hash do log e do arquivo morto. Sai com 1 se achar adulteração.
+  painel.py arquivar --raiz <path> [--dias 30]
+      Move conversas fechadas e antigas para docs/agent-board/arquivo/AAAA-MM.jsonl.
+  painel.py reenviar --raiz <path> <id>
+      Reenvia uma mensagem (ex.: o painel fechou antes de ler), para o painel atual do destino.
 
 O cadastro fica em $AGENT_BOARD_HOME/paineis.json (padrão ~/.agent-hooks/agent-board).
 """
@@ -25,6 +35,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
+import cmd_log  # noqa: E402
+import toon  # noqa: E402
 
 ORCA = achar_orca()
 TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates")
@@ -51,22 +63,33 @@ def terminais():
     return t.get("terminals", t) if isinstance(t, dict) else t
 
 
-def listar():
+def listar(args=()):
+    formato = args[args.index("--formato") + 1] if "--formato" in args else "texto"
     try:
         with open(PAINEIS) as f:
             cad = json.load(f)["paineis"]
     except FileNotFoundError:
         cad = {}
-    vistos = set()
+    vistos, linhas = set(), []
     for t in terminais():
         h = t.get("handle") or t.get("id")
         vistos.add(h)
-        c = cad.get(h)
-        marca = f"{c['projeto']}/{c['agente']}" if c else "(sem cadastro)"
-        print(f"{h}  {t.get('title', '')!s:40.40}  {marca}")
+        c = cad.get(h) or {}
+        linhas.append({"handle": h, "titulo": str(t.get("title", "")), "projeto": c.get("projeto"),
+                       "agente": c.get("agente"), "situacao": "cadastrado" if c else "sem cadastro"})
     for h, c in cad.items():
         if h not in vistos:
-            print(f"{h}  (painel fechado ou reaberto)  {c['projeto']}/{c['agente']}  -> recadastrar")
+            linhas.append({"handle": h, "titulo": "", "projeto": c["projeto"], "agente": c["agente"],
+                           "situacao": "fechado: recadastrar"})
+    if formato == "toon":
+        print(toon.tabela("paineis", linhas, ["handle", "titulo", "projeto", "agente", "situacao"]))
+        return
+    for l in linhas:
+        marca = f"{l['projeto']}/{l['agente']}" if l["agente"] else "(sem cadastro)"
+        if l["situacao"].startswith("fechado"):
+            print(f"{l['handle']}  (painel fechado ou reaberto)  {marca}  -> recadastrar")
+        else:
+            print(f"{l['handle']}  {l['titulo']:40.40}  {marca}")
 
 
 def cadastrar(args):
@@ -138,13 +161,11 @@ def init(args):
     if not os.path.exists(log):
         open(log, "a").close()
         print("criado", log)
-    ga = os.path.join(raiz, ".gitattributes")
-    linha = LOG_REL + " merge=union"
-    atual = open(ga).read() if os.path.exists(ga) else ""
-    if linha not in atual:
-        with open(ga, "a") as f:
-            f.write(("" if atual.endswith("\n") or not atual else "\n") + linha + "\n")
-        print("atualizado", ga)
+    cmd_log.garantir_gitattributes(raiz)
+
+
+COMANDOS = {"historico": cmd_log.historico, "verificar": cmd_log.verificar,
+            "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar}
 
 
 def main():
@@ -154,7 +175,9 @@ def main():
     if cmd == "init":
         init(args)
     elif cmd == "listar":
-        listar()
+        listar(args)
+    elif cmd in COMANDOS:
+        COMANDOS[cmd](args)
     elif cmd == "cadastrar":
         cadastrar(args)
     elif cmd == "remover":
