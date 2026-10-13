@@ -12,6 +12,8 @@ Comunicação padronizada entre agentes de IA que rodam em **terminais diferente
 
 Funciona com **Claude Code** e **Oh My Pi (OMP)**, ambos com hooks. Agentes de outros harnesses (Codex, Hermes, OpenCode…) podem seguir o contrato, mas sem trava automática.
 
+> **Novo por aqui?** O [resumo das melhorias](docs/MELHORIAS.md) explica, em linguagem simples, como o time se comunica e tudo o que mudou desde a versão original.
+
 ---
 
 ## Sumário
