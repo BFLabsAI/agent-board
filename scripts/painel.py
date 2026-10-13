@@ -8,8 +8,10 @@ painel.py: cadastro de painéis do agent-board. Uso exclusivo do master.
       --atualizar-contrato, troca o CONTRATO.md pela versão atual da skill.
   painel.py listar [--formato toon]
       Mostra os terminais abertos no Orca, com o cadastro de cada um.
-  painel.py cadastrar --raiz <project-path> <term_...>=<agente> [<term_...>=<agente> ...]
+  painel.py cadastrar --raiz <project-path> [--worktree] <term_...>=<agente> [<term_...>=<agente> ...]
       Cadastra (ou recadastra) painéis do projeto. Só depois de o CEO confirmar a lista.
+      --worktree: cada manager ganha um git worktree em <raiz>/../<projeto>-worktrees/<agente>
+      na branch ab/<agente>. O log continua no checkout principal (a raiz).
   painel.py remover <term_...> [...]
       Tira painéis do cadastro.
 
@@ -22,6 +24,14 @@ Log do projeto (cada um aceita --help):
       Move conversas fechadas e antigas para docs/agent-board/arquivo/AAAA-MM.jsonl.
   painel.py reenviar --raiz <path> <id>
       Reenvia uma mensagem (ex.: o painel fechou antes de ler), para o painel atual do destino.
+
+Recursos do time:
+  painel.py nota --raiz <path> --tema <tema> [--decisao] [--de <autor>] "<texto>"
+      Acrescenta uma nota (ou decisão) em docs/agent-board/notas/<tema>.md e registra no log.
+  painel.py notas --raiz <path> [--tema X] [--formato toon|json|md]
+      Lista os temas, ou mostra as notas de um tema.
+  painel.py resumo --raiz <path> [--desde 2h|1d|30m] [--formato texto|toon]
+      O que aconteceu no período: contagens, pendências, entregas, escalações e notas.
 
 O cadastro fica em $AGENT_BOARD_HOME/paineis.json (padrão ~/.agent-hooks/agent-board).
 """
@@ -36,6 +46,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
 import cmd_log  # noqa: E402
+import cmd_time  # noqa: E402
 import toon  # noqa: E402
 
 ORCA = achar_orca()
@@ -95,6 +106,8 @@ def listar(args=()):
 def cadastrar(args):
     if "--raiz" not in args:
         sys.exit("informe --raiz <project-path>")
+    com_worktree = "--worktree" in args
+    args = [a for a in args if a != "--worktree"]
     i = args.index("--raiz")
     raiz = os.path.abspath(args[i + 1])
     pares = args[:i] + args[i + 2:]
@@ -111,16 +124,21 @@ def cadastrar(args):
         novos[h] = agente
     if len(set(novos.values())) != len(novos):
         sys.exit("o mesmo agente apareceu em dois painéis")
+    wts = cmd_time.worktrees(raiz, novos) if com_worktree else {}
     ts = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
     def alterar(paineis):
         for h, agente in novos.items():
+            wt = wts.get(h)
             for velho in [k for k, v in paineis.items() if v["projeto"] == projeto and v["agente"] == agente]:
+                wt = wt or paineis[velho].get("worktree")  # recadastro sem --worktree mantém o worktree
                 del paineis[velho]  # recadastro: o painel antigo daquele agente sai
             if h in paineis and paineis[h]["projeto"] != projeto:
                 sys.exit(f"{h} já está cadastrado no projeto {paineis[h]['projeto']}")
             paineis[h] = {"projeto": projeto, "agente": agente, "papel": papel_do_nome(agente),
                           "raiz": raiz, "cadastrado_em": ts}
+            if wt:
+                paineis[h]["worktree"] = wt
     com_trava(alterar)
     for h, a in novos.items():
         print(f"cadastrado {h} = {projeto}/{a}")
@@ -165,7 +183,8 @@ def init(args):
 
 
 COMANDOS = {"historico": cmd_log.historico, "verificar": cmd_log.verificar,
-            "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar}
+            "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar,
+            "nota": cmd_time.nota, "notas": cmd_time.notas, "resumo": cmd_time.resumo}
 
 
 def main():

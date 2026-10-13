@@ -28,6 +28,7 @@ import subprocess
 import sys
 import time
 
+import notificar
 from avisos import avisar
 from base import (CONFIG_REL, HOME, LOG_REL, NOME_RE, PAINEIS, VERSAO, Barrado, achar_orca, agora,  # noqa: F401
                   carregar_config, carregar_paineis, ler_json, papel_do_nome, registrar_aviso)
@@ -224,6 +225,7 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         issues = [int(x) for x in re.findall(r"\d+", d["--issues"])]
 
     cid = novo_id()
+    extra = notificar.extras_entrega(tipo, eu)
     rotulo = tipo + (f"·{modo}" if modo else "")
     corpo = d.get("--body") if isinstance(d.get("--body"), str) else ""
     corpo += (f"\n\n---\n[agent-board {cid}] de {eu['agente']} para {para['agente']}. "
@@ -244,12 +246,15 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         "de": eu["agente"], "para": para["agente"], "tipo": tipo, "modo": modo,
         "assunto": assunto.strip(), "issues": issues,
         "responde_a": d.get("--responde-a") if isinstance(d.get("--responde-a"), str) else None,
+        **extra,  # entrega de quem tem worktree: a branch dele
     })
     novo_input = dict(ev["tool_input"])
     novo_input["command"] = shlex.join(novo)
     guardar_envio(cid, novo)
     guardar_pendente(ev, novo_input["command"], {"id": cid, "tipo": rotulo, "de": eu["agente"],
-                                                 "para_handle": para_handle, "raiz": eu["raiz"]})
+                                                 "para_handle": para_handle, "raiz": eu["raiz"],
+                                                 "tipo_time": tipo, "para": para["agente"],
+                                                 "assunto": assunto.strip(), "issues": issues, **extra})
     return {"action": "allow", "updated_input": novo_input}
 
 
@@ -343,6 +348,7 @@ def post_send(ev, paineis):
                              stderr=erros, start_new_session=True)
     except OSError as exc:
         registrar_aviso(f"{p['id']} aviso não enviado: {exc}")
+    notificar.disparar(p)  # webhook e GitHub, em outro processo
     return None
 
 
