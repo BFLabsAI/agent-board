@@ -16,7 +16,6 @@ painel.py: cadastro de painéis do agent-board. Uso exclusivo do master.
 O cadastro fica em $AGENT_BOARD_HOME/paineis.json (padrão ~/.agent-hooks/agent-board).
 """
 import datetime
-import fcntl
 import json
 import os
 import re
@@ -25,16 +24,14 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hook_core import CONFIG_REL, HOME, LOG_REL, PAINEIS, achar_orca, papel_do_nome  # noqa: E402
+from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
 
 ORCA = achar_orca()
 TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates")
 
 
 def com_trava(alterar):
-    os.makedirs(HOME, exist_ok=True)
-    with open(PAINEIS + ".lock", "w") as trava:
-        fcntl.flock(trava, fcntl.LOCK_EX)
+    with trava(PAINEIS + ".lock"):
         try:
             with open(PAINEIS) as f:
                 dados = json.load(f)

@@ -18,29 +18,22 @@ Todo o resto passa sem opinião.
 
 Sempre sai com código 0. Stdout leva só a decisão JSON; logs vão para stderr.
 """
-import datetime
-import fcntl
 import hashlib
-import fnmatch
 import json
 import os
 import re
 import secrets
 import shlex
-import shutil
 import subprocess
 import sys
 import time
 
-try:
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) as _v:
-        VERSAO = _v.read().strip()
-except OSError:
-    VERSAO = "desconhecida"
-HOME = os.environ.get("AGENT_BOARD_HOME", os.path.expanduser("~/.agent-hooks/agent-board"))
-PAINEIS = os.path.join(HOME, "paineis.json")
-CONFIG_REL = "docs/agent-board/agent-board.json"
-LOG_REL = "docs/agent-board/comunicacoes.jsonl"
+from avisos import avisar
+from base import (CONFIG_REL, HOME, LOG_REL, NOME_RE, PAINEIS, VERSAO, Barrado, achar_orca, agora,  # noqa: F401
+                  carregar_config, carregar_paineis, ler_json, papel_do_nome, registrar_aviso)
+from protecao import PROTEGIDOS, escreve_em_protegido
+from registro import gravar_log, ler_log
+
 
 # Gate: se a política quebrar num comando orca do time, o envio é barrado.
 FAIL_CLOSED = True
@@ -55,80 +48,14 @@ FLAGS_TIME = {"--modo": "modo", "--issues": "issues", "--responde-a": "responde_
 COM_VALOR = {"--to", "--from", "--type", "--subject", "--body", "--terminal", "--text"} | set(FLAGS_TIME)
 
 ORCA_RE = re.compile(r"(?:^|[\s;&|(`/])orca\s+(?:orchestration\s+(?:send|reply|ask)|terminal\s+send)\b")
-NOME_RE = re.compile(r"^(?P<prefixo>[a-z0-9]+)-(?:(?P<master>master)|(?P<papel>manager|researcher)(?P<nn>\d{2})-(?P<rt>[a-z]+))$")
 
 
-class Barrado(Exception):
-    pass
 
 
-# ---------------------------------------------------------------------------
-# Dados
-# ---------------------------------------------------------------------------
-def ler_json(caminho, padrao):
-    try:
-        with open(caminho) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return padrao
 
 
-def carregar_paineis():
-    return ler_json(PAINEIS, {"versao": 1, "paineis": {}}).get("paineis", {})
 
 
-def carregar_config(raiz):
-    cfg = ler_json(os.path.join(raiz, CONFIG_REL), None)
-    if cfg is None:
-        raise Barrado(f"projeto sem {CONFIG_REL} em {raiz}; o master precisa configurar o agent-board")
-    return cfg
-
-
-def papel_do_nome(nome):
-    m = NOME_RE.match(nome or "")
-    if not m:
-        return None
-    return "master" if m.group("master") else m.group("papel")
-
-
-def gravar_log(raiz, linha):
-    caminho = os.path.join(raiz, LOG_REL)
-    os.makedirs(os.path.dirname(caminho), exist_ok=True)
-    with open(caminho, "a") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(json.dumps(linha, ensure_ascii=False) + "\n")
-        f.flush()
-        fcntl.flock(f, fcntl.LOCK_UN)
-
-
-def ler_log(raiz):
-    """Mensagens do log do projeto, sem as que falharam no envio.
-
-    Linha ilegível (escrita cortada, merge ruim) é pulada e anotada em avisos.log,
-    para não travar o time inteiro.
-    """
-    linhas, falhas = [], set()
-    try:
-        with open(os.path.join(raiz, LOG_REL)) as f:
-            for n, texto in enumerate(f, 1):
-                if not texto.strip():
-                    continue
-                try:
-                    l = json.loads(texto)
-                except ValueError:
-                    registrar_aviso(f"{LOG_REL}:{n} linha ilegível ignorada")
-                    continue
-                if l.get("status") == "falhou":
-                    falhas.add(l.get("id"))
-                elif "id" in l:
-                    linhas.append(l)
-    except FileNotFoundError:
-        pass
-    return [l for l in linhas if l["id"] not in falhas]
-
-
-def agora():
-    return datetime.datetime.now().astimezone()
 
 
 # ---------------------------------------------------------------------------
@@ -378,21 +305,6 @@ def tirar_pendente(ev):
     return achado
 
 
-def achar_orca():
-    """O hook roda com PATH reduzido: procura o orca nos lugares conhecidos."""
-    for c in (os.environ.get("ORCA_BIN", ""),
-              os.path.join(os.environ.get("ORCA_REMOTE_CLI_BIN_DIR", ""), "orca"),
-              shutil.which("orca") or "", os.path.expanduser("~/.orca-relay/bin/orca")):
-        if c and os.access(c, os.X_OK):
-            return c
-    return "orca"
-
-
-def registrar_aviso(texto):
-    os.makedirs(HOME, exist_ok=True)
-    with open(os.path.join(HOME, "avisos.log"), "a") as f:
-        f.write(f"{agora().isoformat(timespec='seconds')} {texto}\n")
-
 
 def post_send(ev, paineis):
     """Depois do envio: digita um aviso curto na tela do destino (em segundo plano)."""
@@ -510,89 +422,6 @@ def decide_sendmessage(ev):
         "--type <pedido|resposta|aviso|escalacao|entrega> --subject \"...\" --body \"...\"")}
 
 
-PROTEGIDOS = ("comunicacoes.jsonl", "paineis.json")
-ESCRITA_RE = re.compile(r"\bsed\s+-i|\btee\b|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bdd\b|"
-                        r"\bperl\s+-\w*i|write|open\([^)]*['\"][wax+]|\bunlink\b|\breplace\b|\btouch\b|\bchmod\b")
-OPEN_ESCRITA_RE = re.compile(r"""open\(\s*(?:(['"])(?P<p>[^'"]+)\1)?[^)]*?['"][wax+][^'"]*['"]""")
-WRITE_TEXT_RE = re.compile(r"""(?:Path\(\s*(?:(['"])(?P<p>[^'"]+)\1)?[^)]*\)|\w+)\.write(?:_text|_bytes)?\(""")
-CMDS_ALVO_TODOS = {"rm", "unlink", "tee", "truncate", "touch", "chmod", "mv", "shred"}
-OPERADORES = set(";&|()")
-
-
-def _protegido(caminho):
-    base = os.path.basename(caminho.rstrip("/"))
-    return base in PROTEGIDOS or (any(c in base for c in "*?[") and any(fnmatch.fnmatchcase(n, base) for n in PROTEGIDOS))
-
-
-def _duvida(caminho):
-    """Alvo que não dá para resolver ($var, crase) conta como possível log."""
-    return "$" in caminho or "`" in caminho
-
-
-def alvos_de_escrita(cmd):
-    """Lista os alvos de escrita do comando de shell, ou None se não deu para ler (aspas quebradas)."""
-    try:
-        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
-        lex.whitespace_split = True
-        tokens = list(lex)
-    except ValueError:
-        return None
-    alvos = []
-    segmentos, atual = [], []
-    for i, t in enumerate(tokens):
-        if t and set(t) <= OPERADORES:
-            segmentos.append(atual)
-            atual = []
-        else:
-            atual.append(t)
-        # redirecionamento de saída: o alvo é o próximo token
-        if t and ">" in t and set(t) <= set("<>&|;0123456789"):
-            prox = tokens[i + 1] if i + 1 < len(tokens) else ""
-            if t.endswith("&") and re.fullmatch(r"\d+|-", prox):
-                continue  # 2>&1, >&2
-            if prox == "/dev/null" or not prox:
-                continue
-            alvos.append(prox)
-    segmentos.append(atual)
-    for seg in segmentos:
-        for j, t in enumerate(seg):
-            nome = os.path.basename(t)
-            resto = seg[j + 1:]
-            args = [a for a in resto if not a.startswith("-") or a == "-"]
-            if nome in CMDS_ALVO_TODOS:
-                alvos += args
-            elif nome == "cp":
-                alvos += args[-1:]
-            elif nome == "sed" and any(re.fullmatch(r"-\w*i\w*|--in-place.*", a) for a in resto):
-                alvos += args
-            elif nome == "perl" and any(re.fullmatch(r"-\w*i\w*", a) for a in resto):
-                alvos += args
-            elif nome == "dd":
-                alvos += [a[3:] for a in resto if a.startswith("of=")]
-    return alvos
-
-
-def escreve_em_protegido(cmd):
-    """True quando algum alvo de escrita é o log ou o cadastro; na dúvida (alvo ilegível), True."""
-    alvos = alvos_de_escrita(cmd)
-    if alvos is None:
-        return bool(ESCRITA_RE.search(cmd)) or ">" in cmd
-    for a in alvos:
-        if _protegido(a) or (_duvida(a) and any(n in cmd for n in PROTEGIDOS)):
-            return True
-        if os.path.basename(a.rstrip("/")) == "agent-board":  # rm -r docs/agent-board leva o log junto
-            return True
-    # python -c / heredoc: open(...,'w'|'a') e write_text/write
-    for rx in (OPEN_ESCRITA_RE, WRITE_TEXT_RE):
-        for m in rx.finditer(cmd):
-            p = m.group("p")
-            if p is None:
-                if any(n in cmd for n in PROTEGIDOS):
-                    return True  # alvo não literal e o nome do log está no comando
-            elif _protegido(p):
-                return True
-    return False
-
 
 def decide_protecao(ev):
     """Log e cadastro só são escritos pelo hook e pelo painel.py, nunca à mão por um agente do time."""
@@ -697,79 +526,6 @@ def encode(ev, d):
         return {"decision": "block", "reason": d["reason"]}
     return {}
 
-
-DIALOGO = re.compile(r"Enter to confirm|Esc to cancel|Do you want to|\(y/n\)|Press Enter", re.I)
-
-
-JANELA_AVISO = float(os.environ.get("AGENT_BOARD_JANELA_AVISO", "60"))  # segundos entre avisos digitados por destino
-ESTADO_AVISO = os.path.join(HOME, "avisos-estado.json")
-
-
-def com_estado(fn):
-    """Lê, altera e grava o estado dos avisos sob trava de arquivo. fn(dict) -> resultado."""
-    os.makedirs(HOME, exist_ok=True)
-    with open(ESTADO_AVISO + ".lock", "w") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
-        estado = ler_json(ESTADO_AVISO, {})
-        r = fn(estado)
-        tmp = ESTADO_AVISO + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(estado, f)
-        os.replace(tmp, ESTADO_AVISO)
-        return r
-
-
-def reservar_aviso(handle):
-    """Reserva o direito de digitar em `handle`. Devolve 0 se reservou, ou os segundos que faltam para a janela fechar."""
-    def f(estado):
-        falta = estado.get(handle, 0) + JANELA_AVISO - time.time()
-        if falta > 0:
-            return falta
-        estado[handle] = time.time()
-        return 0
-    return com_estado(f)
-
-
-def tem_nao_lida(handle, orca):
-    """True se o destino ainda tem mensagem não lida no correio. Na dúvida (erro do orca), True."""
-    try:
-        r = subprocess.run([orca, "orchestration", "inbox", "--terminal", handle, "--json", "--limit", "50"],
-                           capture_output=True, text=True, timeout=30)
-        msgs = json.loads(r.stdout[r.stdout.index("{"):])["result"]["messages"]
-    except (subprocess.TimeoutExpired, ValueError, KeyError, OSError):
-        return True
-    return any(m.get("to_handle") == handle and not m.get("read") for m in msgs)
-
-
-def avisar(handle, cid, texto):
-    """Processo separado. No máximo 1 aviso digitado por destino a cada JANELA_AVISO s.
-    Dentro da janela, espera ela fechar e só digita se ainda houver mensagem não lida (a mensagem fica sempre no correio).
-    Também não digita se o destino estiver com uma pergunta aberta na tela."""
-    orca = achar_orca()
-    falta = reservar_aviso(handle)
-    if falta:
-        time.sleep(falta)
-        if not tem_nao_lida(handle, orca):
-            registrar_aviso(f"{cid} aviso NÃO digitado em {handle}: janela de {JANELA_AVISO:g}s e nada não lido; a mensagem está no correio")
-            return
-        if reservar_aviso(handle):
-            registrar_aviso(f"{cid} aviso NÃO digitado em {handle}: outro aviso já saiu nesta janela; a mensagem está no correio")
-            return
-    try:
-        tela = subprocess.run([orca, "terminal", "read", "--terminal", handle, "--screen"],
-                              capture_output=True, text=True, timeout=30).stdout
-    except subprocess.TimeoutExpired:
-        tela = ""
-    fim = "\n".join(tela.strip().splitlines()[-15:])
-    if DIALOGO.search(fim):
-        registrar_aviso(f"{cid} aviso NÃO digitado em {handle}: tela com pergunta aberta; a mensagem está no correio")
-        return
-    try:
-        r = subprocess.run([orca, "terminal", "send", "--terminal", handle, "--text", texto, "--enter",
-                            "--wait-submit", "15"], capture_output=True, text=True, timeout=60)
-        registrar_aviso(f"{cid} aviso digitado em {handle} (saída {r.returncode})")
-    except subprocess.TimeoutExpired:
-        registrar_aviso(f"{cid} aviso enviado a {handle}, sem confirmação em 60s (destino ocupado?)")
 
 
 def main():
