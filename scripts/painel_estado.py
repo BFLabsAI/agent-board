@@ -8,6 +8,8 @@ import datetime
 import glob
 import os
 
+import cmd_tarefas
+import politica
 import registro
 from base import VERSAO
 
@@ -33,55 +35,25 @@ def inicio_do_periodo(periodo, agora):
 
 
 def tarefas(msgs, agora):
-    """Uma tarefa por pedido/entrega, com o estado derivado das respostas e andamentos."""
-    respostas, andamentos = {}, {}
-    for m in msgs:
-        for cid in _ids(m.get("responde_a")):
-            if m.get("tipo") == "resposta":
-                respostas.setdefault(cid, m)
-            elif m.get("tipo") == "andamento":
-                andamentos[cid] = m  # o último vale
+    """Uma tarefa por pedido/entrega. O estado é o mesmo do painel.py tarefas (cmd_tarefas.estado_de)."""
+    fechados, andam = politica.respostas(msgs), politica.andamentos(msgs)
     out = []
     for m in msgs:
         if m.get("tipo") not in TIPOS_TAREFA:
             continue
-        r, a = respostas.get(m["id"]), andamentos.get(m["id"])
-        prazo = _ts(m.get("prazo"))
-        if m["tipo"] == "entrega":
-            if r is None:
-                estado = "aguardando_revisao"
-            else:
-                estado = {"aprovado": "aprovado", "rejeitado": "rejeitado"}.get(r.get("veredito"), "concluido")
-        elif r is not None:
-            estado = "concluido"
-        elif prazo and prazo < agora:
-            estado = "atrasado"
-        elif a is not None:
-            estado = "em_andamento"
-        else:
-            estado = "aberto"
+        r, a = fechados.get(m["id"]), andam.get(m["id"])
         out.append({"id": m["id"], "ts": m.get("ts"), "tipo": m["tipo"], "de": m.get("de"), "para": m.get("para"),
-                    "assunto": m.get("assunto"), "estado": estado, "prazo": m.get("prazo"),
-                    "issues": m.get("issues") or [], "branch": m.get("branch"),
+                    "assunto": m.get("assunto"), "estado": cmd_tarefas.estado_de(m, fechados, andam, agora),
+                    "prazo": m.get("prazo"), "issues": m.get("issues") or [], "branch": m.get("branch"),
                     "andamento": (a or {}).get("assunto"), "andamento_ts": (a or {}).get("ts"),
                     "fechada_em": (r or {}).get("ts")})
     return out
 
 
 def pendentes(msgs, agentes):
-    """Mesma regra do Stop: recebida, não resposta, sem resposta do destino, depois do cadastro."""
-    respondidas = {}
-    for m in msgs:
-        if m.get("responde_a") and m.get("tipo") in ("resposta", "andamento"):
-            for cid in _ids(m["responde_a"]):
-                respondidas.setdefault(m.get("de"), set()).add(cid)
-    out = {}
-    for ag in agentes:
-        nome, desde = ag["agente"], ag.get("cadastrado_em") or ""
-        out[nome] = [m["id"] for m in msgs
-                     if m.get("para") == nome and m.get("tipo") not in ("resposta", "andamento", "nota")
-                     and m["id"] not in respondidas.get(nome, set()) and (m.get("ts") or "") >= desde]
-    return out
+    """Mesma regra do Stop (politica.pendentes), a partir do cadastro de cada agente."""
+    return {ag["agente"]: [m["id"] for m in politica.pendentes(ag["agente"], msgs, ag.get("cadastrado_em") or "")]
+            for ag in agentes}
 
 
 def _tempo_resposta(msgs, desde):
