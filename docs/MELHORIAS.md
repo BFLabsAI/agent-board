@@ -1,6 +1,6 @@
 # O que melhorou no agent-board
 
-Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.9.3**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
+Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.10.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
 
 ---
 
@@ -35,6 +35,10 @@ Os papéis são três: **master** (coordena e revisa), **manager** (o developer:
 - O cadastro começa no próprio agente: ele roda `painel.py solicitar` e o master confirma com você.
 - O master pode criar as cordas que as regras exigem (`painel.py maestri conectar`) e agendar a vigilância de prazos como uma routine do canvas.
 - Testado de verdade no seu canvas: um master, um manager e um researcher trocaram pedidos e respostas, e o hook barrou um atalho proibido.
+
+### Você escolhe a interface no setup
+
+No `painel.py init … --transporte orca|maestri` você diz qual interface o time vai usar, e o contrato que os agentes leem sai escrito **só para ela**. Antes, o mesmo texto falava das duas e o agente precisava adivinhar qual valia. O cadastro também recusa terminal da interface errada. O procedimento do master agora orienta a **delegar ao time** (e não a subagents internos) o que precisa de outro papel ou harness.
 
 ## 2. Tarefas com começo, meio e fim
 
@@ -102,10 +106,10 @@ Achados no teste ao vivo no Maestri e na revisão das docs (todos com teste auto
 
 ## 10. Qualidade
 
-- **8 suítes de testes** (mais de 230 testes, inclusive um que confere todos os links da documentação) rodando na CI em Python 3.8 e 3.12, mais lint.
+- **9 suítes de testes** (mais de 250 testes, inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) rodando na CI em Python 3.8 e 3.12, mais lint.
 - Código dividido em módulos pequenos (antes era um arquivo de quase 800 linhas).
 - Sem nenhuma dependência nova: só a biblioteca padrão do Python.
-- Decisões importantes registradas em **7 ADRs** (`docs/adr/`).
+- Decisões importantes registradas em **8 ADRs** (`docs/adr/`).
 
 ---
 

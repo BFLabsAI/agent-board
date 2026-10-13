@@ -13,7 +13,7 @@ Todo subcomando do `painel.py` aceita `--help`, menos `init`, `listar`, `cadastr
 
 | Comando | O que faz | Flags | Quem roda |
 |---|---|---|---|
-| `init` | Cria `docs/agent-board/` (config, `CONTRATO.md`, log vazio) e as linhas `merge=union` no `.gitattributes`. Não sobrescreve o que existe | `--raiz` `--projeto` `--prefixo` (só `[a-z0-9]`), `--atualizar-contrato` (troca o `CONTRATO.md` pelo da skill) | qualquer um, uma vez por projeto |
+| `init` | Cria `docs/agent-board/` (config, `CONTRATO.md` adaptado à interface, log vazio) e as linhas `merge=union` no `.gitattributes`. Não sobrescreve o que existe | `--raiz` `--projeto` `--prefixo` (só `[a-z0-9]`), `--transporte orca\|maestri` (obrigatório em projeto novo, a menos que o terminal seja só de uma das interfaces; num projeto que já existe, troca de interface e refaz o contrato), `--atualizar-contrato` (refaz o `CONTRATO.md` pelo da skill, na interface do projeto) | qualquer um, uma vez por projeto |
 | `listar` | Terminais abertos no Orca, o cadastro de cada um e os pedidos de cadastro do Maestri. Situações: `cadastrado`, `sem cadastro`, `maestri`, `fechado: recadastrar`, `pediu cadastro` | `--formato toon` (padrão: texto) | qualquer um |
 | `cadastrar` | Cadastra ou recadastra painéis. O recadastro substitui o painel antigo do agente. Recusa nome fora do padrão, o mesmo agente em dois painéis, painel de outro projeto e `maestri:` sem `solicitar` antes | `--raiz`, `--worktree`, `<term_…\|maestri:<id>>=<agente>` … | master (regra), depois de o humano confirmar |
 | `remover` | Tira painéis do cadastro | `<term_…\|maestri:<id>>` … | master (regra) |

@@ -41,6 +41,8 @@ Quer entender melhor? [Como funciona](docs/conceitos/como-funciona.md) · [Papé
 
 Os dois guias têm os mesmos 4 passos: **instalar → montar o time → dia a dia → problemas**. As regras, o log e os comandos são os mesmos; muda só como a mensagem chega.
 
+A escolha vale **por projeto** e é feita uma vez, no setup: `painel.py init … --transporte orca` (ou `maestri`). O `CONTRATO.md` que os agentes leem sai **escrito para aquela interface**, sem instruções da outra.
+
 ---
 
 ## Setup geral (uma vez por máquina)
@@ -77,7 +79,7 @@ No Claude Code, `/hooks` deve mostrar as entradas `agent-board`.
 
 ## O que mudou desde o fork
 
-A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.9.3**:
+A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.10.0**:
 
 ```mermaid
 flowchart TB
@@ -95,7 +97,7 @@ flowchart TB
 | **Regras sob medida** | Quem pede a quem, limite de pedidos, alerta de ping-pong — e `simular` antes de ligar. |
 | **Log confiável** | Cadeia de hash que acusa adulteração, arquivo morto, reenvio de mensagem perdida. |
 | **Ferramentas** | Servidor MCP (sem erro de aspas), painel web local, notas e decisões do time, resumo do período. |
-| **Qualidade** | 231 testes em 8 suítes (inclusive os links da documentação), CI em Python 3.8 e 3.12, código em módulos pequenos, 7 ADRs. |
+| **Qualidade** | 256 testes em 9 suítes (inclusive os links da documentação e o contrato de cada interface), CI em Python 3.8 e 3.12, código em módulos pequenos, 8 ADRs. |
 
 Detalhes em linguagem simples: [MELHORIAS.md](docs/MELHORIAS.md) · Histórico completo: [CHANGELOG.md](CHANGELOG.md) · Decisões: [docs/adr/](docs/adr/)
 

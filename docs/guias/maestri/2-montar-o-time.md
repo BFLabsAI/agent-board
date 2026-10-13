@@ -55,9 +55,9 @@ Nomes: `<prefixo>-master`, `<prefixo>-manager<NN>-<runtime>`, `<prefixo>-researc
 
 ## Passo 2 — Criar os arquivos do projeto
 ```bash
-python3 $S/painel.py init --raiz <projeto> --projeto <nome> --prefixo app
+python3 $S/painel.py init --raiz <projeto> --projeto <nome> --prefixo app --transporte maestri
 ```
-Cria `docs/agent-board/` (config, `CONTRATO.md`, log vazio). Não sobrescreve o que existe. Faça o commit numa branch.
+Cria `docs/agent-board/` (config com `"transporte": "maestri"`, `CONTRATO.md` **já escrito para o Maestri**, log vazio). Não sobrescreve o que existe. Rodando num terminal do Maestri, dá para omitir `--transporte`: ele detecta. Faça o commit numa branch.
 
 ✅ **Deu certo se:** aparecem linhas `criado …/agent-board.json`, `…/CONTRATO.md` e `…/comunicacoes.jsonl`.
 
