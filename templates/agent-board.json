@@ -35,5 +35,8 @@
       ],
       "pode_pedir_a": []
     }
+  },
+  "github": {
+    "comentar_entregas": false
   }
 }
