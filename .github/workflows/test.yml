@@ -1,0 +1,34 @@
+name: testes
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: ubuntu-22.04  # 24.04 não tem Python 3.8 no setup-python
+    strategy:
+      matrix:
+        python: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python3 scripts/test_agent_board.py
+      - run: python3 scripts/test_registro.py
+      - run: python3 scripts/test_politica.py
+      - run: python3 scripts/test_mcp.py
+      - run: python3 scripts/test_time.py
+      - run: python3 scripts/test_web.py
+      - run: python3 scripts/test_maestri.py
+      - run: python3 scripts/test_docs.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v1
+        with:
+          version: "0.17.0"
+          args: check scripts

@@ -4,6 +4,7 @@
   python3 scripts/test_agent_board.py
 """
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -108,6 +109,9 @@ CASOS = [
     ("corpo com várias linhas e ; entre aspas", G1,
      'orca orchestration send --to alpha-researcher01-cc --type aviso --subject x --body "linha 1;\nlinha 2 && fim"',
      "allow", "linha 2"),
+    ("corpo que começa com -- (separador markdown)", G1,
+     'orca orchestration send --to alpha-researcher01-cc --type aviso --subject x --body "--- resumo"',
+     "allow", "--body '--- resumo"),
     ("pipe depois do orca barrado", G1,
      'orca orchestration send --to alpha-researcher01-cc --type aviso --subject x | grep ok', "deny", "sozinho"),
     ("comando encadeado barrado", G1,
@@ -121,6 +125,20 @@ CASOS = [
      'orca terminal send --terminal term_qualquer --text oi --enter', "pass", ""),
     ("fluxo interno do Orca (run:) passa", G1,
      'orca orchestration send --to run:abc --type status --subject x', "pass", ""),
+    ("andamento sem responde-a barrado", R,
+     'orca orchestration send --to alpha-manager01-cc --type andamento --subject metade', "deny", "--responde-a"),
+    ("pedido com prazo", G1,
+     'orca orchestration send --to alpha-researcher01-cc --type pedido --prazo 2h --subject x', "allow", "Prazo: "),
+    ("prazo inválido barrado", G1,
+     'orca orchestration send --to alpha-researcher01-cc --type pedido --prazo amanha --subject x', "deny", "--prazo inválido"),
+    ("prazo fora de pedido barrado", G1,
+     'orca orchestration send --to alpha-researcher01-cc --type aviso --prazo 2h --subject x', "deny", "só vale em pedido"),
+    ("veredito fora de resposta barrado", G1,
+     'orca orchestration send --to alpha-master --type aviso --veredito aprovado --subject x', "deny", "--veredito"),
+    ("--to papel: escolhe um agente do papel", G1,
+     'orca orchestration send --to papel:researcher --type aviso --subject x', "allow", "--to term_res01cc"),
+    ("--to papel: sem agente do papel barrado", R,
+     'orca orchestration send --to papel:designer --type aviso --subject x', "deny", "nenhum agente com papel"),
     ("encadeado de quem não é do time passa", ORFAO,
      'cd /x && orca orchestration send --to term_qualquer --type status --subject x', "pass", ""),
     ("SendMessage para agente do time", G1, {"to": "alpha-master", "message": "oi"}, "deny", "não use SendMessage"),
@@ -223,7 +241,7 @@ def teste_aviso():
                            capture_output=True, text=True)
         def n():
             return len(open(envios).read().split()) if os.path.exists(envios) else 0
-        ok_n, res = 0, []
+        res = []
         caixa(0)
         avisar()
         res.append(("1o aviso digita na hora", n() == 1))
@@ -312,6 +330,59 @@ def main():
         ok = vezes == ["block", "block", "block", None]
         falhas += not ok
         print(f"{'ok  ' if ok else 'FALHA'} Stop cobra no máximo 3 vezes ({vezes})")
+        # Pedido longo: andamento tira da cobrança do Stop, sem fechar o pedido.
+        h = rodar(tmp, G1, 'orca orchestration send --to alpha-researcher01-cc --type pedido --subject "pedido longo"')
+        cid = re.search(r"\[(c-\S+)", h.get("updatedInput", {}).get("command", "")).group(1)
+        out = stop(R)
+        ok = out.get("decision") == "block" and "--type andamento" in out.get("reason", "")
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} Stop sugere andamento para pedido longo")
+        h = rodar(tmp, R, f'orca orchestration send --to alpha-manager01-cc --type andamento --responde-a {cid} --subject metade')
+        ok = h.get("permissionDecision") == "allow" and "--type status" in h.get("updatedInput", {}).get("command", "")
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} andamento a pedido recebido passa e vira status no Orca")
+        ok = stop(R) == {}
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} Stop não cobra pedido com andamento")
+        # Entrega: a resposta do master leva --veredito.
+        h = rodar(tmp, G1, 'orca orchestration send --to alpha-master --type entrega --subject "frente A pronta"')
+        cid = re.search(r"\[(c-\S+)", h.get("updatedInput", {}).get("command", "")).group(1)
+        h = rodar(tmp, M, f'orca orchestration send --to alpha-manager01-cc --type resposta --responde-a {cid} --subject ok')
+        ok = h.get("permissionDecision") == "deny" and "--veredito" in h.get("permissionDecisionReason", "")
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} resposta a entrega sem --veredito é barrada")
+        h = rodar(tmp, M, f'orca orchestration send --to alpha-manager01-cc --type resposta --responde-a {cid} '
+                          '--veredito aprovado --subject ok')
+        ultima = json.loads(open(os.path.join(raiz, "docs/agent-board/comunicacoes.jsonl")).read().splitlines()[-1])
+        ok = (h.get("permissionDecision") == "allow" and "--veredito" not in h["updatedInput"]["command"]
+              and ultima.get("veredito") == "aprovado")
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} resposta a entrega com --veredito passa e grava o veredito")
+        # Envio que o Orca recusou: sai da cobrança e do --responde-a.
+        envio = 'orca orchestration send --to alpha-manager02-cc --type aviso --subject "vai falhar"'
+        h = rodar(tmp, G1, envio, extra={"tool_use_id": "tu-falha"})
+        cid = re.search(r"\[(c-\S+)", h.get("updatedInput", {}).get("command", "")).group(1)
+        antes = stop(G2).get("decision")
+        rodar(tmp, G1, envio, evento="PostToolUse", extra={"tool_use_id": "tu-falha", "tool_response": "Error: terminal not found"})
+        ok = antes == "block" and stop(G2) == {}
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} envio que falhou não é cobrado do destino")
+        h = rodar(tmp, G2, f'orca orchestration send --to alpha-manager01-cc --type resposta --responde-a {cid} --subject x')
+        ok = h.get("permissionDecision") == "deny" and "não existe" in h.get("permissionDecisionReason", "")
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} envio que falhou não aceita --responde-a")
+        # Linha ilegível no log (escrita cortada, merge ruim) não trava o time.
+        with open(os.path.join(raiz, "docs/agent-board/comunicacoes.jsonl"), "a") as f:
+            f.write('{"id": "c-cortad\n')
+        h = rodar(tmp, G1, 'orca orchestration send --to alpha-researcher01-cc --type pedido --subject "depois do corte"')
+        cid = re.search(r"\[(c-\S+)", h.get("updatedInput", {}).get("command", "")).group(1)
+        h = rodar(tmp, R, f'orca orchestration send --to alpha-manager01-cc --type resposta --responde-a {cid} --subject ok')
+        ok = h.get("permissionDecision") == "allow"
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} linha ilegível no log não barra resposta")
+        ok = stop(R) == {}
+        falhas += not ok
+        print(f"{'ok  ' if ok else 'FALHA'} linha ilegível no log não quebra o Stop")
         # Falha do próprio hook num envio do time: barra (fail-closed).
         json_quebrado = os.path.join(tmp, "paineis.json")
         open(json_quebrado, "w").write("{quebrado")
@@ -327,7 +398,7 @@ def main():
         falhas += extra_total - extra_ok
     finally:
         shutil.rmtree(tmp)
-    total = len(CASOS) + 10 + extra_total
+    total = len(CASOS) + 19 + extra_total
     print(f"\n{total - falhas}/{total} ok")
     sys.exit(1 if falhas else 0)
 

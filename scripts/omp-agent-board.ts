@@ -24,6 +24,8 @@ function runCore(payload: Record<string, unknown>): Record<string, any> | null {
 
 function mexeComOrca(input: any): boolean {
   if (typeof input?.command === "string" && /\borca\s+(orchestration|terminal)\s+(send|ask|reply)\b/.test(input.command)) return true;
+  // Maestri: `maestri ask` direto para um agente do time é barrado pelo core
+  if (typeof input?.command === "string" && /(\bmaestri|MAESTRI_CLI\}?)["']?\s+ask\b/.test(input.command)) return true;
   // log e cadastro protegidos contra escrita à mão
   return /comunicacoes\.jsonl|paineis\.json/.test(JSON.stringify(input ?? {}));
 }
