@@ -19,7 +19,7 @@ import sys
 
 import maestri
 import toon
-from base import CONFIG_REL, HOME, agora, carregar_paineis, eh_maestri, ler_json, meu_handle, trava
+from base import CONFIG_REL, HOME, agora, carregar_paineis, eh_maestri, ler_json, meu_handle, prefixo_home, trava
 from cmd_log import exigir_master, raiz_de
 
 SOLICITACOES = os.path.join(HOME, "solicitacoes")
@@ -180,7 +180,7 @@ def rotina(args):
     exigir_master("maestri rotina")
     raiz = raiz_de(a.raiz)
     projeto = ler_json(os.path.join(raiz, CONFIG_REL), {}).get("projeto")
-    comando = f"python3 {os.path.join(SCRIPTS, 'painel.py')} vigiar --raiz {raiz}"
+    comando = f"{prefixo_home()}python3 {shlex.quote(os.path.join(SCRIPTS, 'painel.py'))} vigiar --raiz {shlex.quote(raiz)}"
     linha = ["routine", "create", f"agent-board vigiar {projeto}", "--command", comando, "--every", a.a_cada]
     if not a.aplicar:
         print(shlex.join(["maestri"] + linha))

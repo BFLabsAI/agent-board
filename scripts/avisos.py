@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 
-from base import HOME, achar_orca, ler_json, registrar_aviso, trava
+from base import HOME, achar_orca, carregar_paineis, eh_maestri, ler_json, registrar_aviso, trava
 
 
 DIALOGO = re.compile(r"Enter to confirm|Esc to cancel|Do you want to|\(y/n\)|Press Enter", re.I)
@@ -88,7 +88,16 @@ def tem_nao_lida(handle, orca):
 def avisar(handle, cid, texto):
     """Processo separado. No máximo 1 aviso digitado por destino a cada JANELA_AVISO s.
     Dentro da janela, espera ela fechar e só digita se ainda houver mensagem não lida (a mensagem fica sempre no correio).
-    Também não digita se o destino estiver com uma pergunta aberta na tela."""
+    Também não digita se o destino estiver com uma pergunta aberta na tela.
+    Painel do Maestri: o aviso vai pelo `maestri ask` (o Maestri digita quando o terminal fica livre)."""
+    if eh_maestri(handle):
+        import maestri
+        dest = carregar_paineis().get(handle) or {}
+        nome = dest.get("nome_canvas") or dest.get("agente") or handle
+        ok, saida = maestri.ask_destacado(nome, texto, f"aviso-{cid}")
+        registrar_aviso(f"{cid} aviso {'digitado' if ok else 'NÃO digitado'} em {nome} pelo Maestri"
+                        + ("" if ok else f": {saida[:200]}"))
+        return
     orca = achar_orca()
     falta = reservar_aviso(handle)
     if falta:

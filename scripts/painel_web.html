@@ -161,7 +161,7 @@ function mapa(e) {
       svg("circle", { cx: 23, cy: 23, r: 13, fill: fechado ? "var(--aresta)" : `var(--${c})` }),
       svg("text", { x: 23, y: 27, "text-anchor": "middle", fill: "var(--card)", "font-weight": 700 }, (a.papel || "r")[0].toUpperCase()),
       svg("text", { x: 42, y: 20, "font-weight": 600 }, curto(a.agente).slice(0, 20)),
-      svg("text", { x: 42, y: 35, class: "sub", fill: fechado ? "var(--alerta-txt)" : "" }, fechado ? "painel fechado · recadastrar" : a.transporte === "maestri" ? "maestri · " + (a.nome_canvas || "").slice(0, 18) : (a.worktree ? "branch ab/" + curto(a.agente) : a.papel)));
+      svg("text", { x: 42, y: 35, class: "sub", fill: fechado ? "var(--alerta-txt)" : "" }, fechado ? "painel fechado · recadastrar" : a.transporte === "maestri" ? "maestri · " + (a.nome_canvas || "").slice(0, 18) : (a.worktree ? "ab/" + a.agente : a.papel)));
     if (a.pendentes) n.append(svg("circle", { cx: w - 6, cy: 4, r: 10, fill: "var(--erro)" }), svg("text", { x: w - 6, y: 8, "text-anchor": "middle", fill: "#fff", "font-size": 11, "font-weight": 700 }, a.pendentes));
     n.append(svg("title", {}, `${a.agente} · ${a.pendentes} pendente(s)`));
     const alternar = () => { filtroAgente = filtroAgente === a.agente ? null : a.agente; desenhar(); };

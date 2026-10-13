@@ -9,6 +9,7 @@ import datetime
 import json
 import os
 import re
+import shlex
 import shutil
 import time
 
@@ -80,6 +81,14 @@ def meu_handle():
         return h
     m = os.environ.get("MAESTRI_TERMINAL_ID")
     return f"maestri:{m}" if m else None
+
+
+def prefixo_home():
+    """`AGENT_BOARD_HOME=... ` para comandos sugeridos ou agendados quando o estado não está no padrão."""
+    padrao = os.path.expanduser("~/.agent-hooks/agent-board")
+    if os.path.abspath(HOME) == os.path.abspath(padrao):
+        return ""
+    return f"AGENT_BOARD_HOME={shlex.quote(HOME)} "
 
 
 def eh_maestri(handle):

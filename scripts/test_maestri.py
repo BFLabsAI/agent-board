@@ -246,6 +246,63 @@ class Envio(Base):
         self.assertIn("chegou digitada neste terminal", out["reason"])
 
 
+class Revisao(Base):
+    """Bugs achados na revisão das docs (cada um virou teste)."""
+
+    def test_reenviar_pelo_maestri(self):
+        registro.gravar_log(self.raiz, {"id": "c-20261012-000000-aaaa", "ts": "2026-10-12T00:00:00-03:00", "de": M,
+                                        "para": G, "tipo": "aviso", "assunto": "x"})
+        os.makedirs(os.path.join(HOME_TESTE, "envios"), exist_ok=True)
+        argv = ["orca", "orchestration", "send", "--to", "maestri:VELHO", "--from", "maestri:VELHO2", "--type", "status",
+                "--subject", "[c-20261012-000000-aaaa aviso] x", "--body", "corpo guardado"]
+        with open(os.path.join(HOME_TESTE, "envios", "c-20261012-000000-aaaa.json"), "w") as f:
+            json.dump({"argv": argv}, f)
+        r = self.rodar(PAINEL, "reenviar", "--raiz", self.raiz, "c-20261012-000000-aaaa")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        time.sleep(0.3)
+        self.assertTrue(any(c.startswith("ask Forja [agent-board] [c-20261012-000000-aaaa") for c in self.feitas()))
+        self.assertEqual(self.feitas("orca-chamadas"), [])
+
+    def test_aviso_na_tela_de_master_no_maestri(self):
+        e = self.env(G_ID)
+        r = subprocess.run([sys.executable, CORE, "--avisar", f"maestri:{M_ID}", "c-9", "[agent-board] atrasado"],
+                           capture_output=True, text=True, env=e, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(any(c.startswith("ask Maestro [agent-board] atrasado") for c in self.feitas()), self.feitas())
+        self.assertEqual(self.feitas("orca-chamadas"), [])
+
+    def test_board_py_no_shell_com_orca_no_corpo_passa(self):
+        cmd = f'python3 {BOARD} send --to manager01-cc --type aviso --subject x --body "use orca orchestration send"'
+        self.assertEqual(self.hook(cmd).get("hookSpecificOutput", {}).get("permissionDecision", "pass"), "pass")
+        cmd2 = f'AGENT_BOARD_HOME=/x python3 {BOARD} send --to manager01-cc --type aviso --subject x --body "maestri ask Forja oi"'
+        self.assertEqual(self.hook(cmd2).get("hookSpecificOutput", {}).get("permissionDecision", "pass"), "pass")
+
+    def test_subagent_barrado_no_board_py_e_no_mcp(self):
+        h = self.hook(f"python3 {BOARD} send --to manager01-cc --type aviso --subject x",
+                      extra={"agent_id": "sub-1"}).get("hookSpecificOutput", {})
+        self.assertEqual(h.get("permissionDecision"), "deny")
+        self.assertIn("subagent", h.get("permissionDecisionReason", ""))
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "mcp__agent-board__board_send",
+                   "tool_input": {"para": "manager01-cc"}, "agent_id": "sub-1"}
+        r = self.rodar(CORE, entrada=json.dumps(payload))
+        self.assertEqual(json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
+        payload.pop("agent_id")
+        r = self.rodar(CORE, entrada=json.dumps(payload))
+        self.assertEqual(json.loads(r.stdout), {})
+
+    @unittest.skipIf(shutil.which("git") is None, "sem git")
+    def test_branch_do_floor_pelo_board_py(self):
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        subprocess.run(git + ["init", "-q", self.raiz], check=True)
+        subprocess.run(git + ["-C", self.raiz, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        floor = os.path.join(self.tmp, "floor")
+        subprocess.run(git + ["-C", self.raiz, "worktree", "add", "-q", "-b", "login-v2", floor], check=True)
+        r = subprocess.run([sys.executable, BOARD, "send", "--to", "master", "--type", "entrega", "--subject", "pronto"],
+                           capture_output=True, text=True, env=self.env(G_ID), timeout=40, cwd=floor)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(registro.ler_log(self.raiz)[-1].get("branch"), "login-v2")
+
+
 class Hook(Base):
     def decisao(self, comando, terminal_id=M_ID, extra=None):
         h = self.hook(comando, terminal_id, extra=extra).get("hookSpecificOutput", {})
@@ -329,7 +386,7 @@ class Canvas(Base):
         self.assertEqual(self.feitas(), [])
         r = self.rodar(PAINEL, "maestri", "rotina", "--raiz", self.raiz, "--aplicar")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(any(c.startswith("routine create agent-board vigiar alpha --command python3") and
+        self.assertTrue(any(c.startswith(f"routine create agent-board vigiar alpha --command AGENT_BOARD_HOME={HOME_TESTE} python3") and
                             c.endswith("--every 10m") for c in self.feitas()), self.feitas())
 
     def test_nota_espelhada_no_canvas(self):

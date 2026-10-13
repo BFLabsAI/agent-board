@@ -8,6 +8,7 @@ hook faria. Depois entrega pelo transporte do destino:
   - Orca: roda o comando traduzido;
   - Maestri: `maestri ask "<nome no canvas>" "<mensagem>"` (maestri.py).
 """
+import os
 import re
 import secrets
 import shlex
@@ -35,7 +36,7 @@ def quem_sou():
 def evento(nome, cmd, tid, resposta=None):
     """Evento do hook como o Claude Code mandaria para uma chamada do Bash, marcado como envio do agent-board."""
     p = {"hook_event_name": nome, "tool_name": "Bash", "tool_input": {"command": cmd}, "tool_use_id": tid,
-         "agent_board_envio": True}
+         "agent_board_envio": True, "cwd": os.getcwd()}  # cwd: branch do floor na entrega
     if resposta is not None:
         p["tool_response"] = resposta
     return hook_core.normalize(p, "claude")

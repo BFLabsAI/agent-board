@@ -33,7 +33,9 @@ novo = {
     # (ex.: echo x >> log). O core descarta em milissegundos o que não interessa.
     "PreToolUse": [{"matcher": "Bash", "hooks": [h()]},
                    {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [h()]},
-                   {"matcher": "SendMessage", "hooks": [h()]}],
+                   {"matcher": "SendMessage", "hooks": [h()]},
+                   # board_send do servidor MCP: só para barrar subagent (a regra do envio vive no envio.py)
+                   {"matcher": "mcp__agent-board__board_send", "hooks": [h()]}],
     "PostToolUse": [{"matcher": "Bash", "hooks": [h()]}],
     "Stop": [{"hooks": [h()]}],
 }

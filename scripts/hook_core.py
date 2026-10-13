@@ -31,6 +31,7 @@ import notificar
 from avisos import avisar, disparar, uma_vez
 from base import (CONFIG_REL, HOME, LOG_REL, NOME_RE, PAINEIS, VERSAO, Barrado, achar_orca, agora,  # noqa: F401
                   carregar_config, carregar_paineis, eh_maestri, ler_json, master_do_projeto, meu_handle, papel_do_nome,
+                  prefixo_home,
                   registrar_aviso)
 from politica import MODOS, TIPOS, escolher_por_papel, pendentes_de, validar_envio  # noqa: F401
 from protecao import PROTEGIDOS, escreve_em_protegido
@@ -152,9 +153,7 @@ def cmd_envio(handle):
     """
     if not eh_maestri(handle):
         return "orca orchestration send"
-    padrao = os.path.expanduser("~/.agent-hooks/agent-board")
-    env = "" if os.path.abspath(HOME) == os.path.abspath(padrao) else f"AGENT_BOARD_HOME={shlex.quote(HOME)} "
-    return f"{env}python3 {BOARD} send"
+    return f"{prefixo_home()}python3 {BOARD} send"
 
 
 def novo_id():
@@ -531,6 +530,31 @@ def decide_maestri_ask(ev):
     return {"action": "deny", "reason": f"Barrado pelo agent-board: {motivo}"}
 
 
+def chama_board(cmd):
+    """True quando o comando é só uma chamada ao board.py (ou python3 board.py), sem encadear outro comando."""
+    try:
+        lex = shlex.shlex(cmd or "", posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return False
+    if any(t and set(t) <= set(";&|<>()") for t in tokens):
+        return False
+    while tokens and re.match(r"^[A-Z_][A-Z0-9_]*=", tokens[0]):
+        tokens.pop(0)  # VAR=valor na frente
+    if tokens and os.path.basename(tokens[0]).startswith("python"):
+        tokens.pop(0)
+    return bool(tokens) and os.path.basename(tokens[0]) == "board.py"
+
+
+def decide_board(ev):
+    """board.py e board_send passam pela política sozinhos (envio.py); aqui só a trava de subagent."""
+    if ev["raw"].get("agent_id") and carregar_paineis().get(meu_handle()) is not None:
+        return {"action": "deny", "reason": "Barrado pelo agent-board: subagent não fala com outros agentes; "
+                                            "devolva para a sessão principal enviar"}
+    return None
+
+
 def decide(ev):
     if ev["event"] == "stop":
         return decide_stop(ev)
@@ -539,6 +563,10 @@ def decide(ev):
         return protecao
     if ev["event"] == "pre_tool" and ev["tool_name"] == "SendMessage":
         return decide_sendmessage(ev)
+    if ev["event"] == "pre_tool" and (ev["tool_name"] or "").endswith("__board_send"):
+        return decide_board(ev)  # ferramenta MCP do agent-board
+    if ev["event"] == "pre_tool" and ev["tool"] == "shell" and chama_board(ev["command"]):
+        return decide_board(ev)
     if ev["event"] == "pre_tool" and ev["tool"] == "shell" and MAESTRI_RE.search(ev["command"] or ""):
         d = decide_maestri_ask(ev)
         if d is not None:  # sem maestri ask para o time (ex.: o texto só cita o comando), segue o fluxo

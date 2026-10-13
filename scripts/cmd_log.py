@@ -6,12 +6,11 @@ Todos leem; só arquivar e reenviar escrevem, e sempre pelo registro.py.
 import argparse
 import json
 import os
-import subprocess
 import sys
 
 import registro
 import toon
-from base import CONFIG_REL, HOME, LOG_REL, achar_orca, agora, carregar_paineis, ler_json, meu_handle
+from base import CONFIG_REL, HOME, LOG_REL, agora, carregar_paineis, ler_json, meu_handle
 
 CAMPOS = ("id", "ts", "de", "para", "tipo", "modo", "assunto", "responde_a", "issues")
 
@@ -111,7 +110,8 @@ def _handle_de(agente, projeto, paineis):
 
 
 def reenviar(args):
-    p = argparse.ArgumentParser(prog="painel.py reenviar")
+    p = argparse.ArgumentParser(prog="painel.py reenviar", description=(
+        "Reenvia uma mensagem do log para o painel atual do destino, pelo transporte dele (Orca ou Maestri)."))
     p.add_argument("--raiz", required=True)
     p.add_argument("id")
     a = p.parse_args(args)
@@ -126,11 +126,11 @@ def reenviar(args):
     projeto = ler_json(os.path.join(raiz, CONFIG_REL), {}).get("projeto")
     paineis = carregar_paineis()
     argv = list(guardado["argv"])
-    argv[0] = achar_orca()
     for flag, agente in (("--to", msg["para"]), ("--from", msg["de"])):
         argv[argv.index(flag) + 1] = _handle_de(agente, projeto, paineis)
-    r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
-    if r.returncode != 0:
-        sys.exit(f"o orca recusou o reenvio de {a.id}: {(r.stderr or r.stdout).strip()}")
+    import envio  # carrega o hook_core: só quando precisa
+    saida, codigo = envio.entregar(argv, {"agente": msg["de"]})
+    if codigo != 0:
+        sys.exit(f"o reenvio de {a.id} falhou: {saida.strip()}")
     registro.gravar_log(raiz, {"id": a.id, "ts": agora().isoformat(timespec="seconds"), "status": "reenviado"})
     print(f"{a.id} reenviado para {msg['para']}")
