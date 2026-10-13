@@ -27,7 +27,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hook_core import CONFIG_REL, HOME, LOG_REL, PAINEIS, achar_orca, papel_do_nome  # noqa: E402
 
-ORCA = os.environ.get("ORCA_BIN") or achar_orca()
+ORCA = achar_orca()
 TEMPLATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates")
 
 
@@ -126,7 +126,8 @@ def init(args):
     os.makedirs(pasta, exist_ok=True)
     cfg = os.path.join(raiz, CONFIG_REL)
     if not os.path.exists(cfg):
-        dados = json.load(open(os.path.join(TEMPLATES, "agent-board.json")))
+        with open(os.path.join(TEMPLATES, "agent-board.json")) as f:
+            dados = json.load(f)
         dados["projeto"], dados["prefixo"] = projeto, prefixo
         with open(cfg, "w") as f:
             json.dump(dados, f, ensure_ascii=False, indent=2)

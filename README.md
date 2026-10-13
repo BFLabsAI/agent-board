@@ -158,11 +158,10 @@ O hook usa a CLI para:
 
 Os hooks rodam com um `PATH` reduzido. Por isso, o core procura o `orca` nesta ordem:
 
-1. `$ORCA_REMOTE_CLI_BIN_DIR/orca`: o Orca define essa variável nos terminais de workspaces remotos (SSH);
-2. o `orca` que estiver no `PATH`;
-3. `/root/.orca-relay/bin/orca`: o caminho padrão do relay remoto.
-
-Para o `painel.py`, você pode forçar o binário com `ORCA_BIN=/caminho/do/orca`.
+1. `$ORCA_BIN`, se definida: força o binário (hooks e `painel.py`);
+2. `$ORCA_REMOTE_CLI_BIN_DIR/orca`: o Orca define essa variável nos terminais de workspaces remotos (SSH);
+3. o `orca` que estiver no `PATH`;
+4. `~/.orca-relay/bin/orca`: o caminho padrão do relay remoto.
 
 **Teste rápido de conexão**, dentro de um painel do Orca:
 
@@ -381,7 +380,7 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 |---|---|---|
 | `AGENT_BOARD_HOME` | `~/.agent-hooks/agent-board` | Onde fica o estado (cadastro, avisos). Defina antes do `install.sh` e no ambiente dos agentes |
 | `AGENT_BOARD_JANELA_AVISO` | `60` | Segundos mínimos entre dois avisos digitados no mesmo destino |
-| `ORCA_BIN` | autodetectado | Força o binário do `orca` usado pelo `painel.py` |
+| `ORCA_BIN` | autodetectado | Força o binário do `orca` usado pelos hooks e pelo `painel.py` |
 | `ORCA_TERMINAL_HANDLE` | definida pelo Orca | ID do painel. Não defina à mão |
 | `ORCA_REMOTE_CLI_BIN_DIR` | definida pelo Orca | Pasta da CLI `orca` em workspaces remotos |
 

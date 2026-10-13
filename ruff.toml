@@ -1,0 +1,5 @@
+target-version = "py38"
+
+[lint]
+# `l` para linha do log e lambdas curtas nos testes são o estilo do repo.
+ignore = ["E741", "E731"]

@@ -32,7 +32,11 @@ import subprocess
 import sys
 import time
 
-VERSAO = "1.5.0"
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) as _v:
+        VERSAO = _v.read().strip()
+except OSError:
+    VERSAO = "desconhecida"
 HOME = os.environ.get("AGENT_BOARD_HOME", os.path.expanduser("~/.agent-hooks/agent-board"))
 PAINEIS = os.path.join(HOME, "paineis.json")
 CONFIG_REL = "docs/agent-board/agent-board.json"
@@ -48,6 +52,7 @@ TIPO_ORCA = {"pedido": "handoff", "resposta": "status", "aviso": "status",
              "escalacao": "status", "entrega": "status"}
 # Flags nossas: o hook lê e remove antes de entregar ao Orca.
 FLAGS_TIME = {"--modo": "modo", "--issues": "issues", "--responde-a": "responde_a"}
+COM_VALOR = {"--to", "--from", "--type", "--subject", "--body", "--terminal", "--text"} | set(FLAGS_TIME)
 
 ORCA_RE = re.compile(r"(?:^|[\s;&|(`/])orca\s+(?:orchestration\s+(?:send|reply|ask)|terminal\s+send)\b")
 NOME_RE = re.compile(r"^(?P<prefixo>[a-z0-9]+)-(?:(?P<master>master)|(?P<papel>manager|researcher)(?P<nn>\d{2})-(?P<rt>[a-z]+))$")
@@ -96,6 +101,32 @@ def gravar_log(raiz, linha):
         fcntl.flock(f, fcntl.LOCK_UN)
 
 
+def ler_log(raiz):
+    """Mensagens do log do projeto, sem as que falharam no envio.
+
+    Linha ilegível (escrita cortada, merge ruim) é pulada e anotada em avisos.log,
+    para não travar o time inteiro.
+    """
+    linhas, falhas = [], set()
+    try:
+        with open(os.path.join(raiz, LOG_REL)) as f:
+            for n, texto in enumerate(f, 1):
+                if not texto.strip():
+                    continue
+                try:
+                    l = json.loads(texto)
+                except ValueError:
+                    registrar_aviso(f"{LOG_REL}:{n} linha ilegível ignorada")
+                    continue
+                if l.get("status") == "falhou":
+                    falhas.add(l.get("id"))
+                elif "id" in l:
+                    linhas.append(l)
+    except FileNotFoundError:
+        pass
+    return [l for l in linhas if l["id"] not in falhas]
+
+
 def agora():
     return datetime.datetime.now().astimezone()
 
@@ -128,7 +159,11 @@ def separar(cmd):
 
 
 def opcoes(argv, inicio):
-    """--flag valor -> dict; flags sem valor viram True. Mantém a ordem."""
+    """--flag valor -> dict; flags sem valor viram True. Mantém a ordem.
+
+    Flags de COM_VALOR sempre levam o próximo token, mesmo que comece com --
+    (ex.: --body "--- resumo").
+    """
     out, i = [], inicio
     while i < len(argv):
         a = argv[i]
@@ -138,7 +173,7 @@ def opcoes(argv, inicio):
             k, v = a.split("=", 1)
             out.append((k, v))
             i += 1
-        elif i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+        elif i + 1 < len(argv) and (a in COM_VALOR or not argv[i + 1].startswith("--")):
             out.append((a, argv[i + 1]))
             i += 2
         else:
@@ -202,14 +237,7 @@ def checar_responde_a(eu, valor):
     """Resposta fecha a conversa: aponta para mensagens que existem e que não são respostas."""
     if not isinstance(valor, str) or not valor.strip():
         raise Barrado("resposta precisa de --responde-a <id da mensagem original>")
-    tipos = {}
-    try:
-        for linha in open(os.path.join(eu["raiz"], LOG_REL)):
-            if linha.strip():
-                l = json.loads(linha)
-                tipos[l["id"]] = (l.get("tipo"), l.get("para"))
-    except FileNotFoundError:
-        pass
+    tipos = {l["id"]: (l.get("tipo"), l.get("para")) for l in ler_log(eu["raiz"])}
     for cid in (x.strip() for x in valor.split(",") if x.strip()):
         if cid not in tipos:
             raise Barrado(f"--responde-a {cid}: essa mensagem não existe no log do projeto")
@@ -293,7 +321,7 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
     novo_input = dict(ev["tool_input"])
     novo_input["command"] = shlex.join(novo)
     guardar_pendente(ev, novo_input["command"], {"id": cid, "tipo": rotulo, "de": eu["agente"],
-                                                 "para_handle": para_handle})
+                                                 "para_handle": para_handle, "raiz": eu["raiz"]})
     return {"action": "allow", "updated_input": novo_input}
 
 
@@ -336,7 +364,8 @@ def tirar_pendente(ev):
         caminho = os.path.join(pasta, k + ".json")
         if os.path.exists(caminho):
             if achado is None:
-                achado = json.load(open(caminho))
+                with open(caminho) as f:
+                    achado = json.load(f)
             os.remove(caminho)
     # limpa pendentes velhos (envio que falhou e nunca teve post)
     try:
@@ -351,14 +380,16 @@ def tirar_pendente(ev):
 
 def achar_orca():
     """O hook roda com PATH reduzido: procura o orca nos lugares conhecidos."""
-    for c in (os.path.join(os.environ.get("ORCA_REMOTE_CLI_BIN_DIR", ""), "orca"),
-              shutil.which("orca") or "", "/root/.orca-relay/bin/orca"):
+    for c in (os.environ.get("ORCA_BIN", ""),
+              os.path.join(os.environ.get("ORCA_REMOTE_CLI_BIN_DIR", ""), "orca"),
+              shutil.which("orca") or "", os.path.expanduser("~/.orca-relay/bin/orca")):
         if c and os.access(c, os.X_OK):
             return c
     return "orca"
 
 
 def registrar_aviso(texto):
+    os.makedirs(HOME, exist_ok=True)
     with open(os.path.join(HOME, "avisos.log"), "a") as f:
         f.write(f"{agora().isoformat(timespec='seconds')} {texto}\n")
 
@@ -371,6 +402,8 @@ def post_send(ev, paineis):
     resposta = str(ev["raw"].get("tool_response") or "")
     if re.search(r"\berror\b|\"ok\": false", resposta, re.I) and "Sent msg_" not in resposta:
         registrar_aviso(f"{p['id']} envio falhou, aviso não digitado")
+        if p.get("raiz"):  # a linha do pre_send fica, mas sai da cobrança e do --responde-a
+            gravar_log(p["raiz"], {"id": p["id"], "ts": agora().isoformat(timespec="seconds"), "status": "falhou"})
         return None
     para_handle = p["para_handle"]
     aviso = (f"[agent-board] Nova mensagem {p['id']} ({p['tipo']}) de {p['de']}. "
@@ -407,10 +440,7 @@ MAX_COBRANCAS = 3  # quantas vezes o Stop segura o agente pelas mesmas pendênci
 
 def pendentes_de(eu):
     """Mensagens recebidas por `eu` (menos respostas) que ele ainda não respondeu."""
-    try:
-        linhas = [json.loads(l) for l in open(os.path.join(eu["raiz"], LOG_REL)) if l.strip()]
-    except FileNotFoundError:
-        return []
+    linhas = ler_log(eu["raiz"])
     desde = eu.get("cadastrado_em", "")
     respondidas = set()
     for l in linhas:

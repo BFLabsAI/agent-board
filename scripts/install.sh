@@ -20,7 +20,7 @@ sed "s#__AGENT_BOARD_CORE__#$CORE#" "$AQUI/omp-agent-board.ts" > "$OMP_HOOK"
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 cp "$SETTINGS" "$ESTADO/settings.json.bak-$(date +%Y%m%d-%H%M%S)"
 python3 - "$SETTINGS" "$CORE" <<'EOF'
-import json, sys
+import json, os, sys
 alvo, core = sys.argv[1], sys.argv[2]
 cmd = f"python3 {core} --dialect claude"
 def h(extra=None):
@@ -36,13 +36,19 @@ novo = {
     "PostToolUse": [{"matcher": "Bash", "hooks": [h()]}],
     "Stop": [{"hooks": [h()]}],
 }
-s = json.load(open(alvo))
+with open(alvo) as f:
+    s = json.load(f)
 hooks = s.setdefault("hooks", {})
 for evento in list(hooks):
     hooks[evento] = [e for e in hooks[evento] if "agent-board" not in json.dumps(e)]
 for evento, entradas in novo.items():
     hooks.setdefault(evento, []).extend(entradas)
-json.dump(s, open(alvo, "w"), indent=2)
+# grava ao lado e troca de uma vez: um corte no meio não deixa o settings.json truncado
+alvo = os.path.realpath(alvo)  # settings.json pode ser symlink (dotfiles): troca o arquivo real
+tmp = alvo + ".agent-board.tmp"
+with open(tmp, "w") as f:
+    json.dump(s, f, indent=2)
+os.replace(tmp, alvo)
 EOF
 echo "agent-board $(cat "$AQUI/VERSION") instalado: hooks -> $CORE, estado -> $ESTADO"
 echo "Confira com /hooks no Claude Code e /extensions numa sessão nova do OMP."
