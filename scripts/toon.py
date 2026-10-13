@@ -65,6 +65,8 @@ def objeto(d, indent=0):
             out.append(objeto(v, indent + 1))
         elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
             out.append("\n".join(pad + l for l in tabela(k, v).split("\n")))
+        elif isinstance(v, list) and not v:
+            out.append(f"{pad}{chave(k)}[0]:")
         elif isinstance(v, list):
             out.append(f"{pad}{chave(k)}[{len(v)}]: " + ",".join(valor(x) for x in v))
         else:
