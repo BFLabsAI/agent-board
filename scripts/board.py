@@ -2,7 +2,7 @@
 """
 board.py: mandar mensagem ao time pela linha de comando, em qualquer transporte.
 
-  board.py send --to <agente> --type <tipo> --subject "..." [--body "..." | --body-file <arq|->]
+  board.py send --to <agente|papel:<papel>> --type <tipo> --subject "..." [--body "..." | --body-file <arq|->]
                 [--modo orquestrar|executar] [--issues 12,13] [--responde-a <id>[,<id>]]
                 [--prazo 30m|2h|1d] [--veredito aprovado|rejeitado]
 
@@ -37,8 +37,12 @@ def send(args):
     a = p.parse_args(args)
     texto = a.body
     if a.body_file:
-        with (sys.stdin if a.body_file == "-" else open(a.body_file)) as f:
-            texto = f.read()
+        try:
+            with (sys.stdin if a.body_file == "-" else open(a.body_file)) as f:
+                texto = f.read()
+        except OSError as exc:
+            print(f"não consegui ler --body-file {a.body_file}: {exc.strerror or exc}", file=sys.stderr)
+            return 1
     issues = [int(x) for x in (a.issues or "").replace(" ", "").split(",") if x.isdigit()]
     campos = {"para": a.to, "tipo": a.type, "assunto": a.subject, "corpo": texto, "modo": a.modo,
               "issues": issues, "responde_a": a.responde_a, "prazo": a.prazo, "veredito": a.veredito}

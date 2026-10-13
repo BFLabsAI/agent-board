@@ -238,6 +238,13 @@ class Envio(Base):
         time.sleep(0.3)
         self.assertIn("corpo vindo do stdin", self.texto_das_chamadas())
 
+    def test_body_file_inexistente_explica_sem_traceback(self):
+        r = self.rodar(BOARD, "send", "--to", "manager01-cc", "--type", "aviso", "--subject", "x",
+                       "--body-file", os.path.join(self.tmp, "nao-existe.md"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("não consegui ler --body-file", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
     def test_stop_no_maestri_ensina_o_board_py(self):
         self.rodar(BOARD, "send", "--to", "manager01-cc", "--type", "aviso", "--subject", "x")
         out = self.hook("", terminal_id=G_ID, evento="Stop")
