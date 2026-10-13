@@ -1,6 +1,6 @@
 # 0005. Painel web local, somente leitura, sem build
 
-- **Status:** proposta (aguarda aprovação do mockup)
+- **Status:** aceita (mockup aprovado em 2026-10-12)
 - **Data:** 2026-10-12
 
 ## Contexto
