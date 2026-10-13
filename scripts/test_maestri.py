@@ -172,6 +172,7 @@ class Envio(Base):
         self.assertIn("De: alpha-master", texto)
         self.assertIn("`make test` e $(pwd)\\\\nlinha", texto)  # barra invertida dobrada para o maestri
         self.assertIn("board.py send --to alpha-master --type resposta", texto)
+        self.assertIn(f"AGENT_BOARD_HOME={HOME_TESTE} python3", texto)  # estado fora do padrão vai junto
         self.assertEqual(self.feitas("orca-chamadas"), [])  # nada de orca, nem aviso
         log = registro.ler_log(self.raiz)
         self.assertEqual((log[-1]["para"], log[-1]["tipo"]), (G, "pedido"))

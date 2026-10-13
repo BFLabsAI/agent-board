@@ -145,8 +145,16 @@ def parece_do_time(alvo):
 
 
 def cmd_envio(handle):
-    """Como o agente desse painel manda mensagem ao time: Orca no shell, Maestri pelo board.py (ou board_send)."""
-    return f"python3 {BOARD} send" if eh_maestri(handle) else "orca orchestration send"
+    """Como o agente desse painel manda mensagem ao time: Orca no shell, Maestri pelo board.py (ou board_send).
+
+    Com $AGENT_BOARD_HOME fora do padrão, o comando leva a variável: quem o copia
+    precisa enxergar o mesmo cadastro.
+    """
+    if not eh_maestri(handle):
+        return "orca orchestration send"
+    padrao = os.path.expanduser("~/.agent-hooks/agent-board")
+    env = "" if os.path.abspath(HOME) == os.path.abspath(padrao) else f"AGENT_BOARD_HOME={shlex.quote(HOME)} "
+    return f"{env}python3 {BOARD} send"
 
 
 def novo_id():
