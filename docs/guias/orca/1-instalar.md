@@ -47,9 +47,11 @@ Os testes rodam a seco: não enviam nada e não mexem no seu cadastro.
 
 - **Claude Code:** abra uma sessão e rode `/hooks`.
 - **OMP:** abra uma sessão **nova** e rode `/extensions`.
-- **MCP:** rode `claude mcp get agent-board`.
+- **MCP:** rode `claude mcp list` (deve listar `agent-board`) e `claude mcp get agent-board`.
 
 ✅ **Deu certo se:** aparecem entradas `agent-board` em PreToolUse, PostToolUse e Stop; o OMP lista o `agent-board`; o MCP aponta para o `mcp_server.py`.
+
+O instalador já registra o MCP para você (escopo de usuário, vale em todos os projetos). Para registrar só num projeto, ou se o Claude Code pedir aprovação, veja o [guia do MCP](../mcp.md).
 
 ## O que o Orca precisa
 

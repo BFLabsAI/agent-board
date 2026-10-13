@@ -93,9 +93,23 @@ python3 $S/painel.py resumo --raiz <projeto> --desde 8h
 
 **Painel web** (só leitura): `python3 $S/painel.py servir --raiz <projeto>` e abra `http://127.0.0.1:8765`. Detalhes em [Painel web](../../userguide/painel.md).
 
-## Alternativa: ferramenta MCP `board_send`
+## Alternativa: ferramentas MCP `board_*`
 
-No Claude Code, o agente pode usar `board_send(para, tipo, assunto, corpo, ...)` no lugar do shell. Os parâmetros são tipados: sem problema de aspas, e crase ou `$( )` chegam como texto. As regras, o log e o aviso são os mesmos. Para ler: `board_inbox()` e `board_pendentes()`.
+No Claude Code, o agente pode usar ferramentas MCP no lugar do shell. Os parâmetros são tipados: sem problema de aspas, e crase ou `$( )` chegam como texto puro. As regras, o log e o aviso são os mesmos. Aqui o `board_inbox` equivale a `orca orchestration check --terminal <painel> --format`.
+
+| Quero... | Shell | MCP |
+|---|---|---|
+| Enviar | `orca orchestration send ...` | `board_send(...)` |
+| Ler minhas mensagens | `orca orchestration check --format` | `board_inbox()` |
+| Ver o que espera resposta | `painel.py tarefas` | `board_pendentes()` |
+| Ver o histórico | `painel.py historico` | `board_historico()` |
+| Ver quem eu sou | `echo $ORCA_TERMINAL_HANDLE` e `painel.py listar` | `board_status()` (agente, papel, projeto, pendentes) |
+
+```
+board_send(para="manager01-cc", tipo="pedido", modo="executar", assunto="Tela de login", corpo="Implementar conforme a Issue.")
+```
+
+O servidor descobre quem você é por `$ORCA_TERMINAL_HANDLE`, que o Claude Code repassa a ele. No Orca isso está coberto pelo código e pelos testes, mas ainda não foi conferido ao vivo. Se `board_status` não achar seu painel, veja [4. Problemas](4-problemas.md). Registro, aprovação e detalhes: [guia do MCP](../mcp.md).
 
 ## Se der errado
 

@@ -1,6 +1,6 @@
 # O que melhorou no agent-board
 
-Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.9.2**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
+Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.9.3**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
 
 ---
 
@@ -69,7 +69,7 @@ O histórico, as tarefas e as pendências saem em **TOON**, um formato de tabela
 
 ## 6. Ferramentas MCP: sem erro de aspas
 
-No Claude Code, o agente pode usar ferramentas prontas (`board_send`, `board_pendentes`, `board_historico`…) em vez de montar o comando no terminal. As regras são as mesmas e o log é o mesmo.
+No Claude Code, o agente pode usar ferramentas prontas (`board_send`, `board_pendentes`, `board_historico`…) em vez de montar o comando no terminal. As regras são as mesmas e o log é o mesmo. Testado ao vivo no Maestri: um manager respondeu a um pedido só com `board_send`. Passo a passo: [guia do MCP](guias/mcp.md).
 
 ## 7. Painel web para você acompanhar
 

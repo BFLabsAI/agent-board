@@ -20,6 +20,17 @@
 | `subagent não fala com outros agentes` | Devolva para a sessão principal enviar |
 | Texto chegou cortado ou com comando executado | Você usou aspas duplas com `$( )` ou crase. Use aspas simples ou `--body-file <arquivo>` |
 
+## MCP (ferramentas `board_*`)
+
+| Você vê | Faça |
+|---|---|
+| As ferramentas `board_*` não aparecem | Confira `claude mcp list` (registro do `install.sh` ou `.mcp.json` na raiz) e reabra o agente |
+| O agente ficou com "Continue without using this MCP server" | Rode `claude mcp reset-project-choices`, reabra o agente e escolha "Use this MCP server" |
+| `board_*` diz que o terminal não está cadastrado | Cadastre o agente (passos 3 a 5 do guia 2). Antes disso a identidade não existe |
+| Pede aprovação a cada chamada | Libere `mcp__agent-board` em `permissions.allow` do `.claude/settings.json` do projeto |
+
+Mais: [guia do MCP](../mcp.md).
+
 ## Cadastro e canvas
 
 | Você vê | Faça |

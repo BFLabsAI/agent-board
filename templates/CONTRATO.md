@@ -49,7 +49,7 @@ python3 ~/.agents/skills/agent-board/scripts/board.py send --to master --type en
 
 ### Pelas ferramentas MCP (Claude Code)
 
-Se a sessão tiver as ferramentas `board_*` do servidor MCP `agent-board`, use-as no lugar do comando acima: os parâmetros são tipados e não há problema de aspas.
+Se a sessão tiver as ferramentas `board_*` do servidor MCP `agent-board`, use-as no lugar do comando acima: os parâmetros são tipados e não há problema de aspas. Não vê as ferramentas? Use o comando acima e avise o master: registrar e aprovar o servidor é passo de quem monta o time (`docs/guias/mcp.md` na skill agent-board).
 
 - `board_send(para, tipo, assunto, corpo?, modo?, issues?, responde_a?, prazo?, veredito?)`: envia. Mesmas regras: `modo` em pedido para manager, `responde_a` em resposta, `veredito` na resposta a uma entrega, `prazo` só em pedido. O corpo é texto puro (crase e `$( )` chegam como texto).
 - `board_inbox()`: lê o seu correio inteiro (o mesmo `check --format`).

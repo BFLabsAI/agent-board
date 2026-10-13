@@ -103,6 +103,8 @@ Servidor `agent-board` (`scripts/mcp_server.py`, JSON-RPC 2.0 sobre stdio). O `i
 | `board_historico(agente?, sobre?, n?, tudo?)` | O mesmo filtro do `painel.py historico`, em TOON |
 | `board_status()` | Agente, papel, projeto, raiz, handle, nº de pendentes, versão e agentes do projeto, em TOON |
 
+Passo a passo (registrar, aprovar, liberar permissão, conferir): [Guia do MCP](../guias/mcp.md).
+
 Registrar à mão:
 
 ```bash

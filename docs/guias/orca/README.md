@@ -4,6 +4,8 @@
 
 Usa o canvas do Maestri? Siga o [caminho Maestri](../maestri/).
 
+Prefere ferramentas tipadas a comandos no shell? O agente também envia e lê pelo MCP (`board_send`, `board_inbox`...). Veja o [guia do MCP](../mcp.md).
+
 ## Os 4 passos
 
 | Passo | O que você faz |

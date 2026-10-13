@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.3 — 2026-10-13
+
+Guia do MCP e teste ao vivo. Só documentação.
+
+### Documentação
+- `docs/guias/mcp.md`: guia único do MCP para Orca e Maestri (registrar, aprovar o prompt do Claude Code, liberar a permissão, conferir com `board_status`, usar as 5 ferramentas, problemas).
+- Guias do Orca e do Maestri passam a integrar o MCP: instalar, montar o time, dia a dia e problemas.
+- README, CONTRATO, SKILL, referência e conceitos apontam para o guia.
+
+### Verificado ao vivo
+- No Maestri, com Claude Code real: o agente enxerga as 5 ferramentas, `board_status` devolve a identidade certa (o Claude Code repassa `$MAESTRI_TERMINAL_ID` ao servidor) e um manager respondeu a um pedido só com `board_send`. No Orca, o MCP está coberto pelo código e pelos testes, não por um teste ao vivo.
+
 ## 1.9.2 — 2026-10-13
 
 Documentação reestruturada para ser didática e visual. O README virou um portal curto; o conteúdo foi para guias práticos por transporte, conceitos com diagramas e uma referência em tabelas.
