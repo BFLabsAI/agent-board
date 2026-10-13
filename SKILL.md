@@ -66,7 +66,7 @@ Com o cadastro vazio, os hooks não agem sobre ninguém.
    python3 $S/painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix>
    ```
    Isso cria `docs/agent-board/` com a config, o `CONTRATO.md` e o log vazio, e acrescenta `merge=union` do log no `.gitattributes`. Não sobrescreve o que já existe.
-3. Ajuste os papéis em `agent-board.json` se o CEO quiser regras diferentes das padrão. As chaves opcionais `prazo_padrao`, `limites` (`pedidos_abertos_max`, `ping_pong_max`, `ping_pong_janela_min`) e `ligacoes` (pares `[de, para]` por papel ou nome) só valem quando preenchidas; veja o README. Antes de mudar a config de um projeto em uso, rode `python3 $S/painel.py simular --raiz <project-path> --config <novo.json>` e mostre ao CEO o que passaria a ser barrado.
+3. Ajuste os papéis em `agent-board.json` se o CEO quiser regras diferentes das padrão. As chaves opcionais `prazo_padrao`, `limites` (`pedidos_abertos_max`, `ping_pong_max`, `ping_pong_janela_min`) e `ligacoes` (pares `[de, para]` por papel ou nome) só valem quando preenchidas; veja [docs/referencia/config.md](docs/referencia/config.md) e [docs/conceitos/regras.md](docs/conceitos/regras.md). Antes de mudar a config de um projeto em uso, rode `python3 $S/painel.py simular --raiz <project-path> --config <novo.json>` e mostre ao CEO o que passaria a ser barrado.
 4. Acrescente uma linha nas regras do projeto (AGENTS.md ou equivalente): "Agentes se falam só pelo agent-board (`orca orchestration send` no Orca, `board.py send` no Maestri), conforme `docs/agent-board/CONTRATO.md`".
 5. Faça o commit numa branch e siga o fluxo de merge do projeto.
 

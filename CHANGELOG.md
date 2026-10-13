@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.9.2 — 2026-10-13
+
+Documentação reestruturada para ser didática e visual. O README virou um portal curto; o conteúdo foi para guias práticos por transporte, conceitos com diagramas e uma referência em tabelas.
+
+### Documentação
+- `README.md`: portal com diagrama, setup geral, evoluções do fork e "escolha seu caminho".
+- `docs/guias/orca/` e `docs/guias/maestri/`: 4 passos cada (instalar, montar o time, dia a dia, problemas).
+- `docs/conceitos/` (como funciona, papéis e mensagens, regras) com 6 diagramas Mermaid.
+- `docs/referencia/` (comandos, config, arquivos e estado, hooks e limites): todo o conteúdo denso do README antigo, em tabelas.
+- `docs/ESTILO.md`: guia de estilo da documentação.
+
+### Corrigido
+- `painel.py remover --help` tentava remover um painel chamado "--help"; agora mostra a ajuda, recusa entrada que não é painel e avisa o que não estava no cadastro.
+
+### Interno
+- `test_docs.py`: confere na CI que todo link e toda âncora da documentação existem.
+
 ## 1.9.1 — 2026-10-12
 
 Correções achadas no teste ponta a ponta com a CLI real do Maestri e na revisão da documentação. Para atualizar: rode `install.sh` de novo (liga o matcher novo do `board_send`) e, em cada projeto, `painel.py init … --atualizar-contrato` (o CONTRATO foi revisado: Maestri, subagent, `board_send` com `prazo`/`veredito`).
@@ -23,7 +40,7 @@ Correções achadas no teste ponta a ponta com a CLI real do Maestri e na revis�
 
 ## 1.9.0 — 2026-10-12
 
-Maestri como segundo transporte: o mesmo time, as mesmas regras e o mesmo log num canvas do Maestri. Ver [ADR-0006](docs/adr/0006-maestri-como-transporte.md) e a seção "No Maestri" do README. Para atualizar: rode `install.sh` de novo (o adaptador do OMP passou a encaminhar `maestri ask`) e, em cada projeto, `painel.py init --raiz … --projeto … --prefixo … --atualizar-contrato` (o CONTRATO ganhou a seção do Maestri; a chave `"maestri"` da config é opcional).
+Maestri como segundo transporte: o mesmo time, as mesmas regras e o mesmo log num canvas do Maestri. Ver [ADR-0006](docs/adr/0006-maestri-como-transporte.md) e o [guia do Maestri](docs/guias/maestri/README.md). Para atualizar: rode `install.sh` de novo (o adaptador do OMP passou a encaminhar `maestri ask`) e, em cada projeto, `painel.py init --raiz … --projeto … --prefixo … --atualizar-contrato` (o CONTRATO ganhou a seção do Maestri; a chave `"maestri"` da config é opcional).
 
 ### Novo
 - **Identidade Maestri:** painel `maestri:<$MAESTRI_TERMINAL_ID>`; cadastro guarda `transporte` e `nome_canvas`.

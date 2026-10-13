@@ -194,11 +194,23 @@ def cadastrar(args):
 
 
 def remover(handles):
+    if not handles or any(h in ("-h", "--help") for h in handles):
+        sys.exit("uso: painel.py remover <term_...|maestri:<id>> [...]\n"
+                 "Tira painéis do cadastro (o handle aparece no painel.py listar).")
+    ruins = [h for h in handles if not h.startswith(("term_", "maestri:"))]
+    if ruins:
+        sys.exit(f"não parece um painel (esperado term_... ou maestri:<id>): {' '.join(ruins)}")
+    saiu = []
+
     def alterar(paineis):
         for h in handles:
-            paineis.pop(h, None)
+            if paineis.pop(h, None) is not None:
+                saiu.append(h)
     com_trava(alterar)
-    print("removidos:", " ".join(handles))
+    print("removidos:", " ".join(saiu) if saiu else "nenhum")
+    faltou = [h for h in handles if h not in saiu]
+    if faltou:
+        print("não estavam no cadastro:", " ".join(faltou))
 
 
 def init(args):

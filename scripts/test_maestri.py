@@ -152,6 +152,16 @@ class Cadastro(Base):
         self.assertEqual((novo["transporte"], novo["nome_canvas"], novo["papel"]), ("maestri", "Pena Azul", "manager"))
         self.assertIn("nenhum pedido", self.rodar(PAINEL, "solicitacoes", terminal_id=None).stdout)
 
+    def test_remover_ajuda_e_validacao_nao_mexem_no_cadastro(self):
+        for args in (["--help"], ["-h"], [], ["qualquer-coisa"]):
+            r = self.rodar(PAINEL, "remover", *args, terminal_id=None)
+            self.assertNotEqual(r.returncode, 0, args)
+        with open(os.path.join(HOME_TESTE, "paineis.json")) as f:
+            self.assertEqual(len(json.load(f)["paineis"]), 3)
+        r = self.rodar(PAINEL, "remover", f"maestri:{R_ID}", "maestri:NAO-EXISTE", terminal_id=None)
+        self.assertIn(f"removidos: maestri:{R_ID}", r.stdout)
+        self.assertIn("não estavam no cadastro: maestri:NAO-EXISTE", r.stdout)
+
     def test_cadastrar_maestri_sem_pedido_explica(self):
         r = self.rodar(PAINEL, "cadastrar", "--raiz", self.raiz, "maestri:NADA=alpha-manager03-cc", terminal_id=None)
         self.assertNotEqual(r.returncode, 0)

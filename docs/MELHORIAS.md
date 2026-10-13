@@ -1,6 +1,6 @@
 # O que melhorou no agent-board
 
-Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.9.1**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
+Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.9.2**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
 
 ---
 
@@ -102,7 +102,7 @@ Achados no teste ao vivo no Maestri e na revisão das docs (todos com teste auto
 
 ## 10. Qualidade
 
-- **7 suítes de testes** (mais de 220 testes) rodando na CI em Python 3.8 e 3.12, mais lint.
+- **8 suítes de testes** (mais de 230 testes, inclusive um que confere todos os links da documentação) rodando na CI em Python 3.8 e 3.12, mais lint.
 - Código dividido em módulos pequenos (antes era um arquivo de quase 800 linhas).
 - Sem nenhuma dependência nova: só a biblioteca padrão do Python.
 - Decisões importantes registradas em **7 ADRs** (`docs/adr/`).
@@ -114,4 +114,4 @@ Achados no teste ao vivo no Maestri e na revisão das docs (todos com teste auto
 - **Montar o time num comando só** (`painel.py maestri montar`): recrutar os agentes no canvas, cadastrar e ligar as cordas de uma vez, com a sua confirmação no meio.
 - **Papéis configuráveis**: hoje os nomes são fixos (master, manager, researcher). Daria para ter `developer`, `qa`, `reviewer`… definidos no `agent-board.json`.
 - **Agentes que não são Claude Code** (Codex, OpenCode): as regras valem no envio, mas o bloqueio de atalhos e a cobrança de resposta dependem do hook do Claude Code. Para eles, hoje é regra do contrato.
-- **Exemplos da documentação testados na CI**: rodar automaticamente cada comando citado na doc, para ela nunca mais ficar desatualizada.
+- **Exemplos da documentação testados na CI**: os links já são conferidos (`test_docs.py`); falta rodar automaticamente cada comando citado na doc.
