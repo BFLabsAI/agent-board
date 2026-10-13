@@ -22,7 +22,8 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 |---|---|---|
 | [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta) |
 | [`scripts/omp-agent-board.ts`](scripts/omp-agent-board.ts) | skill | Adaptador do OMP para o mesmo core |
-| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar` |
+| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar`, `tarefas`, `vigiar`, `simular` |
+| [`scripts/politica.py`](scripts/politica.py) | skill | Regras de envio sem I/O (`validar_envio`), usadas pelo hook e pelo `simular` |
 | [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks no servidor (idempotente, com backup) |
 | [`scripts/test_agent_board.py`](scripts/test_agent_board.py) | skill | Testes a seco, sem envio real |
 | [`scripts/VERSION`](scripts/VERSION) | skill | Versão do pacote |
@@ -53,7 +54,7 @@ Com o cadastro vazio, os hooks não agem sobre ninguém.
    python3 $S/painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix>
    ```
    Isso cria `docs/agent-board/` com a config, o `CONTRATO.md` e o log vazio, e acrescenta `merge=union` do log no `.gitattributes`. Não sobrescreve o que já existe.
-3. Ajuste os papéis em `agent-board.json` se o CEO quiser regras diferentes das padrão.
+3. Ajuste os papéis em `agent-board.json` se o CEO quiser regras diferentes das padrão. As chaves opcionais `prazo_padrao`, `limites` (`pedidos_abertos_max`, `ping_pong_max`, `ping_pong_janela_min`) e `ligacoes` (pares `[de, para]` por papel ou nome) só valem quando preenchidas; veja o README. Antes de mudar a config de um projeto em uso, rode `python3 $S/painel.py simular --raiz <project-path> --config <novo.json>` e mostre ao CEO o que passaria a ser barrado.
 4. Acrescente uma linha nas regras do projeto (AGENTS.md ou equivalente): "Agentes se falam só pelo `orca`, conforme `docs/agent-board/CONTRATO.md`".
 5. Faça o commit numa branch e siga o fluxo de merge do projeto.
 
@@ -91,12 +92,18 @@ A resposta de cada um confirma que leu. Na mesma virada, aposente os canais para
   - destino fora do time (agente cadastrado só fala com cadastrados do mesmo projeto);
   - tipo fora da lista;
   - falta `--modo` em pedido para manager;
+  - resposta a entrega sem `--veredito aprovado|rejeitado`, ou `--prazo` inválido;
+  - `andamento` sem `--responde-a` de um pedido aberto que o agente recebeu;
+  - destino no limite de pedidos abertos, ou par fora das `ligacoes`;
   - comando `orca` encadeado com outro;
   - uso de `orchestration reply` ou `ask` entre agentes do time (use `send --type resposta` ou `pedido`);
   - tentativa de editar à mão o log ou o cadastro;
   - destino de outro projeto.
 - **Aviso que não apareceu na tela:** veja `~/.agent-hooks/agent-board/avisos.log`. Se havia uma pergunta aberta na tela do destino, o aviso não é digitado, mas a mensagem continua no correio. O aviso também é limitado a 1 por destino a cada 60 s (estado em `avisos-estado.json`): dentro da janela, o hook espera e só digita se o destino ainda tiver mensagem não lida.
-- **Agente encerrando sem responder:** o hook segura até 3 vezes e depois registra no `avisos.log`. Cobre o agente pelo próprio canal.
+- **Agente encerrando sem responder:** o hook segura até 3 vezes e depois registra no `avisos.log`. Cobre o agente pelo próprio canal. Em pedido longo, o agente manda `--type andamento` e deixa de ser cobrado até terminar.
+- **Quadro de tarefas:** `python3 $S/painel.py tarefas --raiz <project-path>` mostra cada pedido e entrega com o estado (aberto, em_andamento, atrasado, aguardando_revisao…). Ao revisar uma entrega, responda com `--veredito aprovado` ou `--veredito rejeitado`.
+- **Prazos:** deixe `python3 $S/painel.py vigiar --raiz <project-path>` num cron ou `/loop`. Ele escala uma vez cada pedido vencido e avisa você na tela.
+- **Ping-pong:** com `limites.ping_pong_max`, conversa demais entre o mesmo par aparece na sua tela e no `avisos.log`. Não é bloqueio: decida se separa a frente ou pede uma entrega.
 - **Consultar o log:** `python3 $S/painel.py historico --raiz <project-path> --agente <agente>` (TOON, econômico para o contexto) ou `jq -c 'select(.para=="<agente>")' docs/agent-board/comunicacoes.jsonl`.
 - **Mensagem que não chegou** (painel fechou antes de ler, envio falhou): `python3 $S/painel.py reenviar --raiz <project-path> <id>`.
 - **Integridade do log:** `python3 $S/painel.py verificar --raiz <project-path>` antes de um merge importante ou se suspeitar de edição à mão.
