@@ -31,4 +31,6 @@ O Maestri resolve a conversa entre agentes, mas não registra, não confere pap�
 - O corpo enviado pelo `board.py`/MCP nunca passa por um shell: crase e `$( )` passam a ser aceitos nesse caminho (no shell continuam barrados).
 - Remetente no Maestri com destino no Orca (time misto) não é suportado: o `--from` do orca precisa de um handle do Orca.
 - `maestri ask` com ajudantes fora do time continua livre: o hook só olha destinos cadastrados.
+- O que sai do agent-board para um terminal usa o transporte do destino: envio, `painel.py reenviar` e o aviso na tela (escalação do `vigiar`, alerta de ping-pong) vão pelo orca ou pelo `maestri ask`.
+- O `maestri ask` digita no terminal do destino: se o humano estiver escrevendo ali, os textos se misturam.
 - A nota espelhada é criada ligada a quem a escreveu primeiro; outro agente sem corda com ela cria uma cópia. Para notas compartilhadas, ligue a nota ao time no canvas.

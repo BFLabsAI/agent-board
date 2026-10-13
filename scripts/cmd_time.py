@@ -3,6 +3,7 @@ painel.py: recursos do time (nota, notas, resumo) e o worktree por agente do cad
 
   - nota: memória compartilhada do time em docs/agent-board/notas/<tema>.md, uma
     linha {"tipo": "nota"} no log para cada uma (sem "para": ninguém é cobrado).
+    Com "maestri": {"espelhar_notas": true}, o tema também vira a nota "ab · <tema>" no canvas.
   - resumo: o que aconteceu no período, contado direto do log (sem LLM).
   - worktrees(): git worktree por manager, chamado pelo painel.py cadastrar --worktree.
 """

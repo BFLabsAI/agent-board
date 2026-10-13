@@ -10,8 +10,9 @@ mcp_ferramentas.py).
 Transporte stdio do MCP: JSON-RPC 2.0, uma mensagem JSON por linha. Stdout leva
 só o protocolo; logs vão para stderr. Só biblioteca padrão.
 
-Identidade: o painel em $ORCA_TERMINAL_HANDLE (o Claude Code herda o ambiente do
-painel do Orca), procurado em paineis.json, como no hook.
+Identidade: base.meu_handle() (o handle do Orca, ou maestri:<$MAESTRI_TERMINAL_ID>;
+o Claude Code herda o ambiente do terminal), procurado em paineis.json, como no hook.
+A entrega vai pelo transporte do destino (Orca ou Maestri; veja envio.py).
 
 Registro no Claude Code (o install.sh faz isso):
   claude mcp add --scope user agent-board -- python3 <skill>/scripts/mcp_server.py
@@ -25,7 +26,7 @@ from base import VERSAO, meu_handle  # noqa: E402
 import mcp_ferramentas  # noqa: E402
 
 VERSOES = ("2025-06-18", "2025-03-26", "2024-11-05")  # a primeira é a padrão
-INSTRUCOES = ("Ferramentas do agent-board para falar com outros agentes do time pelo correio do Orca. "
+INSTRUCOES = ("Ferramentas do agent-board para falar com outros agentes do time (Orca ou Maestri). "
               "Use board_send no lugar de `orca orchestration send` no shell; as regras são as mesmas do "
               "docs/agent-board/CONTRATO.md do projeto. Toda mensagem recebida precisa de resposta: veja "
               "board_pendentes antes de encerrar.")

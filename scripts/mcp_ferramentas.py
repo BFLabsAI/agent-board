@@ -4,8 +4,10 @@ board_historico, board_status).
 
 A regra não mora aqui. board_send (envio.enviar) monta o mesmo comando `orca orchestration send`
 que o agente escreveria e passa por hook_core.decide() com eventos PreToolUse e
-PostToolUse sintéticos, como o hook faria. Precisa ser assim porque ferramenta MCP
-não passa pelo PreToolUse do hook (o matcher é só Bash, Edit/Write e SendMessage).
+PostToolUse sintéticos, como o hook faria, e entrega pelo transporte do destino
+(Orca ou Maestri). Precisa ser assim porque a regra do envio não roda no PreToolUse
+de uma ferramenta MCP: o matcher mcp__agent-board__board_send do install.sh só barra
+subagent.
 
 Cada ferramenta devolve (texto, erro?). Erro de regra ou de envio é resultado com
 isError, não erro de protocolo: o agente lê o motivo e corrige.
@@ -34,7 +36,9 @@ FERRAMENTAS = [
      "inputSchema": {
          "type": "object",
          "properties": {
-             "para": {"type": "string", "description": "nome do agente de destino, ex.: alpha-manager01-cc"},
+             "para": {"type": "string",
+                      "description": "nome do agente de destino (ex.: alpha-manager01-cc; o nome curto vale) "
+                                     "ou papel:<papel> para o agente desse papel com menos pedidos abertos"},
              "tipo": {"type": "string", "enum": list(hook_core.TIPOS), "description": "tipo da mensagem do time"},
              "assunto": {"type": "string", "minLength": 1, "description": "assunto curto"},
              "corpo": {"type": "string", "description": "texto da mensagem; conteúdo longo vai na Issue"},
@@ -51,8 +55,10 @@ FERRAMENTAS = [
          "required": ["para", "tipo", "assunto"],
          "additionalProperties": False}},
     {"name": "board_inbox",
-     "description": "Lê o correio do seu painel (orca orchestration check --format): as mensagens inteiras, "
-                    "não só o assunto. Use quando aparecer o aviso [agent-board] Nova mensagem.",
+     "description": "Lê o correio do seu painel. No Orca: orca orchestration check --format (as mensagens "
+                    "inteiras, não só o assunto). No Maestri as mensagens já chegam digitadas no terminal: "
+                    "devolve as que ainda estão sem resposta. Use quando aparecer o aviso [agent-board] Nova "
+                    "mensagem.",
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "board_pendentes",
      "description": "Mensagens que você recebeu e ainda não respondeu (menos respostas, que não se respondem). "

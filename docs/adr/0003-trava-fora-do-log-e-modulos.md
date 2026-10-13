@@ -9,7 +9,7 @@ O `gravar_log` travava o próprio `comunicacoes.jsonl` com `fcntl.flock`. Para a
 ## Decisão
 - `base.trava(caminho)`: trava exclusiva num arquivo `.lock` dedicado, com `fcntl` e fallback `msvcrt` no Windows.
 - O log de cada projeto trava em `$AGENT_BOARD_HOME/travas/<sha1(raiz)>.lock`. Quem troca o arquivo (arquivar) e quem acrescenta (hook) usam a mesma trava.
-- O core foi dividido sem mudar regra: `base` (caminhos, cadastro, config, trava), `registro` (log), `protecao` (detecção de escrita à mão), `avisos` (aviso na tela), `toon` (saída). `hook_core` fica com leitura do comando, regras e dialeto do harness.
+- O core foi dividido sem mudar regra: `base` (caminhos, cadastro, config, trava), `registro` (log), `protecao` (detecção de escrita à mão), `avisos` (aviso na tela), `toon` (saída), e depois `politica` (regras de envio, sem I/O; ver [ADR-0007](0007-protocolo-de-tarefas-e-regras-opcionais.md)). `hook_core` fica com leitura do comando, aplicação da política e dialeto do harness.
 
 ## Consequências
 - A trava vale por máquina (como antes). Duas máquinas no mesmo checkout não são suportadas (já não eram).

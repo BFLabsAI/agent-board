@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-painel.py: cadastro de painéis do agent-board. Uso exclusivo do master.
+painel.py: cadastro de painéis e comandos do projeto no agent-board.
+Cadastro, arquivar, reenviar, vigiar e maestri são do master; os demais servem a qualquer agente.
 
-  painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix>
+  painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix> [--atualizar-contrato]
       Cria docs/agent-board/ no projeto (config, CONTRATO.md, log vazio) e a linha
       merge=union no .gitattributes. Não sobrescreve o que já existe; com
       --atualizar-contrato, troca o CONTRATO.md pela versão atual da skill.
@@ -12,7 +13,7 @@ painel.py: cadastro de painéis do agent-board. Uso exclusivo do master.
       Cadastra (ou recadastra) painéis do projeto. Só depois de o CEO confirmar a lista.
       --worktree: cada manager ganha um git worktree em <raiz>/../<projeto>-worktrees/<agente>
       na branch ab/<agente>. O log continua no checkout principal (a raiz).
-  painel.py remover <term_...> [...]
+  painel.py remover <term_...|maestri:<id>> [...]
       Tira painéis do cadastro.
 
 Log do projeto (cada um aceita --help):
@@ -23,7 +24,8 @@ Log do projeto (cada um aceita --help):
   painel.py arquivar --raiz <path> [--dias 30]
       Move conversas fechadas e antigas para docs/agent-board/arquivo/AAAA-MM.jsonl.
   painel.py reenviar --raiz <path> <id>
-      Reenvia uma mensagem (ex.: o painel fechou antes de ler), para o painel atual do destino.
+      Reenvia uma mensagem (ex.: o painel fechou antes de ler) para o painel atual do destino,
+      pelo transporte dele (Orca ou Maestri).
 
 Pedidos e entregas (cada um aceita --help):
   painel.py tarefas --raiz <path> [--agente X] [--formato toon|json]
@@ -31,10 +33,10 @@ Pedidos e entregas (cada um aceita --help):
       atrasado, aguardando_revisao, aprovado, rejeitado.
   painel.py vigiar --raiz <path>
       Escala ao master os pedidos com prazo vencido e sem resposta (uma vez cada). Para cron ou /loop.
-  painel.py simular --raiz <path> --config <novo.json> [--tudo]
+  painel.py simular --raiz <path> --config <novo.json> [--tudo] [--formato toon|json]
       Reexecuta o log contra uma config nova e lista o que seria barrado. Sai com 1 se algo seria.
 
-Recursos do time:
+Recursos do time (cada um aceita --help):
   painel.py nota --raiz <path> --tema <tema> [--decisao] [--de <autor>] "<texto>"
       Acrescenta uma nota (ou decisão) em docs/agent-board/notas/<tema>.md e registra no log.
   painel.py notas --raiz <path> [--tema X] [--formato toon|json|md]
@@ -45,10 +47,10 @@ Recursos do time:
 Painel web (só leitura, 127.0.0.1; ver docs/userguide/painel.md):
   painel.py servir --raiz <path> [--porta 8765]
 
-Maestri (canvas; ver docs/adr/0006-maestri-como-transporte.md):
-  painel.py eu                                   handle e nome no canvas deste terminal
+Maestri (canvas; cada um aceita --help; ver docs/adr/0006-maestri-como-transporte.md):
+  painel.py eu [--formato texto|toon]            handle e nome no canvas deste terminal
   painel.py solicitar --raiz <path> --agente <nome>   o agente pede o próprio cadastro
-  painel.py solicitacoes                         o master vê os pedidos (cadastra depois do CEO)
+  painel.py solicitacoes [--formato texto|toon]  o master vê os pedidos (cadastra depois do CEO)
   painel.py maestri conectar --raiz <path> [--aplicar]   cordas do canvas que a política exige
   painel.py maestri rotina --raiz <path> [--a-cada 10m] [--aplicar]   vigiar como routine
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agent-board: notificação externa de um envio bem-sucedido (webhook e GitHub).
+agent-board: notificação externa de um envio bem-sucedido (webhook, GitHub e floor do Maestri).
 
 Roda num processo separado, disparado pelo post_send do hook (disparar()), para
 nunca atrasar nem derrubar o envio. Erro aqui vai para avisos.log e pronto.
@@ -11,9 +11,11 @@ nunca atrasar nem derrubar o envio. Erro aqui vai para avisos.log e pronto.
     vem do ambiente, nunca do git, e não aparece no avisos.log.
   - GitHub: com "github": {"comentar_entregas": true} no agent-board.json,
     uma entrega com --issues vira comentário em cada Issue (gh issue comment).
+  - Maestri: com "maestri": {"status_do_floor": true}, uma entrega feita de um
+    terminal do Maestri põe o floor em revisão (maestri floor status --state review).
 
-Também tem o branch_de(), usado pelo pre_send para anotar no log a branch do
-worktree de quem entrega.
+Também tem o extras_entrega(), usado pelo pre_send para anotar no log a branch
+de quem entrega (worktree do cadastro ou floor do Maestri).
 """
 import json
 import os

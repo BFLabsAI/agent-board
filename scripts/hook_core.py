@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """
-agent-board: hook que padroniza a comunicação entre agentes via Orca.
+agent-board: hook que padroniza a comunicação entre agentes do time (Orca e Maestri).
 
 Baseado no template da skill agent-hook-development (decide() + dialetos).
 Parte da skill agent-board. O install.sh liga este arquivo ao Claude Code
 (~/.claude/settings.json: PreToolUse, PostToolUse, Stop) e ao OMP
-(~/.omp/agent/hooks/pre/agent-board.ts). Estado em ~/.agent-hooks/agent-board.
+(~/.omp/agent/hooks/pre/agent-board.ts). Estado em $AGENT_BOARD_HOME
+(padrão ~/.agent-hooks/agent-board).
 
-Identidade: o remetente é o painel em $ORCA_TERMINAL_HANDLE, procurado em
-paineis.json (cadastro feito pelo master com painel.py). O nome da sessão
-não conta.
+Identidade: o remetente é base.meu_handle(): o handle do Orca ($ORCA_TERMINAL_HANDLE)
+ou maestri:<$MAESTRI_TERMINAL_ID>, procurado em paineis.json (cadastro feito pelo
+master com painel.py). O nome da sessão não conta.
 
-Só age em comandos `orca` que envolvem o time:
-  - orchestration send --to <nome do time | term_ cadastrado>
-  - terminal send --terminal <nome do time | term_ cadastrado>
+Age só no que envolve o time:
+  - orca orchestration send --to <nome do time | painel cadastrado> (regras e log);
+  - orca terminal send --terminal <...> (só o master, nos painéis do próprio time);
+  - orca orchestration reply|ask de agente do time (barrado);
+  - maestri ask [--raw|--batch] para um agente do time (barrado; --raw só do master);
+  - SendMessage entre agentes do time (barrado);
+  - board.py send / board_send (MCP) chamados por subagent (barrados; a regra do envio é do envio.py);
+  - escrita à mão em comunicacoes.jsonl / paineis.json (barrada);
+  - Stop: cobra as mensagens recebidas sem resposta.
 Todo o resto passa sem opinião.
 
 Sempre sai com código 0. Stdout leva só a decisão JSON; logs vão para stderr.
@@ -464,8 +471,9 @@ def decide_protecao(ev):
         return None  # só vale para agentes do time
     if ev["tool"] == "edit" or (ev["tool"] == "shell" and escreve_em_protegido(alvo_cmd)):
         return {"action": "deny", "reason": (
-            f"Barrado pelo agent-board: {', '.join(toca)} não se edita à mão. O log é escrito só pelo hook "
-            "a cada orca orchestration send, e o cadastro só pelo master com painel.py. Para ler, use cat, jq ou grep.")}
+            f"Barrado pelo agent-board: {', '.join(toca)} não se edita à mão. O log é escrito só pelo agent-board "
+            "(envio pelo orca, board.py ou board_send, e comandos do painel.py), e o cadastro só pelo master "
+            "com painel.py. Para ler, use cat, jq ou grep.")}
     return None
 
 

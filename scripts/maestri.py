@@ -1,7 +1,8 @@
 """
 agent-board: a CLI `maestri` (canvas do Maestri) vista pelo agent-board.
 
-Só chamadas com lista de argumentos e timeout. Nenhuma função aqui decide
+Só chamadas com lista de argumentos e timeout (menos o `ask`, que roda destacado
+e é conferido por ESPERA_FALHA s). Nenhuma função aqui decide
 regra do time: quem decide é o hook (hook_core/politica).
 """
 import os

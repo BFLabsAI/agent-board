@@ -1,8 +1,29 @@
 # Changelog
 
+## 1.9.1 — 2026-10-12
+
+Correções achadas no teste ponta a ponta com a CLI real do Maestri e na revisão da documentação. Para atualizar: rode `install.sh` de novo (liga o matcher novo do `board_send`) e, em cada projeto, `painel.py init … --atualizar-contrato` (o CONTRATO foi revisado: Maestri, subagent, `board_send` com `prazo`/`veredito`).
+
+### Corrigido
+- Maestri: nome do terminal em modo Maestro (`name: "X", maestro: true`) saía com os atributos colados.
+- Rodapé de `resposta` e `andamento` sugeria responder (o hook barra); agora diz "Não responda a esta mensagem".
+- Comando sugerido (rodapé, Stop, bloqueios) leva `AGENT_BOARD_HOME=…` quando o estado não está no padrão; `painel.py maestri rotina` também.
+- Hook: um `--body` que cita `maestri ask` não desvia mais o envio da regra do time; `board.py` no shell com corpo citando `orca orchestration send` não é mais barrado.
+- `painel.py reenviar` entrega pelo transporte do destino (antes só pelo orca, e falhava para destino no Maestri).
+- Aviso na tela (escalação do `vigiar`, alerta de ping-pong) chega a um master no Maestri, pelo `maestri ask`.
+- Subagent barrado também no `board.py` e no `board_send` do MCP (o `install.sh` liga o matcher `mcp__agent-board__board_send`).
+- Entrega feita pelo `board.py`/MCP num floor do Maestri grava a `branch`; o painel web mostra a branch real do worktree.
+- `board.py send --body-file` com arquivo inexistente mostra o motivo em vez de um traceback.
+
+### Documentação
+- ADR-0007 (protocolo de tarefas e regras opcionais); ADRs 0001, 0003–0006, docstrings e ajudas revisadas.
+
+### Interno
+- `test_maestri.py` com 34 testes.
+
 ## 1.9.0 — 2026-10-12
 
-Maestri como segundo transporte: o mesmo time, as mesmas regras e o mesmo log num canvas do Maestri. Ver [ADR-0006](docs/adr/0006-maestri-como-transporte.md) e a seção "No Maestri" do README.
+Maestri como segundo transporte: o mesmo time, as mesmas regras e o mesmo log num canvas do Maestri. Ver [ADR-0006](docs/adr/0006-maestri-como-transporte.md) e a seção "No Maestri" do README. Para atualizar: rode `install.sh` de novo (o adaptador do OMP passou a encaminhar `maestri ask`) e, em cada projeto, `painel.py init --raiz … --projeto … --prefixo … --atualizar-contrato` (o CONTRATO ganhou a seção do Maestri; a chave `"maestri"` da config é opcional).
 
 ### Novo
 - **Identidade Maestri:** painel `maestri:<$MAESTRI_TERMINAL_ID>`; cadastro guarda `transporte` e `nome_canvas`.
@@ -13,6 +34,7 @@ Maestri como segundo transporte: o mesmo time, as mesmas regras e o mesmo log nu
 - **Canvas a partir da política (Maestro, dry-run sem `--aplicar`):** `painel.py maestri conectar` (cordas), `painel.py maestri rotina` (vigiar agendado).
 - **Opcionais** em `"maestri"`: `espelhar_notas` (nota `ab · <tema>` no fichário `agent-board`), `status_do_floor` (entrega põe o floor em revisão). Entrega feita de um floor grava a `branch` sozinha.
 - Painel web mostra o nome no canvas dos agentes do Maestri.
+- `painel.py listar` funciona sem o Orca (mostra o cadastro e os pedidos do Maestri); `board_inbox` no Maestri lista o que falta responder.
 
 ### Muda comportamento
 - Envio pelo MCP (`board_send`) e pelo `board.py` aceita crase e `$( )` no corpo (nunca passa por shell). No shell, o hook continua barrando.
@@ -23,7 +45,7 @@ Maestri como segundo transporte: o mesmo time, as mesmas regras e o mesmo log nu
 
 ## 1.8.0 — 2026-10-12
 
-Primeira versão com protocolo de tarefas, servidor MCP e painel web. Para atualizar: rode `install.sh` de novo e, em cada projeto, `painel.py init --raiz … --projeto … --prefixo … --atualizar-contrato` (o template ganhou chaves novas, todas opcionais).
+Primeira versão com protocolo de tarefas, servidor MCP e painel web. Para atualizar: rode `install.sh` de novo e, em cada projeto, `painel.py init --raiz … --projeto … --prefixo … --atualizar-contrato` (o template ganhou chaves novas, todas opcionais). Inclui o que foi numerado internamente como 1.6.0 e 1.7.0 (sem release próprio); a versão anterior publicada é a 1.5.1.
 
 ### ⚠️ Muda comportamento
 - **Resposta a uma `entrega` exige `--veredito aprovado|rejeitado`.** Antes passava sem. O rodapé da mensagem de entrega já traz o comando pronto.

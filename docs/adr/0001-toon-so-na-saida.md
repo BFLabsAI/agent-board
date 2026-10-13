@@ -10,7 +10,7 @@ O log (`comunicacoes.jsonl`), porém, é lido por código e por gente: o hook (P
 
 ## Decisão
 - O armazenamento continua **JSONL**, uma linha por evento.
-- **TOON é só formato de saída** de comandos voltados a agentes (`painel.py historico`, `tarefas`, `listar --formato toon`, ferramentas MCP), com `--formato json` sempre disponível.
+- **TOON é só formato de saída** de comandos voltados a agentes (`painel.py historico`, `tarefas`, `simular`, `notas`, `listar --formato toon`, ferramentas MCP). `historico`, `tarefas`, `simular` e `notas` também aceitam `--formato json`; `listar`, `resumo`, `eu` e `solicitacoes` têm saída em texto como alternativa.
 - O encoder é próprio (`scripts/toon.py`), só de escrita, com as regras de aspas da especificação. Sem dependência nova.
 
 ## Consequências

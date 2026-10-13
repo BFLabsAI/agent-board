@@ -1,8 +1,9 @@
 """
 agent-board: aviso digitado na tela do destino quando chega mensagem.
 
-Roda num processo separado (hook_core.py --avisar). No máximo 1 aviso por destino
-a cada JANELA_AVISO s, e nunca por cima de um diálogo aberto na tela.
+Roda num processo separado (hook_core.py --avisar). No Orca: no máximo 1 aviso por
+destino a cada JANELA_AVISO s, e nunca por cima de um diálogo aberto na tela. No
+Maestri: o aviso vai pelo `maestri ask`, que digita quando o terminal fica livre.
 disparar() abre esse processo; o hook, o ping-pong e o painel.py vigiar usam.
 """
 import json
