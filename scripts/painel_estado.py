@@ -127,11 +127,33 @@ def ping_pong(msgs, limite=12, janela_min=10):
     return out
 
 
+def _trechos(raiz, tema):
+    """{id da nota: primeira linha de texto} do arquivo do tema (cabeçalho do painel.py nota)."""
+    caminho = os.path.join(raiz, "docs", "agent-board", "notas", f"{tema}.md")
+    out, atual = {}, None
+    try:
+        with open(caminho, errors="replace") as f:
+            for linha in f:
+                linha = linha.strip()
+                if linha.startswith("## ") and " · n-" in linha:
+                    atual = linha.rsplit(" · ", 1)[-1]
+                elif linha and atual and atual not in out and not linha.startswith("#"):
+                    out[atual] = linha[:240]
+    except (FileNotFoundError, TypeError):
+        pass
+    return out
+
+
 def notas(raiz, msgs, limite=12):
     """Notas do log (tipo nota) e arquivos em docs/agent-board/notas/, mais recentes primeiro."""
+    do_log = [m for m in msgs if m.get("tipo") == "nota"]
+    trechos = {}
+    for tema in {m.get("tema") for m in do_log if m.get("tema")}:
+        trechos.update(_trechos(raiz, tema))
     out = [{"tema": m.get("tema"), "de": m.get("de"), "ts": m.get("ts"), "decisao": bool(m.get("decisao")),
-            "titulo": m.get("assunto") or m.get("titulo") or m.get("tema"), "trecho": m.get("trecho")}
-           for m in msgs if m.get("tipo") == "nota"]
+            "titulo": m.get("assunto") or m.get("titulo") or ("Decisão" if m.get("decisao") else "Nota"),
+            "trecho": m.get("trecho") or trechos.get(m.get("id"))}
+           for m in do_log]
     temas = {n["tema"] for n in out}
     for caminho in glob.glob(os.path.join(raiz, "docs", "agent-board", "notas", "*.md")):
         tema = os.path.splitext(os.path.basename(caminho))[0]

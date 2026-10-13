@@ -145,6 +145,21 @@ class Estado(Base):
         self.assertNotIn("n-1", [t["id"] for t in e["linha_do_tempo"]])
 
 
+class NotasDoPainelPy(Base):
+    def test_trecho_vem_do_arquivo_escrito_pelo_painel_py_nota(self):
+        import subprocess
+        env = dict(os.environ, AGENT_BOARD_HOME=HOME_TESTE)
+        env.pop("ORCA_TERMINAL_HANDLE", None)
+        for extra, texto in (([], "Postgres 5433, Redis 6380"), (["--decisao"], "JWT curto com refresh rotativo")):
+            r = subprocess.run([sys.executable, os.path.join(AQUI, "painel.py"), "nota", "--raiz", self.raiz,
+                                "--tema", "infra", "--de", "ceo"] + extra + [texto],
+                               capture_output=True, text=True, env=env, timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        ns = painel_estado.montar(self.raiz, "alpha", PAINEIS, "hoje")["notas"]
+        self.assertEqual(sorted((n["titulo"], n["trecho"], n["de"]) for n in ns),
+                         [("Decisão", "JWT curto com refresh rotativo", "ceo"), ("Nota", "Postgres 5433, Redis 6380", "ceo")])
+
+
 class Servidor(Base):
     def setUp(self):
         super().setUp()
