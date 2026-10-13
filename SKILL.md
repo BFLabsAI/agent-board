@@ -1,6 +1,6 @@
 ---
 name: agent-board
-description: Monta e mantém a comunicação entre agentes de terminais diferentes (master, managers, researcher) via correio do Orca, com hooks que validam, registram em log e obrigam resposta. Use quando o CEO pedir para configurar o time de agentes de um projeto, cadastrar ou recadastrar painéis, incluir ou tirar um agente, investigar mensagem barrada ou instalar o agent-board num servidor.
+description: Monta e mantém a comunicação entre agentes de terminais diferentes (master, managers, researcher) via correio do Orca ou canvas do Maestri, com hooks que validam, registram em log e obrigam resposta. Use quando o CEO pedir para configurar o time de agentes de um projeto, cadastrar ou recadastrar painéis, incluir ou tirar um agente, investigar mensagem barrada ou instalar o agent-board num servidor.
 ---
 
 # Agent-board
@@ -25,6 +25,8 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 | [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar`, `tarefas`, `vigiar`, `simular`, `nota`, `notas`, `resumo`, `servir` |
 | [`scripts/politica.py`](scripts/politica.py) | skill | Regras de envio sem I/O (`validar_envio`), usadas pelo hook, pelo MCP e pelo `simular` |
 | [`scripts/mcp_server.py`](scripts/mcp_server.py) | skill | Servidor MCP: ferramentas `board_*` tipadas, com as mesmas regras do hook |
+| [`scripts/board.py`](scripts/board.py) | skill | `board.py send`: envio do time em qualquer transporte (Orca ou Maestri) |
+| [`scripts/cmd_maestri.py`](scripts/cmd_maestri.py) | skill | `eu`, `solicitar`, `solicitacoes`, `maestri conectar`, `maestri rotina` |
 | [`scripts/notificar.py`](scripts/notificar.py) | skill | Webhook e comentário no GitHub depois de um envio, em processo separado |
 | [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks e registra o servidor MCP no Claude Code (idempotente, com backup) |
 | [`scripts/test_agent_board.py`](scripts/test_agent_board.py) | skill | Testes a seco, sem envio real |
@@ -75,6 +77,17 @@ Com o cadastro vazio, os hooks não agem sobre ninguém.
    ```
    Se o CEO quiser cada manager numa branch isolada, acrescente `--worktree`: cada manager ganha `<project-path>/../<projeto>-worktrees/<agente>` na branch `ab/<agente>`. O log continua no checkout principal; você faz o merge das branches.
 6. Peça ao CEO que dê às sessões o mesmo nome do cadastro. Isso ajuda a leitura na tela, mas não serve de identidade.
+
+### No Maestri (terminais no canvas, `$MAESTRI_TERMINAL_ID`)
+
+O Maestri não lista terminais por ID, então o cadastro começa no agente. O resto (regras, log, cobrança) é igual. Detalhes: [ADR-0006](docs/adr/0006-maestri-como-transporte.md).
+
+1. Peça a cada agente (ou ao CEO, no terminal dele) que rode `python3 $S/painel.py solicitar --raiz <project-path> --agente <nome-do-time>`.
+2. Rode `python3 $S/painel.py solicitacoes`: ID, nome no canvas e o nome pedido. **Mostre ao CEO e espere a confirmação.**
+3. Cadastre com a linha que o comando sugere: `painel.py cadastrar --raiz <project-path> maestri:<id>=<nome> ...`.
+4. Ligue as cordas que a política exige. Mostre antes: `painel.py maestri conectar --raiz <project-path>`; com o "ok" do CEO, repita com `--aplicar` (seu terminal precisa estar em modo Maestro).
+5. Opcional: `painel.py maestri rotina --raiz <project-path> --aplicar` agenda o `vigiar`; `"maestri": {"espelhar_notas": true, "status_do_floor": true}` no `agent-board.json`.
+6. Na virada (passo 4), use `python3 $S/board.py send` no lugar do `orca orchestration send`, e diga ao time que `maestri ask` direto entre agentes do time é barrado.
 
 ## 4. Apresentar o time (virada)
 

@@ -19,7 +19,7 @@ Funciona com **Claude Code** e **Oh My Pi (OMP)**, ambos com hooks. Agentes de o
 1. [Como funciona](#como-funciona)
 2. [Requisitos](#requisitos)
 3. [Instalação](#instalação)
-4. [Conectando com o Orca](#conectando-com-o-orca)
+4. [Conectando com o Orca](#conectando-com-o-orca) · [No Maestri](#no-maestri)
 5. [Configurar um projeto](#configurar-um-projeto)
 6. [Cadastrar os painéis](#cadastrar-os-painéis)
 7. [Apresentar o time](#apresentar-o-time)
@@ -182,6 +182,48 @@ Se `orca status` falhar, resolva a conexão com o Orca primeiro. Em workspace SS
 - Instale o agent-board **no servidor**, onde rodam o Claude Code e o OMP.
 - A CLI `orca` do servidor vem do relay do Orca (`~/.orca-relay/bin/orca`) e conversa com o app no seu computador.
 - Se o Orca for reiniciado ou a conexão cair, envios podem dar timeout. Espere reconectar e reenvie. O log grava a mensagem quando o hook aprova o envio.
+
+---
+
+## No Maestri
+
+O mesmo time, as mesmas regras e o mesmo log também funcionam num canvas do [Maestri](https://www.themaestri.app/pt-br/docs/intro), sem Orca. Decisão e limites: [ADR-0006](docs/adr/0006-maestri-como-transporte.md).
+
+| No Orca | No Maestri |
+|---|---|
+| Painel = `$ORCA_TERMINAL_HANDLE` (`term_…`) | Painel = `maestri:<$MAESTRI_TERMINAL_ID>`, mais o nome do terminal no canvas |
+| Master vê os painéis com `painel.py listar` | Cada agente pede o cadastro (`painel.py solicitar`); o master vê com `solicitacoes` e cadastra depois do CEO |
+| Envia com `orca orchestration send` | Envia com `board.py send` (mesmas flags) ou `board_send` (MCP) |
+| Aviso digitado na tela + `check --format` | A mensagem inteira chega digitada no terminal (`maestri ask`) |
+| Qualquer painel fala com qualquer painel | Só terminais **ligados por corda** se falam |
+
+```bash
+S=~/.agents/skills/agent-board/scripts
+python3 $S/painel.py eu                                                  # quem é este terminal
+python3 $S/painel.py solicitar --raiz <project-path> --agente <prefixo>-manager01-cc   # no terminal do agente
+python3 $S/painel.py solicitacoes                                        # master: pedidos pendentes
+python3 $S/painel.py cadastrar --raiz <project-path> maestri:<id>=<prefixo>-manager01-cc   # depois do CEO
+python3 $S/board.py send --to manager01-cc --type pedido --modo executar --subject "Migrar login" --body "..."
+```
+
+**Do canvas para a política e de volta** (master num terminal em modo Maestro; sem `--aplicar` só mostra o que faria):
+
+```bash
+python3 $S/painel.py maestri conectar --raiz <project-path> --aplicar   # cordas que a política exige (ligacoes ou pode_pedir_a; master com todos)
+python3 $S/painel.py maestri rotina --raiz <project-path> --a-cada 10m --aplicar   # vigiar como routine
+```
+
+**Opcionais** no `agent-board.json`:
+
+```json
+"maestri": {"espelhar_notas": true, "status_do_floor": true}
+```
+
+- `espelhar_notas`: cada `painel.py nota` também atualiza a nota `ab · <tema>` no fichário `agent-board` do canvas.
+- `status_do_floor`: uma `entrega` feita de um floor posta `maestri floor status "Entrega …" --state review` (o Maestri notifica você).
+- Num floor (git worktree), a `entrega` grava a `branch` no log sozinha, sem `cadastrar --worktree`.
+
+O hook barra `maestri ask` direto para um agente do time (sem registro, sem regra, sem cobrança). Com ajudantes fora do time, e `maestri check`, nada muda.
 
 ---
 
@@ -456,7 +498,7 @@ No Claude Code, o agente também pode falar com o time por **ferramentas MCP** c
 
 **A regra continua uma só.** O `board_send` monta o mesmo `orca orchestration send …` e o passa pelo `decide()` do `hook_core.py`, antes e depois do envio, como o hook faria: barra, traduz o nome, grava o log e digita o aviso no destino. O servidor precisa chamar o `decide()` ele mesmo porque ferramenta MCP **não passa pelo PreToolUse do hook** (o matcher é só Bash, Edit/Write e SendMessage). O comando `orca` no shell continua valendo e continua passando pelo hook.
 
-Como a regra é a do shell, o `corpo` também não aceita crase nem `$( )`.
+O `corpo` é texto puro: crase e `$( )` chegam como texto (o envio pelo MCP nunca passa por um shell). No shell, o hook continua barrando crase e `$( )` no comando `orca`.
 
 A identidade é a mesma: `$ORCA_TERMINAL_HANDLE` do painel, que o Claude Code repassa ao servidor. Painel sem cadastro recebe erro pedindo o cadastro ao master.
 
@@ -525,8 +567,10 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `scripts/base.py`, `registro.py`, `politica.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, regras de envio (`validar_envio`), proteção do log, aviso na tela, saída TOON |
 | `scripts/mcp_server.py`, `mcp_ferramentas.py` | skill | Servidor MCP com as ferramentas `board_*`, que usam as regras do `hook_core.py` |
 | `scripts/cmd_web.py`, `painel_estado.py`, `painel_web.html` | skill | Painel web (`painel.py servir`) |
+| `scripts/board.py`, `envio.py` | skill | Envio do time em qualquer transporte (`board.py send`; o MCP usa o mesmo `envio.py`) |
+| `scripts/maestri.py`, `cmd_maestri.py` | skill | CLI do Maestri vista pelo agent-board; `eu`, `solicitar`, `solicitacoes`, `maestri conectar/rotina` |
 | `scripts/install.sh` | skill | Liga os hooks e registra o servidor MCP (idempotente, com backup) |
-| `scripts/test_*.py` | skill | Testes a seco: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web` |
+| `scripts/test_*.py` | skill | Testes a seco: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web`, `maestri` |
 | `templates/CONTRATO.md` | skill → projeto | Vira `docs/agent-board/CONTRATO.md` |
 | `templates/agent-board.json` | skill → projeto | Vira `docs/agent-board/agent-board.json` |
 | `SKILL.md` | skill | Procedimento do master, que o agente lê ao usar a skill |
@@ -536,6 +580,7 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `~/.agent-hooks/agent-board/alertas-estado.json` | máquina | Controle do alerta de ping-pong (1 por par por janela) |
 | `~/.agent-hooks/agent-board/pendentes/`, `cobrancas/` | máquina | Estado interno entre o pré e o pós-envio, e contagem das cobranças |
 | `~/.agent-hooks/agent-board/envios/` | máquina | Comando completo de cada envio (7 dias), para o `reenviar` |
+| `~/.agent-hooks/agent-board/solicitacoes/`, `maestri-ask/` | máquina | Pedidos de cadastro do Maestri e a saída de cada `maestri ask` (7 dias) |
 | `~/.agent-hooks/agent-board/travas/` | máquina | Arquivos de trava do log de cada projeto |
 | `docs/agent-board/comunicacoes.jsonl` | projeto, no git | O log das mensagens |
 | `docs/agent-board/arquivo/AAAA-MM.jsonl` | projeto, no git | Arquivo morto do log (`painel.py arquivar`) |
@@ -554,6 +599,8 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `AGENT_BOARD_WEBHOOK_TIPOS` | `escalacao,entrega` | Tipos que vão para o webhook, separados por vírgula |
 | `ORCA_BIN` | autodetectado | Força o binário do `orca` usado pelos hooks e pelo `painel.py` |
 | `ORCA_TERMINAL_HANDLE` | definida pelo Orca | ID do painel. Não defina à mão |
+| `MAESTRI_TERMINAL_ID` | definida pelo Maestri | ID do terminal no canvas (painel `maestri:<id>`). Só vale quando não há `ORCA_TERMINAL_HANDLE` |
+| `MAESTRI_CLI` | definida pelo Maestri | Caminho da CLI `maestri` (senão, a do `PATH` ou `~/.maestri/bin/maestri`) |
 | `ORCA_REMOTE_CLI_BIN_DIR` | definida pelo Orca | Pasta da CLI `orca` em workspaces remotos |
 
 ---
@@ -618,6 +665,7 @@ Para só **desligar** sem desinstalar, esvazie o cadastro: com `paineis.json` va
 - `vigiar` só olha pedidos com `prazo`. Duas execuções ao mesmo tempo podem escalar o mesmo pedido duas vezes; rode uma por projeto.
 - `simular` não revalida o texto de `--prazo` (o log guarda só a hora já calculada) nem a resolução de nomes e painéis: confere as regras de `validar_envio`.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.
+- No Maestri, a entrega só confirma que o `maestri ask` não falhou nos primeiros 3 s (sem corda, nome errado). A resposta do destino em si fica em `~/.agent-hooks/agent-board/maestri-ask/`. Time misto (remetente no Maestri, destino no Orca) não é suportado.
 - As notas em `docs/agent-board/notas/` são Markdown comum: a autoria provada é a da linha no log, não a do cabeçalho no arquivo, que pode ser editado como qualquer arquivo do repositório.
 - A notificação (webhook, GitHub) não tem nova tentativa: se falhar, fica só a linha no `avisos.log`.
 
