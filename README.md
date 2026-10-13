@@ -666,6 +666,7 @@ Para só **desligar** sem desinstalar, esvazie o cadastro: com `paineis.json` va
 - `simular` não revalida o texto de `--prazo` (o log guarda só a hora já calculada) nem a resolução de nomes e painéis: confere as regras de `validar_envio`.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.
 - No Maestri, a entrega só confirma que o `maestri ask` não falhou nos primeiros 3 s (sem corda, nome errado). A resposta do destino em si fica em `~/.agent-hooks/agent-board/maestri-ask/`. Time misto (remetente no Maestri, destino no Orca) não é suportado.
+- No Maestri, a mensagem é **digitada** no terminal do destino. Se um humano estiver escrevendo ali naquele momento, o texto dele e a mensagem se misturam (visto no teste ponta a ponta). Evite digitar nos terminais dos agentes enquanto o time troca mensagens.
 - As notas em `docs/agent-board/notas/` são Markdown comum: a autoria provada é a da linha no log, não a do cabeçalho no arquivo, que pode ser editado como qualquer arquivo do repositório.
 - A notificação (webhook, GitHub) não tem nova tentativa: se falhar, fica só a linha no `avisos.log`.
 
