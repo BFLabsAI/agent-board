@@ -24,16 +24,15 @@ import os
 import re
 import secrets
 import shlex
-import subprocess
 import sys
 import time
 
-from avisos import avisar
+from avisos import avisar, disparar, uma_vez
 from base import (CONFIG_REL, HOME, LOG_REL, NOME_RE, PAINEIS, VERSAO, Barrado, achar_orca, agora,  # noqa: F401
-                  carregar_config, carregar_paineis, ler_json, papel_do_nome, registrar_aviso)
-from politica import MODOS, TIPOS, checar_permissao, checar_responde_a, pendentes_de  # noqa: F401
+                  carregar_config, carregar_paineis, ler_json, master_do_projeto, papel_do_nome, registrar_aviso)
+from politica import MODOS, TIPOS, escolher_por_papel, pendentes_de, validar_envio  # noqa: F401
 from protecao import PROTEGIDOS, escreve_em_protegido
-from registro import gravar_log
+from registro import gravar_log, ler_log
 
 
 # Gate: se a política quebrar num comando orca do time, o envio é barrado.
@@ -41,9 +40,10 @@ FAIL_CLOSED = True
 
 # Os tipos do time viram um --type aceito pelo Orca.
 TIPO_ORCA = {"pedido": "handoff", "resposta": "status", "aviso": "status",
-             "escalacao": "status", "entrega": "status"}
+             "escalacao": "status", "entrega": "status", "andamento": "status"}
 # Flags nossas: o hook lê e remove antes de entregar ao Orca.
-FLAGS_TIME = {"--modo": "modo", "--issues": "issues", "--responde-a": "responde_a"}
+FLAGS_TIME = {"--modo": "modo", "--issues": "issues", "--responde-a": "responde_a",
+              "--veredito": "veredito", "--prazo": "prazo"}
 COM_VALOR = {"--to", "--from", "--type", "--subject", "--body", "--terminal", "--text"} | set(FLAGS_TIME)
 
 ORCA_RE = re.compile(r"(?:^|[\s;&|(`/])orca\s+(?:orchestration\s+(?:send|reply|ask)|terminal\s+send)\b")
@@ -150,6 +150,8 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         return None  # sem destino explícito: fluxo interno do Orca (run:)
     if alvo.startswith(("run:", "dispatch:")):
         return None  # orquestração própria do agente (workers, runs)
+    if alvo.startswith("papel:") and eu is not None:
+        alvo = rotear_por_papel(alvo[len("papel:"):], paineis, eu)
     destino = achar_destino(alvo, paineis, eu.get("projeto") if eu else None)
     if destino is None and eu is not None:
         destino = achar_destino(f"{prefixo_de(eu)}-{alvo}", paineis, eu.get("projeto"))
@@ -178,9 +180,8 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         raise Barrado("--subject é obrigatório")
     modo = d.get("--modo") if isinstance(d.get("--modo"), str) else None
     cfg = carregar_config(eu["raiz"])
-    checar_permissao(cfg, eu, para, tipo, modo)
-    if tipo == "resposta":
-        checar_responde_a(eu, d.get("--responde-a"))
+    r = validar_envio(cfg, eu, para, tipo, modo, d.get("--responde-a"), d.get("--veredito"), d.get("--prazo"),
+                      ler_log(eu["raiz"]))
     issues = []
     if isinstance(d.get("--issues"), str):
         issues = [int(x) for x in re.findall(r"\d+", d["--issues"])]
@@ -190,7 +191,11 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
     corpo = d.get("--body") if isinstance(d.get("--body"), str) else ""
     corpo += (f"\n\n---\n[agent-board {cid}] de {eu['agente']} para {para['agente']}. "
               f"Para responder: orca orchestration send --to {eu['agente']} --type resposta "
-              f"--responde-a {cid} --subject \"...\" --body \"...\"")
+              f"--responde-a {cid}" + (" --veredito aprovado|rejeitado" if tipo == "entrega" else "")
+              + " --subject \"...\" --body \"...\"")
+    if tipo == "pedido":
+        corpo += (f"\nPedido longo: mande antes --type andamento --responde-a {cid} com o progresso"
+                  + (f". Prazo: {r['prazo']}" if r["prazo"] else ""))
 
     novo = [argv[0]] + argv[1:sub_inicio]
     ignorar = {"--to", "--from", "--type", "--subject", "--body"} | set(FLAGS_TIME)
@@ -206,13 +211,41 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
         "de": eu["agente"], "para": para["agente"], "tipo": tipo, "modo": modo,
         "assunto": assunto.strip(), "issues": issues,
         "responde_a": d.get("--responde-a") if isinstance(d.get("--responde-a"), str) else None,
+        **{k: r[k] for k in ("prazo", "veredito") if r[k] is not None},  # só aparecem quando usados
     })
+    if r["ping_pong"]:
+        alertar_ping_pong(eu, paineis, r["ping_pong"], cid)
     novo_input = dict(ev["tool_input"])
     novo_input["command"] = shlex.join(novo)
     guardar_envio(cid, novo)
     guardar_pendente(ev, novo_input["command"], {"id": cid, "tipo": rotulo, "de": eu["agente"],
                                                  "para_handle": para_handle, "raiz": eu["raiz"]})
     return {"action": "allow", "updated_input": novo_input}
+
+
+def rotear_por_papel(papel, paineis, eu):
+    """--to papel:<papel> -> nome do agente desse papel com menos pedidos abertos no projeto."""
+    candidatos = [p["agente"] for p in paineis.values() if p.get("projeto") == eu.get("projeto")
+                  and p.get("papel") == papel and p.get("agente") != eu.get("agente")]
+    escolhido = escolher_por_papel(candidatos, ler_log(eu["raiz"]))
+    if escolhido is None:
+        raise Barrado(f"nenhum agente com papel {papel} cadastrado no projeto {eu['projeto']} além de você. "
+                      f"Agentes válidos: {', '.join(nomes_do_projeto(paineis, eu)) or 'nenhum'}. "
+                      "Mande --to <nome> ou peça ao master para cadastrar")
+    return escolhido
+
+
+def alertar_ping_pong(eu, paineis, pp, cid):
+    """Conversa demais entre o mesmo par: registra e avisa o master, uma vez por par por janela."""
+    a, b = pp["par"]
+    if not uma_vez(f"{eu['raiz']}|{a}|{b}", pp["janela_min"] * 60):
+        return
+    texto = (f"[agent-board] Ping-pong: {pp['n']} mensagens entre {a} e {b} em {pp['janela_min']} min, "
+             f"sem entrega. Veja: painel.py historico --raiz {eu['raiz']} --agente {a}")
+    registrar_aviso(f"{cid} {texto}")
+    master = master_do_projeto(paineis, eu.get("projeto"))
+    if master:
+        disparar(master, cid, texto)
 
 
 def pre_terminal_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
@@ -296,15 +329,8 @@ def post_send(ev, paineis):
             gravar_log(p["raiz"], {"id": p["id"], "ts": agora().isoformat(timespec="seconds"), "status": "falhou"})
         return None
     para_handle = p["para_handle"]
-    aviso = (f"[agent-board] Nova mensagem {p['id']} ({p['tipo']}) de {p['de']}. "
+    disparar(para_handle, p["id"], f"[agent-board] Nova mensagem {p['id']} ({p['tipo']}) de {p['de']}. "
              f"Leia com: orca orchestration check --terminal {para_handle} --format")
-    try:
-        with open(os.path.join(HOME, "avisos.log"), "a") as erros:
-            subprocess.Popen([sys.executable, os.path.abspath(__file__), "--avisar", para_handle, p["id"], aviso],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=erros, start_new_session=True)
-    except OSError as exc:
-        registrar_aviso(f"{p['id']} aviso não enviado: {exc}")
     return None
 
 
@@ -360,7 +386,9 @@ def decide_stop(ev):
                     f"--responde-a {lista} --subject \"...\" --body \"...\"")
     return {"action": "continue", "reason": (
         "agent-board: regra do time - toda mensagem recebida precisa de resposta antes de encerrar: "
-        "pedido se responde com o resultado ou o bloqueio (sem 'Recebido'); aviso, com uma resposta curta. Leia com orca orchestration check --terminal "
+        "pedido se responde com o resultado ou o bloqueio (sem 'Recebido'); aviso, com uma resposta curta. "
+        "Pedido longo ainda em curso: mande --type andamento --responde-a <id> com o progresso (para a cobrança; "
+        "o pedido segue aberto até a resposta). Leia com orca orchestration check --terminal "
         f"{eu_handle} --format se ainda não leu, e responda:\n" + "\n".join(cmds))}
 
 
@@ -384,7 +412,7 @@ def decide_sendmessage(ev):
     return {"action": "deny", "reason": (
         f"Barrado pelo agent-board: entre agentes do time não use SendMessage (fica sem registro e pode "
         f"travar esperando aprovação). Use: orca orchestration send --to {alvo or '<agente>'} "
-        "--type <pedido|resposta|aviso|escalacao|entrega> --subject \"...\" --body \"...\"")}
+        "--type <pedido|resposta|aviso|escalacao|entrega|andamento> --subject \"...\" --body \"...\"")}
 
 
 

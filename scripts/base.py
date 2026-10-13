@@ -54,6 +54,14 @@ def carregar_config(raiz):
     return cfg
 
 
+def master_do_projeto(paineis, projeto):
+    """Handle do painel do master do projeto, ou None se não estiver cadastrado."""
+    for h, p in paineis.items():
+        if p.get("projeto") == projeto and p.get("papel") == "master":
+            return h
+    return None
+
+
 def papel_do_nome(nome):
     m = NOME_RE.match(nome or "")
     if not m:
