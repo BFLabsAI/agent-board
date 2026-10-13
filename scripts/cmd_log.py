@@ -47,16 +47,23 @@ def historico(args):
     p.add_argument("--tudo", action="store_true", help="inclui o arquivo morto")
     p.add_argument("--formato", choices=("toon", "json"), default="toon")
     a = p.parse_args(args)
-    raiz = raiz_de(a.raiz)
-    msgs = registro.ler_tudo(raiz) if a.tudo else registro.ler_log(raiz)
-    if a.agente:
-        msgs = [m for m in msgs if a.agente in (m.get("de"), m.get("para"))]
-    if a.sobre:
-        msgs = [m for m in msgs if a.sobre.lower() in str(m.get("assunto", "")).lower()
-                or a.sobre.lower() in str(m.get("tema", "")).lower()]
-    if a.n:
-        msgs = msgs[-a.n:]
-    imprimir("mensagens", msgs, a.formato)
+    imprimir("mensagens", filtrar(raiz_de(a.raiz), a.agente, a.sobre, a.n, a.tudo), a.formato)
+
+
+def filtrar(raiz, agente=None, sobre=None, n=20, tudo=False):
+    """Mensagens do historico: de ou para `agente`, com `sobre` no assunto, as últimas `n` (0 = todas).
+
+    Também usada pelo servidor MCP (board_historico).
+    """
+    msgs = registro.ler_tudo(raiz) if tudo else registro.ler_log(raiz)
+    if agente:
+        msgs = [m for m in msgs if agente in (m.get("de"), m.get("para"))]
+    if sobre:
+        msgs = [m for m in msgs if sobre.lower() in str(m.get("assunto", "")).lower()
+                or sobre.lower() in str(m.get("tema", "")).lower()]
+    if n:
+        msgs = msgs[-n:]
+    return msgs
 
 
 def verificar(args):

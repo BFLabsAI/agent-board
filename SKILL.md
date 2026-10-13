@@ -23,7 +23,8 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 | [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta) |
 | [`scripts/omp-agent-board.ts`](scripts/omp-agent-board.ts) | skill | Adaptador do OMP para o mesmo core |
 | [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar` |
-| [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks no servidor (idempotente, com backup) |
+| [`scripts/mcp_server.py`](scripts/mcp_server.py) | skill | Servidor MCP: ferramentas `board_*` tipadas, com as mesmas regras do hook |
+| [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks e registra o servidor MCP no Claude Code (idempotente, com backup) |
 | [`scripts/test_agent_board.py`](scripts/test_agent_board.py) | skill | Testes a seco, sem envio real |
 | [`scripts/VERSION`](scripts/VERSION) | skill | Versão do pacote |
 | [`templates/CONTRATO.md`](templates/CONTRATO.md) | vira `docs/agent-board/CONTRATO.md` | Regras que todo agente do projeto lê |
@@ -41,9 +42,12 @@ bash $S/install.sh && python3 $S/test_agent_board.py
 
 Os testes precisam passar todos. Depois confira:
 - no Claude Code, a lista de hooks deve mostrar as entradas `agent-board` em PreToolUse (Bash e SendMessage), PostToolUse e Stop;
-- no OMP, a lista de extensões de uma sessão nova deve trazer o `agent-board`.
+- no OMP, a lista de extensões de uma sessão nova deve trazer o `agent-board`;
+- `claude mcp get agent-board` deve mostrar o `mcp_server.py`. Sem o `claude` no PATH, o `install.sh` imprime o comando de registro.
 
 Com o cadastro vazio, os hooks não agem sobre ninguém.
+
+**Servidor MCP.** No Claude Code, os agentes podem usar as ferramentas `board_send`, `board_inbox`, `board_pendentes`, `board_historico` e `board_status` no lugar do comando `orca` no shell (parâmetros tipados, sem erro de aspas). Ferramenta MCP não passa pelo PreToolUse do hook (o matcher é só Bash, Edit/Write e SendMessage), por isso o servidor chama o `decide()` do `hook_core.py` ele mesmo: as regras, o log e o aviso são os mesmos. O comando no shell continua valendo e passando pelo hook.
 
 ## 2. Configurar um projeto
 

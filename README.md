@@ -24,12 +24,13 @@ Funciona com **Claude Code** e **Oh My Pi (OMP)**, ambos com hooks. Agentes de o
 6. [Cadastrar os painéis](#cadastrar-os-painéis)
 7. [Apresentar o time](#apresentar-o-time)
 8. [Uso no dia a dia](#uso-no-dia-a-dia)
-9. [O que o hook barra](#o-que-o-hook-barra)
-10. [Arquivos e estado](#arquivos-e-estado)
-11. [Variáveis de ambiente](#variáveis-de-ambiente)
-12. [Solução de problemas](#solução-de-problemas)
-13. [Atualizar e desinstalar](#atualizar-e-desinstalar)
-14. [Limites conhecidos](#limites-conhecidos)
+9. [Servidor MCP](#servidor-mcp)
+10. [O que o hook barra](#o-que-o-hook-barra)
+11. [Arquivos e estado](#arquivos-e-estado)
+12. [Variáveis de ambiente](#variáveis-de-ambiente)
+13. [Solução de problemas](#solução-de-problemas)
+14. [Atualizar e desinstalar](#atualizar-e-desinstalar)
+15. [Limites conhecidos](#limites-conhecidos)
 
 ---
 
@@ -112,7 +113,8 @@ O instalador é idempotente, então dá para rodar quantas vezes quiser. Ele faz
 
 - cria o diretório de estado `~/.agent-hooks/agent-board/`, com um cadastro vazio (`paineis.json`);
 - **Claude Code:** acrescenta em `~/.claude/settings.json` as entradas `PreToolUse` (Bash, Edit/Write, SendMessage), `PostToolUse` (Bash) e `Stop`. Antes, guarda um backup do settings em `~/.agent-hooks/agent-board/settings.json.bak-<data>`. Se já houver entradas antigas do agent-board, troca pelas atuais e não mexe nos seus outros hooks;
-- **OMP:** grava `~/.omp/agent/hooks/pre/agent-board.ts`, com o caminho do core já preenchido.
+- **OMP:** grava `~/.omp/agent/hooks/pre/agent-board.ts`, com o caminho do core já preenchido;
+- **Servidor MCP:** se o `claude` estiver no PATH, registra o servidor `agent-board` em escopo de usuário (`claude mcp add --scope user`). Se já estiver registrado com o mesmo caminho, não faz nada. Sem o `claude`, mostra o comando para você rodar. Veja [Servidor MCP](#servidor-mcp).
 
 ### 3. Rode os testes
 
@@ -356,6 +358,33 @@ mensagens[2]{id,ts,de,para,tipo,modo,assunto,responde_a,issues}:
 
 ---
 
+## Servidor MCP
+
+No Claude Code, o agente também pode falar com o time por **ferramentas MCP** com parâmetros tipados, em vez de escrever o comando `orca` no shell. Acabam os erros de aspas no `--subject` e no `--body`.
+
+| Ferramenta | O que faz |
+|---|---|
+| `board_send(para, tipo, assunto, corpo?, modo?, issues?, responde_a?, prazo?, veredito?)` | Envia uma mensagem. Mesmas regras do shell: `modo` em pedido para manager, `responde_a` em resposta. Devolve o id `c-…` |
+| `board_inbox()` | Lê o correio do painel (`orca orchestration check --terminal <painel> --format`) |
+| `board_pendentes()` | Mensagens recebidas ainda sem resposta, em TOON |
+| `board_historico(agente?, sobre?, n?, tudo?)` | O mesmo filtro do `painel.py historico`, em TOON |
+| `board_status()` | Quem sou eu (agente, papel, projeto), pendentes, versão e os agentes do projeto, em TOON |
+
+**A regra continua uma só.** O `board_send` monta o mesmo `orca orchestration send …` e o passa pelo `decide()` do `hook_core.py`, antes e depois do envio, como o hook faria: barra, traduz o nome, grava o log e digita o aviso no destino. O servidor precisa chamar o `decide()` ele mesmo porque ferramenta MCP **não passa pelo PreToolUse do hook** (o matcher é só Bash, Edit/Write e SendMessage). O comando `orca` no shell continua valendo e continua passando pelo hook.
+
+Como a regra é a do shell, o `corpo` também não aceita crase nem `$( )`.
+
+A identidade é a mesma: `$ORCA_TERMINAL_HANDLE` do painel, que o Claude Code repassa ao servidor. Painel sem cadastro recebe erro pedindo o cadastro ao master.
+
+O servidor é `scripts/mcp_server.py` (JSON-RPC 2.0 sobre stdio, só biblioteca padrão). O `install.sh` registra. Para registrar à mão:
+
+```bash
+claude mcp add --scope user agent-board -- python3 $S/mcp_server.py
+claude mcp get agent-board   # confere
+```
+
+---
+
 ## O que o hook barra
 
 O motivo de cada bloqueio vem na própria mensagem de erro, com a correção sugerida.
@@ -387,8 +416,9 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `scripts/omp-agent-board.ts` | skill | Adaptador do OMP para o mesmo core |
 | `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, e os comandos de log de `cmd_log.py` |
 | `scripts/base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, proteção do log, aviso na tela, saída TOON |
-| `scripts/install.sh` | skill | Liga os hooks (idempotente, com backup) |
-| `scripts/test_agent_board.py`, `test_registro.py` | skill | Testes a seco |
+| `scripts/mcp_server.py`, `mcp_ferramentas.py` | skill | Servidor MCP com as ferramentas `board_*`, que usam as regras do `hook_core.py` |
+| `scripts/install.sh` | skill | Liga os hooks e registra o servidor MCP (idempotente, com backup) |
+| `scripts/test_agent_board.py`, `test_registro.py`, `test_mcp.py` | skill | Testes a seco |
 | `templates/CONTRATO.md` | skill → projeto | Vira `docs/agent-board/CONTRATO.md` |
 | `templates/agent-board.json` | skill → projeto | Vira `docs/agent-board/agent-board.json` |
 | `SKILL.md` | skill | Procedimento do master, que o agente lê ao usar a skill |
@@ -458,7 +488,8 @@ python3 $S/painel.py init --raiz <project-path> --projeto <project-name> --prefi
 
 1. Tire de `~/.claude/settings.json` as entradas de hook que contêm `agent-board`. Há backup em `~/.agent-hooks/agent-board/settings.json.bak-*`.
 2. Apague `~/.omp/agent/hooks/pre/agent-board.ts`.
-3. (Opcional) Apague `~/.agent-hooks/agent-board/` e os links em `~/.claude/skills` e `~/.hermes/skills`.
+3. Tire o servidor MCP: `claude mcp remove --scope user agent-board`.
+4. (Opcional) Apague `~/.agent-hooks/agent-board/` e os links em `~/.claude/skills` e `~/.hermes/skills`.
 
 Para só **desligar** sem desinstalar, esvazie o cadastro: com `paineis.json` vazio, os hooks não agem sobre ninguém.
 
