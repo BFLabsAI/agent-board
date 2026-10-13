@@ -29,7 +29,7 @@ M, G, R = "alpha-master", "alpha-manager01-cc", "alpha-researcher01-cc"
 FALSO = r'''#!/bin/bash
 printf '%s\n' "$*" >> "$FAKE_CHAMADAS"
 case "$1" in
-  list) printf 'You:\n  - name: "%s"\n\nNo connected agents, notes, or portals. Use the Connect button in the terminal toolbar to connect to another terminal, note, or portal.' "$FAKE_NOME" ;;
+  list) printf 'You:\n  - name: "%s"%s\n\nNo connected agents, notes, or portals. Use the Connect button in the terminal toolbar to connect to another terminal, note, or portal.' "$FAKE_NOME" "$FAKE_ATRIBUTOS" ;;
   ask)
     case "$2" in
       Desconectado) echo "Agent 'Desconectado' is not connected to you." >&2; exit 1 ;;
@@ -128,6 +128,12 @@ class Cadastro(Base):
         self.assertIn("handle: maestri:ZZZZ-9999", r.stdout)
         self.assertIn("nome_canvas: Pena Azul", r.stdout)
         self.assertIn("painel.py solicitar", r.stdout)
+
+    def test_nome_do_terminal_em_modo_maestro(self):
+        e = self.env("ZZZZ-9999", 'Shell #2')
+        e["FAKE_ATRIBUTOS"] = ", maestro: true"
+        r = subprocess.run([sys.executable, PAINEL, "eu"], capture_output=True, text=True, env=e, timeout=30)
+        self.assertIn("nome_canvas: Shell #2\n", r.stdout)
 
     def test_solicitar_listar_e_cadastrar(self):
         r = self.rodar(PAINEL, "solicitar", "--raiz", self.raiz, "--agente", "alpha-manager02-cc",

@@ -57,8 +57,11 @@ def meu_nome():
     codigo, saida = rodar(["list"], timeout=15)
     if codigo != 0:
         return None
-    m = re.search(r"^You:\s*\n\s*-\s*name:\s*\"?(.+?)\"?\s*$", saida, re.M)
-    return m.group(1) if m else None
+    # `- name: "Shell #2", maestro: true`: o nome é o texto entre aspas; o que vem depois são atributos
+    m = re.search(r'^You:\s*\n\s*-\s*name:\s*(?:"((?:[^"\\]|\\.)*)"|([^,\n]+))', saida, re.M)
+    if not m:
+        return None
+    return (m.group(1).replace('\\"', '"') if m.group(1) is not None else m.group(2).strip()) or None
 
 
 def texto_cru(texto):
