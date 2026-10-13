@@ -28,6 +28,17 @@ orca orchestration send --to <nome-do-agente> --type <tipo> --subject "assunto c
 
 O hook troca o nome pelo ID atual do painel, converte o tipo para um tipo aceito pelo Orca e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). No corpo, ele acrescenta um rodapé com o comando de resposta pronto.
 
+### Pelas ferramentas MCP (Claude Code)
+
+Se a sessão tiver as ferramentas `board_*` do servidor MCP `agent-board`, use-as no lugar do comando acima: os parâmetros são tipados e não há problema de aspas.
+
+- `board_send(para, tipo, assunto, corpo, modo, issues, responde_a)`: envia. Mesmas regras: `modo` em pedido para manager, `responde_a` em resposta. O corpo não pode ter crase nem `$( )`.
+- `board_inbox()`: lê o seu correio inteiro (o mesmo `check --format`).
+- `board_pendentes()`: o que você recebeu e ainda não respondeu.
+- `board_historico(agente, sobre, n, tudo)` e `board_status()`: log do projeto e quem você é no time.
+
+As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e avisam o destino do mesmo jeito. Elas não passam pelo hook do shell, por isso o servidor chama a regra do hook ele mesmo. O comando `orca` no shell continua valendo e continua passando pelo hook.
+
 ## Como receber
 
 1. Uma linha aparece na sua tela: `[agent-board] Nova mensagem <id> (<tipo>) de <agente>. Leia com: orca orchestration check --terminal <seu painel> --format`.
