@@ -79,6 +79,8 @@ A resposta de cada um prova que o canal funciona de ponta a ponta. Na mesma vira
 
 ✅ **Deu certo se:** cada agente respondeu com `--type resposta --responde-a <id>`.
 
+**Pelo MCP:** os agentes do time podem usar `board_send` em vez do comando `orca orchestration send`. Cada agente precisa ter o servidor `agent-board` registrado e aprovado no Claude Code. Veja o [guia do MCP](../mcp.md).
+
 ## Se der errado
 
 | Você vê | Faça |

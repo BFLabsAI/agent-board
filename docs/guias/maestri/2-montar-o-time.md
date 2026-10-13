@@ -28,6 +28,14 @@ flowchart LR
 ```
 
 ## Passo 1 — Recrutar os agentes
+**Antes de recrutar (MCP, Claude Code):** o projeto precisa enxergar o servidor `agent-board`. Ou o `install.sh` já o registrou para o usuário (confira com `claude mcp list`), ou você põe um `.mcp.json` na raiz do projeto (use o caminho **absoluto** da skill; detalhes no [guia do MCP](../mcp.md)):
+```json
+{"mcpServers": {"agent-board": {"command": "python3", "args": ["<caminho absoluto>/.agents/skills/agent-board/scripts/mcp_server.py"]}}}
+```
+Libere as chamadas em `<projeto>/.claude/settings.json`, para não pedir aprovação a cada uma:
+```json
+{"permissions": {"allow": ["mcp__agent-board"]}}
+```
 No terminal do master, veja os presets e recrute cada agente com o nome do time. O recrutado já nasce com corda até você.
 ```bash
 maestri preset list
@@ -36,6 +44,12 @@ maestri recruit "app-manager02-cx" --preset "Codex" --dir <projeto>
 maestri recruit "app-researcher01-cc" --preset "Claude Code" --dir <projeto>
 ```
 Nomes: `<prefixo>-master`, `<prefixo>-manager<NN>-<runtime>`, `<prefixo>-researcher<NN>-<runtime>`. Runtime: `cc` Claude Code, `cx` Codex, `oc` OpenCode, `omp` Oh My Pi, `agy` Antigravity, `hr` Hermes. Dê ao seu terminal o nome `app-master` no canvas, se quiser.
+
+> **MCP:** cada agente Claude Code novo, ao abrir num projeto com `.mcp.json`, mostra "New MCP server found in this project: agent-board". Escolha **"Use this MCP server"** (a primeira; a seleção inicial é a última, "Continue without using this MCP server"). Quem recruta aceita por ele, antes de o agente ser cadastrado:
+> ```bash
+> maestri ask "app-manager01-cc" --raw '\e[A\e[A\n'
+> ```
+> (duas setas para cima e Enter). Depois de cadastrado, só o master usa `--raw` em agente do time.
 
 ✅ **Deu certo se:** `maestri list` mostra os três em "Connected agents".
 

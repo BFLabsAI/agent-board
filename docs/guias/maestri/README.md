@@ -2,7 +2,7 @@
 
 > **Em 1 minuto:** no [Maestri](https://www.themaestri.app/pt-br/docs/intro), cada agente é um **terminal** num canvas. Terminais ligados por uma **corda** (a ligação entre dois terminais no canvas) se falam com `maestri ask`, que digita o texto no terminal do outro. O agent-board põe regras, log e cobrança de resposta em cima disso: o time fala só por `board.py send`.
 
-Usa o Orca? Siga o [guia do Orca](../orca/README.md).
+Usa o Orca? Siga o [guia do Orca](../orca/README.md). Quer enviar por ferramentas em vez do shell (Claude Code)? Veja o [guia do MCP](../mcp.md).
 
 ## Os 4 passos
 

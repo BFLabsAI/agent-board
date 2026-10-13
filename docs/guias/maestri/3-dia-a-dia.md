@@ -79,9 +79,27 @@ python3 $S/painel.py maestri rotina --raiz <projeto> --a-cada 10m --aplicar
 
 > O aviso de atraso sai do terminal onde o `vigiar` roda (pelo `maestri ask`). Se não for o terminal do master, ligue os dois com uma corda; sem ela, o atraso fica marcado no log e no `painel.py tarefas`, mas o aviso não chega à tela.
 
-## Passo 9 — Ver no navegador ou usar o MCP
-- Painel web, só leitura: `python3 $S/painel.py servir --raiz <projeto>` e abra `http://127.0.0.1:8765`. Guia: [Painel web](../../userguide/painel.md).
-- No Claude Code, a ferramenta MCP `board_send(para, tipo, assunto, corpo, …)` faz o mesmo que o `board.py`, sem problema de aspas. No Maestri, `board_inbox` mostra o que falta responder.
+## Passo 9 — Ver no navegador
+Painel web, só leitura: `python3 $S/painel.py servir --raiz <projeto>` e abra `http://127.0.0.1:8765`. Guia: [Painel web](../../userguide/painel.md).
+
+## Passo 10 — Usar o MCP no lugar do shell (Claude Code)
+Quem tem o servidor `agent-board` pode usar as ferramentas `board_*`: mesmas regras e mesmo log, sem problema de aspas.
+
+| Quero… | Shell (`board.py` / `painel.py`) | MCP |
+|---|---|---|
+| Enviar | `board.py send --to … --type …` | `board_send(para, tipo, assunto, corpo, …)` |
+| Ver o que falta responder | `painel.py tarefas` | `board_pendentes` ou `board_inbox` |
+| Ver o histórico | `painel.py historico` | `board_historico` |
+| Saber quem sou | `painel.py eu` | `board_status` |
+
+```
+board_send(para="manager01-cc", tipo="resposta", responde_a="c-…", assunto="Feito", corpo="…")
+```
+- O rodapé das mensagens mostra o comando `board.py`. Quem tem o MCP pode usar `board_send` com os mesmos campos.
+- No Maestri, `board_inbox` devolve as pendentes (a mensagem já chegou digitada no terminal).
+- Subagent é barrado também no MCP. Agente que não é Claude Code: o caminho garantido é `board.py send` (MCP não testado).
+
+Todas as ferramentas e campos: [guia do MCP](../mcp.md).
 
 Todos os comandos e flags: [Comandos](../../referencia/comandos.md).
 

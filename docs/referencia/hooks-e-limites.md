@@ -24,7 +24,7 @@ O `install.sh` também:
 - cria `$AGENT_BOARD_HOME` com um cadastro vazio;
 - guarda um backup do settings em `$AGENT_BOARD_HOME/settings.json.bak-<data>`;
 - troca as entradas antigas do agent-board pelas atuais, sem mexer nos seus outros hooks, e grava o settings de uma vez (segue symlink);
-- registra o servidor MCP `agent-board` com `claude mcp add --scope user`, se o `claude` estiver no `PATH`. Já registrado com o mesmo caminho: não faz nada. Com outro caminho: remove e registra de novo. Sem o `claude`: mostra o comando.
+- registra o servidor MCP `agent-board` com `claude mcp add --scope user`, se o `claude` estiver no `PATH` ([Guia do MCP](../guias/mcp.md)). Já registrado com o mesmo caminho: não faz nada. Com outro caminho: remove e registra de novo. Sem o `claude`: mostra o comando.
 
 ### OMP (`~/.omp/agent/hooks/pre/agent-board.ts`)
 

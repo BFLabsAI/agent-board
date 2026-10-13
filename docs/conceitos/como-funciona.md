@@ -72,7 +72,7 @@ As regras moram num lugar só, `scripts/politica.py`. Três caminhos chegam até
 |---|---|---|
 | `orca orchestration send` no shell | o **hook** (trava automática do harness) no `PreToolUse` | Vale no Claude Code e no OMP |
 | `board.py send` | `envio.py` chama o mesmo `hook_core.decide()` antes e depois de entregar | O hook do shell só barra subagent |
-| `board_send` (MCP) | `envio.py`, igual ao `board.py` | O hook do MCP só barra subagent ([ADR-0004](../adr/0004-servidor-mcp-reusa-a-politica-do-hook.md)) |
+| `board_send` (MCP) | `envio.py`, igual ao `board.py` | O hook do MCP só barra subagent ([ADR-0004](../adr/0004-servidor-mcp-reusa-a-politica-do-hook.md)). Como usar: [Guia do MCP](../guias/mcp.md) |
 
 O que **só o hook** faz: barrar os desvios (`maestri ask` direto, `SendMessage`, escrita à mão no log), digitar o aviso no Orca e cobrar a resposta no fim do turno.
 

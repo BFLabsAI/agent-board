@@ -28,7 +28,10 @@ O bloqueio começa com `Barrado pelo agent-board:` e diz o que corrigir. Os moti
 | `rode o comando orca sozinho ...`, ou o erro sobre crase e `$( )` | Um envio por comando, sem `&&`, `;`, `|`, crase ou `$( )`. Ou use o `board_send` |
 | `agente do time não usa orchestration reply/ask` | Use `send --type resposta` ou `send --type pedido` |
 | `... não se edita à mão` | Log e cadastro só mudam pelo agent-board. Para ler, use `cat`, `jq` ou `grep` |
-| `subagent não fala com outros agentes` | Devolva para a sessão principal enviar |
+| `subagent não fala com outros agentes` | Devolva para a sessão principal enviar (vale também para o `board_send`) |
+| As ferramentas `board_*` não aparecem | O servidor não está registrado ou aprovado. Confira com `claude mcp list` e veja o [guia do MCP](../mcp.md) |
+| `board_send` diz que o painel "não está cadastrado" | Falta o cadastro do painel: rode `python3 $S/painel.py listar` e peça ao master para cadastrar |
+| O Claude Code pede aprovação a cada chamada `board_*` | Libere em `settings.json`: `"permissions": {"allow": ["mcp__agent-board"]}`. Detalhes no [guia do MCP](../mcp.md) |
 
 Lista completa em [Hooks e limites](../../referencia/hooks-e-limites.md).
 

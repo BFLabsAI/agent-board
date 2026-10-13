@@ -25,9 +25,9 @@ S=~/.agents/skills/agent-board/scripts
 bash $S/install.sh
 ```
 
-O instalador pode rodar quantas vezes quiser. Ele cria o estado em `~/.agent-hooks/agent-board/` (cadastro vazio), liga os hooks no Claude Code (com backup do settings), grava o adaptador do OMP e registra o servidor MCP `agent-board` se o `claude` estiver no PATH.
+O instalador pode rodar quantas vezes quiser. Ele cria o estado em `~/.agent-hooks/agent-board/` (cadastro vazio), liga os hooks no Claude Code (com backup do settings), grava o adaptador do OMP e registra o servidor MCP `agent-board` para o usuário (`claude mcp add --scope user …`) se o `claude` estiver no PATH.
 
-✅ **Deu certo se:** a última linha diz `agent-board <versão> instalado: hooks -> …`. No Claude Code, `/hooks` mostra as entradas `agent-board`.
+✅ **Deu certo se:** a última linha diz `agent-board <versão> instalado: hooks -> …`. No Claude Code, `/hooks` mostra as entradas `agent-board`. Para o MCP, `claude mcp list` mostra `agent-board` e `claude mcp get agent-board` detalha o comando. O que são as ferramentas `board_*`: [guia do MCP](../mcp.md).
 
 Com o cadastro vazio, os hooks não agem sobre ninguém. Pode instalar sem medo.
 

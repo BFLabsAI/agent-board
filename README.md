@@ -77,7 +77,7 @@ No Claude Code, `/hooks` deve mostrar as entradas `agent-board`.
 
 ## O que mudou desde o fork
 
-A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.9.2**:
+A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.9.3**:
 
 ```mermaid
 flowchart TB
@@ -107,6 +107,7 @@ Detalhes em linguagem simples: [MELHORIAS.md](docs/MELHORIAS.md) · Histórico c
 |---|---|
 | Entender a ideia | [docs/conceitos/](docs/conceitos/como-funciona.md) |
 | Fazer, passo a passo | [Orca](docs/guias/orca/README.md) · [Maestri](docs/guias/maestri/README.md) |
+| Os agentes usarem ferramentas em vez de comandos (MCP) | [Guia do MCP](docs/guias/mcp.md) |
 | Consultar um comando ou config | [Comandos](docs/referencia/comandos.md) · [Config](docs/referencia/config.md) · [Arquivos e estado](docs/referencia/arquivos-e-estado.md) · [Hooks e limites](docs/referencia/hooks-e-limites.md) |
 | Acompanhar o time numa tela | [Painel web](docs/userguide/painel.md) |
 | Saber as regras que todo agente segue | [Contrato do time](templates/CONTRATO.md) |

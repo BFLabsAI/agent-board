@@ -56,7 +56,7 @@ Os testes precisam passar todos. Depois confira:
 
 Com o cadastro vazio, os hooks não agem sobre ninguém.
 
-**Servidor MCP.** No Claude Code, os agentes podem usar as ferramentas `board_send`, `board_inbox`, `board_pendentes`, `board_historico` e `board_status` no lugar do comando `orca` no shell (parâmetros tipados, sem erro de aspas). Ferramenta MCP não passa pelas regras de envio do hook (no PreToolUse, o matcher `mcp__agent-board__board_send` só barra subagent), por isso o servidor chama o `decide()` do `hook_core.py` ele mesmo: as regras, o log e o aviso são os mesmos. O comando no shell continua valendo e passando pelo hook.
+**Servidor MCP.** No Claude Code, os agentes podem usar as ferramentas `board_send`, `board_inbox`, `board_pendentes`, `board_historico` e `board_status` no lugar do comando `orca` no shell (parâmetros tipados, sem erro de aspas). Ferramenta MCP não passa pelas regras de envio do hook (no PreToolUse, o matcher `mcp__agent-board__board_send` só barra subagent), por isso o servidor chama o `decide()` do `hook_core.py` ele mesmo: as regras, o log e o aviso são os mesmos. O comando no shell continua valendo e passando pelo hook. Passo a passo (registrar, aprovar o prompt, liberar permissão, conferir): [docs/guias/mcp.md](docs/guias/mcp.md).
 
 ## 2. Configurar um projeto
 
