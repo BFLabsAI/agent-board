@@ -286,10 +286,14 @@ orca orchestration send --to <nome> --type <tipo> --subject "assunto curto" --bo
 | `aviso` | Informa algo sem pedir trabalho. Exige uma resposta curta |
 | `escalacao` | Algo travou ou precisa de decisão. Vai para o master |
 | `entrega` | Trabalho pronto para revisão ou merge. Vai para o master |
+| `andamento` | Progresso de um pedido longo. Exige `--responde-a <id do pedido>` e vai para quem pediu. Qualquer papel pode mandar. Para a cobrança do fim de turno, mas o pedido continua aberto até a `resposta` |
 
 Outras regras de envio:
 
 - **`--issues 412,413`** (opcional) liga a mensagem a Issues do GitHub. Conteúdo longo vai na Issue.
+- **`--prazo 30m|2h|1d`** (opcional, só em `pedido`) grava no log a hora-limite. Sem `--prazo`, vale o `prazo_padrao` da config, se houver.
+- **`--veredito aprovado|rejeitado`** é obrigatório na `resposta` a uma `entrega`, e inválido em qualquer outro caso. Rejeitado: diga no `--body` o que falta.
+- **`--to papel:<papel>`** (ex.: `papel:researcher`) escolhe o agente desse papel com menos pedidos abertos no projeto (empate: ordem alfabética), sem contar você.
 - **Nome curto vale:** `manager01-cc` vira `<project-prefix>-manager01-cc`.
 - **O `orca` roda sozinho:** sem `&&`, `;`, `|`, redirecionamento ou `$( )` no mesmo comando.
 
@@ -305,6 +309,8 @@ O hook converte o tipo para o tipo aceito pelo Orca (pedido → `handoff`, os de
 3. Responda:
    - **pedido:** com o resultado ou com o bloqueio. Nunca "Recebido".
    - **aviso:** com uma resposta curta (pode ser "recebido, nada a fazer").
+   - **pedido longo:** mande `--type andamento --responde-a <id>` com o progresso. O fim de turno para de cobrar, e a `resposta` vem quando terminar.
+   - **entrega (master):** `--type resposta --responde-a <id> --veredito aprovado` ou `rejeitado`.
    - **resposta:** não se responde. Se ficou algo pendente, abra um `pedido` ou `aviso` novo.
 
 ### Papéis
@@ -316,6 +322,21 @@ Os papéis padrão ficam em `docs/agent-board/agent-board.json` e podem ser edit
 | master | pedido, resposta, aviso | manager, researcher |
 | manager | todos os tipos | manager, researcher |
 | researcher | resposta, aviso, escalacao | ninguém |
+
+`andamento` vale para qualquer papel, mesmo fora da lista `tipos`: é uma forma de resposta.
+
+### Regras opcionais da config
+
+Chaves de `agent-board.json` que só valem quando existem. Sem elas (config antiga), nada muda.
+
+| Chave | Efeito |
+|---|---|
+| `"prazo_padrao": "1d"` | Prazo de todo `pedido` sem `--prazo` |
+| `"limites": {"pedidos_abertos_max": 3}` | Barra `pedido` para quem já tem 3 pedidos recebidos sem resposta |
+| `"limites": {"ping_pong_max": 6, "ping_pong_janela_min": 30}` | Mais de 6 mensagens entre o mesmo par em 30 min, sem `entrega` no meio: **não barra**, registra no `avisos.log` e avisa o master na tela, uma vez por par por janela |
+| `"ligacoes": [["master", "manager"], ["manager", "researcher"]]` | `pedido` e `aviso` só passam nos pares listados, com direção. Cada lado é um papel ou o nome de um agente. `resposta`, `andamento`, `escalacao` e `entrega` ao master sempre passam |
+
+Antes de trocar a config, teste contra o log real: `painel.py simular --raiz <path> --config <novo.json>`.
 
 ### Consultar o log
 
@@ -332,7 +353,9 @@ Cada linha do log tem este formato:
 
 O log fica sempre no checkout principal do projeto. Quem faz merge inclui o log no commit.
 
-Cada linha também leva `"prev"`, o sha256 da linha anterior (cadeia de hash). Linhas só com `{"id", "ts", "status"}` registram o destino de um envio: `falhou` tira a mensagem da cobrança, `reenviado` devolve.
+Quando usados, `"prazo"` (pedido) e `"veredito"` (resposta a entrega) também entram na linha.
+
+Cada linha também leva `"prev"`, o sha256 da linha anterior (cadeia de hash). Linhas só com `{"id", "ts", "status"}` registram o destino de um envio: `falhou` tira a mensagem da cobrança, `reenviado` devolve, `atrasado` marca o pedido já escalado pelo `vigiar`.
 
 **Pelo painel.py** (saída em [TOON](https://github.com/toon-format/toon) por padrão, que gasta bem menos tokens no contexto de um agente):
 
@@ -356,6 +379,20 @@ mensagens[2]{id,ts,de,para,tipo,modo,assunto,responde_a,issues}:
 | `painel.py reenviar --raiz <path> <id>` | Reenvia a mensagem para o painel **atual** do destino (ex.: painel fechou antes de ler, ou o envio falhou). O comando completo de cada envio fica guardado por 7 dias em `~/.agent-hooks/agent-board/envios/`, fora do git. |
 
 `arquivar` e `reenviar` escrevem no log: só o master (ou um humano num terminal fora do cadastro) roda.
+
+### Tarefas, prazos e simulação
+
+| Comando | O que faz |
+|---|---|
+| `painel.py tarefas --raiz <path> [--agente X] [--formato toon\|json]` | Quadro com uma linha por pedido e entrega: `id`, `de`, `para`, `assunto`, `estado` e `prazo`. Estados: `aberto`, `em_andamento`, `concluido`, `atrasado`, `aguardando_revisao`, `aprovado`, `rejeitado` |
+| `painel.py vigiar --raiz <path>` | Acha pedidos com prazo vencido e sem resposta, grava `status: atrasado` no log e avisa o master na tela. Rodar de novo não reescala. Feito para cron ou `/loop` (só o master ou um humano fora do cadastro) |
+| `painel.py simular --raiz <path> --config <novo.json> [--tudo]` | Reexecuta cada mensagem do log, com o log até aquele ponto, contra a config nova. Lista o que seria barrado, o motivo e se a config atual também barraria. Sai com 1 se algo seria barrado |
+
+```bash
+# a cada 10 min, no crontab do servidor
+*/10 * * * * python3 ~/.agents/skills/agent-board/scripts/painel.py vigiar --raiz <project-path>
+```
+
 
 ### Notas do time
 
@@ -457,6 +494,11 @@ O motivo de cada bloqueio vem na própria mensagem de erro, com a correção sug
 | Tipo não permitido ao papel | Ex.: researcher não faz `pedido` |
 | `pedido` para manager sem `--modo` | O manager precisa saber se orquestra ou executa |
 | `resposta` sem `--responde-a`, ou respondendo a uma `resposta` | Toda resposta aponta para uma mensagem, e resposta fecha a conversa |
+| `andamento` sem pedido aberto recebido por você, ou para outro que não quem pediu | Andamento é progresso de um pedido, devolvido a quem pediu |
+| `resposta` a `entrega` sem `--veredito`, ou `--veredito` fora dela | A revisão termina sempre em aprovado ou rejeitado |
+| `--prazo` inválido ou fora de `pedido` | Use `30m`, `2h` ou `1d` |
+| `pedido` a quem já está no `limites.pedidos_abertos_max` | Espere uma resposta, use `--to papel:<papel>` ou escale ao master |
+| `pedido`/`aviso` fora das `ligacoes` (quando a config tem) | A mensagem lista para quem você pode mandar |
 | `orca` encadeado com outro comando | Para o hook conseguir validar e registrar o envio |
 | `orca orchestration reply` / `ask` entre agentes do time | Ficam fora do registro. Use `send --type resposta` / `pedido` |
 | `orca terminal send` no painel de outro agente | Só o master pode, e só nos painéis do próprio time |
@@ -476,20 +518,22 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 |---|---|---|
 | `scripts/hook_core.py` | skill | Todas as regras: antes do envio, depois do envio e ao encerrar |
 | `scripts/omp-agent-board.ts` | skill | Adaptador do OMP para o mesmo core |
-| `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, os comandos de log de `cmd_log.py` e os do time de `cmd_time.py` |
+| `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, e os comandos de `cmd_log.py` (log), `cmd_tarefas.py` (tarefas), `cmd_time.py` (time) e `cmd_web.py` (painel web) |
 | `scripts/cmd_time.py` | skill | `nota`, `notas`, `resumo` e o worktree por agente do `cadastrar --worktree` |
+| `scripts/cmd_tarefas.py` | skill | `tarefas`, `vigiar`, `simular` |
 | `scripts/notificar.py` | skill | Webhook e comentário no GitHub depois de um envio (processo separado) |
-| `scripts/base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, proteção do log, aviso na tela, saída TOON |
+| `scripts/base.py`, `registro.py`, `politica.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, regras de envio (`validar_envio`), proteção do log, aviso na tela, saída TOON |
 | `scripts/mcp_server.py`, `mcp_ferramentas.py` | skill | Servidor MCP com as ferramentas `board_*`, que usam as regras do `hook_core.py` |
 | `scripts/cmd_web.py`, `painel_estado.py`, `painel_web.html` | skill | Painel web (`painel.py servir`) |
 | `scripts/install.sh` | skill | Liga os hooks e registra o servidor MCP (idempotente, com backup) |
-| `scripts/test_agent_board.py`, `test_registro.py`, `test_mcp.py`, `test_time.py`, `test_web.py` | skill | Testes a seco |
+| `scripts/test_*.py` | skill | Testes a seco: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web` |
 | `templates/CONTRATO.md` | skill → projeto | Vira `docs/agent-board/CONTRATO.md` |
 | `templates/agent-board.json` | skill → projeto | Vira `docs/agent-board/agent-board.json` |
 | `SKILL.md` | skill | Procedimento do master, que o agente lê ao usar a skill |
 | `~/.agent-hooks/agent-board/paineis.json` | máquina, fora do git | Cadastro: ID do painel → projeto e agente |
 | `~/.agent-hooks/agent-board/avisos.log` | máquina | Avisos digitados, suprimidos e encerramentos sem resposta |
 | `~/.agent-hooks/agent-board/avisos-estado.json` | máquina | Controle do limite de 1 aviso por destino a cada 60 s |
+| `~/.agent-hooks/agent-board/alertas-estado.json` | máquina | Controle do alerta de ping-pong (1 por par por janela) |
 | `~/.agent-hooks/agent-board/pendentes/`, `cobrancas/` | máquina | Estado interno entre o pré e o pós-envio, e contagem das cobranças |
 | `~/.agent-hooks/agent-board/envios/` | máquina | Comando completo de cada envio (7 dias), para o `reenviar` |
 | `~/.agent-hooks/agent-board/travas/` | máquina | Arquivos de trava do log de cada projeto |
@@ -570,7 +614,9 @@ Para só **desligar** sem desinstalar, esvazie o cadastro: com `paineis.json` va
 - O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e `painel.py reenviar` manda de novo.
 - A cadeia de hash acusa linha editada ou apagada no meio do log, mas não a remoção da **última** linha. Ela torna a adulteração visível, não impossível.
 - O aviso na tela é digitado como se fosse texto do usuário. Por isso, o hook não digita quando há um diálogo aberto no destino.
-- Num pedido longo, com subagents rodando em segundo plano, o hook de fim de turno pode cobrar a resposta antes de o trabalho terminar. Depois de 3 cobranças, ele libera.
+- Num pedido longo, o hook de fim de turno cobra até o agente mandar um `andamento` (ou a resposta). Quem esquece o `andamento` é cobrado 3 vezes e depois liberado.
+- `vigiar` só olha pedidos com `prazo`. Duas execuções ao mesmo tempo podem escalar o mesmo pedido duas vezes; rode uma por projeto.
+- `simular` não revalida o texto de `--prazo` (o log guarda só a hora já calculada) nem a resolução de nomes e painéis: confere as regras de `validar_envio`.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.
 - As notas em `docs/agent-board/notas/` são Markdown comum: a autoria provada é a da linha no log, não a do cabeçalho no arquivo, que pode ser editado como qualquer arquivo do repositório.
 - A notificação (webhook, GitHub) não tem nova tentativa: se falhar, fica só a linha no `avisos.log`.

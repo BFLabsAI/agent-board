@@ -9,7 +9,8 @@ existe mais, e `verificar` acusa. O merge=union do git pode juntar duas
 cadeias (bifurcação), o que é normal e não conta como adulteração.
 
 Linhas de status ({"id", "status"}) não são mensagens: "falhou" tira a
-mensagem da cobrança, "reenviado" devolve.
+mensagem da cobrança, "reenviado" devolve, "atrasado" marca o pedido já
+escalado pelo painel.py vigiar.
 """
 import datetime
 import glob
@@ -94,6 +95,15 @@ def ler_log(raiz):
     para não travar o time inteiro.
     """
     return _mensagens(_linhas(os.path.join(raiz, LOG_REL), LOG_REL))
+
+
+def status(raiz):
+    """{id: [status, ...]} das linhas de status do log ativo, em ordem (falhou, reenviado, atrasado)."""
+    out = {}
+    for _, l in _linhas(os.path.join(raiz, LOG_REL), LOG_REL):
+        if "status" in l and "id" in l:
+            out.setdefault(l["id"], []).append(l["status"])
+    return out
 
 
 def achar(raiz, cid):

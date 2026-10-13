@@ -25,6 +25,15 @@ Log do projeto (cada um aceita --help):
   painel.py reenviar --raiz <path> <id>
       Reenvia uma mensagem (ex.: o painel fechou antes de ler), para o painel atual do destino.
 
+Pedidos e entregas (cada um aceita --help):
+  painel.py tarefas --raiz <path> [--agente X] [--formato toon|json]
+      Quadro com uma linha por pedido/entrega e o estado: aberto, em_andamento, concluido,
+      atrasado, aguardando_revisao, aprovado, rejeitado.
+  painel.py vigiar --raiz <path>
+      Escala ao master os pedidos com prazo vencido e sem resposta (uma vez cada). Para cron ou /loop.
+  painel.py simular --raiz <path> --config <novo.json> [--tudo]
+      Reexecuta o log contra uma config nova e lista o que seria barrado. Sai com 1 se algo seria.
+
 Recursos do time:
   painel.py nota --raiz <path> --tema <tema> [--decisao] [--de <autor>] "<texto>"
       Acrescenta uma nota (ou decisão) em docs/agent-board/notas/<tema>.md e registra no log.
@@ -49,6 +58,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
 import cmd_log  # noqa: E402
+import cmd_tarefas  # noqa: E402
 import cmd_time  # noqa: E402
 import cmd_web  # noqa: E402
 import toon  # noqa: E402
@@ -189,7 +199,8 @@ def init(args):
 COMANDOS = {"historico": cmd_log.historico, "verificar": cmd_log.verificar,
             "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar,
             "nota": cmd_time.nota, "notas": cmd_time.notas, "resumo": cmd_time.resumo,
-            "servir": cmd_web.servir}
+            "servir": cmd_web.servir,
+            "tarefas": cmd_tarefas.tarefas, "vigiar": cmd_tarefas.vigiar, "simular": cmd_tarefas.simular}
 
 
 def main():

@@ -179,12 +179,21 @@ class Envio(Servidor):
         self.assertEqual(registro.ler_log(self.raiz)[-1]["responde_a"], "c-1")
 
     def test_prazo_e_veredito_so_quando_preenchidos(self):
-        self.chamar(G, "board_send", {"para": "alpha-master", "tipo": "entrega", "assunto": "Pronto"})
+        r = self.chamar(G, "board_send", {"para": "alpha-master", "tipo": "entrega", "assunto": "Pronto"})
+        self.assertFalse(r["result"]["isError"], r)
         self.assertNotIn("--prazo", self.envios()[0])
-        self.chamar(G, "board_send", {"para": "alpha-master", "tipo": "entrega", "assunto": "Pronto",
-                                      "prazo": "2026-10-20", "veredito": "aprovado"})
-        self.assertIn("--prazo 2026-10-20", self.envios()[1])
-        self.assertIn("--veredito aprovado", self.envios()[1])
+        entrega = registro.ler_log(self.raiz)[-1]["id"]
+        r = self.chamar(M, "board_send", {"para": "alpha-researcher01-cc", "tipo": "pedido", "assunto": "Medir",
+                                          "prazo": "2h"})
+        self.assertFalse(r["result"]["isError"], r)
+        self.assertIn("prazo", registro.ler_log(self.raiz)[-1])
+        r = self.chamar(M, "board_send", {"para": "alpha-manager01-cc", "tipo": "resposta", "assunto": "Ok",
+                                          "responde_a": entrega, "veredito": "aprovado"})
+        self.assertFalse(r["result"]["isError"], r)
+        self.assertEqual(registro.ler_log(self.raiz)[-1]["veredito"], "aprovado")
+        r = self.chamar(G, "board_send", {"para": "alpha-master", "tipo": "entrega", "assunto": "x", "prazo": "2h"})
+        self.assertTrue(r["result"]["isError"])
+        self.assertIn("só vale em pedido", self.texto(r))
 
     def test_envio_que_falhou_sai_do_log_ativo(self):
         ruim = self.orca_falso("orca-ruim", 'echo "error: terminal not found" >&2; exit 1')

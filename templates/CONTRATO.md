@@ -18,10 +18,14 @@ orca orchestration send --to <nome-do-agente> --type <tipo> --subject "assunto c
   - `aviso`: informa algo, sem pedir trabalho.
   - `escalacao`: algo travou ou precisa de decisão. Vai só para o master.
   - `entrega`: trabalho pronto para revisão ou merge. Vai só para o master.
+  - `andamento`: progresso de um pedido longo que você recebeu. Vai para quem pediu, com `--responde-a <id do pedido>`. Qualquer papel pode mandar. O pedido continua aberto até a sua `resposta`.
 - **`--modo orquestrar|executar`** é obrigatório quando o pedido vai para um manager:
   - `orquestrar`: o manager trabalha com subagents, seguindo a skill `/orchestrator`, com revisão e QA.
   - `executar`: o manager faz o trabalho ele mesmo.
 - **`--responde-a <id>[,<id>...]`** é obrigatório em `resposta`. Uma única resposta pode cobrir várias mensagens.
+- **`--veredito aprovado|rejeitado`** é obrigatório na `resposta` a uma `entrega` (só o master recebe entregas) e inválido em qualquer outro caso. Se rejeitar, diga no `--body` o que falta.
+- **`--prazo 30m|2h|1d`** é opcional em `pedido` e grava a hora-limite no log. O projeto pode ter um prazo padrão. Pedido vencido sem resposta é escalado ao master.
+- **`--to papel:<papel>`** (ex.: `--to papel:researcher`) deixa o hook escolher o agente desse papel com menos pedidos abertos.
 - **`--issues 412,413`** é opcional e liga a mensagem às Issues do GitHub. O conteúdo longo vai na Issue, não na mensagem.
 - O comando `orca` roda **sozinho**: sem `&&`, `;`, `|`, redirecionamento ou `$( )`.
 - Não use `orca orchestration reply` nem `orchestration ask` com outro agente do time: eles ficam fora do registro e são barrados. Responda com `send --type resposta` e pergunte com `send --type pedido`.
@@ -43,7 +47,7 @@ As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e avisam o 
 
 1. Uma linha aparece na sua tela: `[agent-board] Nova mensagem <id> (<tipo>) de <agente>. Leia com: orca orchestration check --terminal <seu painel> --format`.
 2. Rode esse `check` **com `--format`**, porque sem ele aparece só o assunto, e leia a mensagem inteira.
-3. **Pedido não leva confirmação de recebimento.** Responda a ele só com o resultado ou com o bloqueio (`--type resposta --responde-a <id>`), nunca com "Recebido". **Aviso exige uma resposta curta**, também com `--type resposta --responde-a <id>`. Se um aviso não pede nada a fazer, responda "recebido, nada a fazer".
+3. **Pedido não leva confirmação de recebimento.** Se o pedido vai demorar (subagents, testes longos), mande `--type andamento --responde-a <id>` com o progresso: o hook para de cobrar no fim do turno, e a `resposta` vem quando terminar. Responda a ele só com o resultado ou com o bloqueio (`--type resposta --responde-a <id>`), nunca com "Recebido". **Aviso exige uma resposta curta**, também com `--type resposta --responde-a <id>`. Se um aviso não pede nada a fazer, responda "recebido, nada a fazer".
    - **Resposta fecha a conversa: resposta não se responde.** Não mande "recebido" para uma resposta. Se a resposta deixou algo pendente, abra uma mensagem nova (`pedido` ou `aviso`). O hook barra resposta a resposta.
    - Se você tentar encerrar o turno com mensagens sem resposta, o hook segura e mostra o comando pronto.
    - Ele faz isso no máximo 3 vezes. Depois disso, registra que você encerrou sem responder.
@@ -58,7 +62,8 @@ As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e avisam o 
 
 - Dois managers nunca dividem a mesma tarefa: o master separa o trabalho em frentes.
 - Ninguém delega `main`, deploy, banco de produção ou decisão de produto.
-- Pedido sem resposta em 15 minutos vira `escalacao` para o master.
+- Pedido sem resposta em 15 minutos vira `escalacao` para o master. Pedido com `--prazo` vencido é escalado sozinho.
+- O projeto pode limitar a conversa em `agent-board.json`: quantos pedidos abertos um agente recebe (`limites`), e quem pode mandar pedido ou aviso a quem (`ligacoes`). O bloqueio diz o que fazer. Conversa demais entre o mesmo par, sem entrega, avisa o master.
 - Ninguém fica esperando comando travado (teste, build, lock, servidor). Comando longo leva `timeout`. Passou de ~5 min sem progresso: interrompa (nunca com `pkill` ou `killall`) e mande `escalacao` ao master dizendo o que estava esperando.
 - Mande mensagem só quando for necessário: pedido, pergunta que bloqueia o trabalho, escalação, fim de fase ou entrega. Nada de mensagem de cortesia.
 - Você só fala com os agentes cadastrados do seu projeto. Qualquer outro destino é barrado, com a lista dos nomes válidos. O nome curto também funciona: `manager01-omp` vira `<project-prefix>-manager01-omp`. Mensagem entre projetos diferentes é barrada.

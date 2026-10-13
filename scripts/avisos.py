@@ -3,11 +3,13 @@ agent-board: aviso digitado na tela do destino quando chega mensagem.
 
 Roda num processo separado (hook_core.py --avisar). No máximo 1 aviso por destino
 a cada JANELA_AVISO s, e nunca por cima de um diálogo aberto na tela.
+disparar() abre esse processo; o hook, o ping-pong e o painel.py vigiar usam.
 """
 import json
 import os
 import re
 import subprocess
+import sys
 import time
 
 from base import HOME, achar_orca, ler_json, registrar_aviso, trava
@@ -18,6 +20,35 @@ DIALOGO = re.compile(r"Enter to confirm|Esc to cancel|Do you want to|\(y/n\)|Pre
 
 JANELA_AVISO = float(os.environ.get("AGENT_BOARD_JANELA_AVISO", "60"))  # segundos entre avisos digitados por destino
 ESTADO_AVISO = os.path.join(HOME, "avisos-estado.json")
+ESTADO_ALERTAS = os.path.join(HOME, "alertas-estado.json")
+HOOK_CORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hook_core.py")
+
+
+def disparar(handle, cid, texto):
+    """Digita `texto` na tela de `handle` num processo separado (hook_core.py --avisar), sem esperar."""
+    try:
+        with open(os.path.join(HOME, "avisos.log"), "a") as erros:
+            subprocess.Popen([sys.executable, HOOK_CORE, "--avisar", handle, cid, texto],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=erros, start_new_session=True)
+    except OSError as exc:
+        registrar_aviso(f"{cid} aviso não enviado: {exc}")
+
+
+def uma_vez(chave, segundos):
+    """True na primeira chamada com `chave` dentro de `segundos`; False nas seguintes (estado sob trava)."""
+    with trava(ESTADO_ALERTAS + ".lock"):
+        estado = ler_json(ESTADO_ALERTAS, {})
+        agora = time.time()
+        if agora - estado.get(chave, 0) < segundos:
+            return False
+        estado = {k: v for k, v in estado.items() if agora - v < 7 * 86400}  # não cresce para sempre
+        estado[chave] = agora
+        tmp = ESTADO_ALERTAS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(estado, f)
+        os.replace(tmp, ESTADO_ALERTAS)
+        return True
 
 
 def com_estado(fn):
