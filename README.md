@@ -356,6 +356,21 @@ mensagens[2]{id,ts,de,para,tipo,modo,assunto,responde_a,issues}:
 
 ---
 
+## Painel web
+
+Uma página local, **só leitura**, com o mapa do time, as tarefas, a linha do tempo e as notas. Guia completo: [docs/userguide/painel.md](docs/userguide/painel.md) · mockup: [design-system/mockups/painel-mockup.svg](design-system/mockups/painel-mockup.svg) · decisão: [ADR-0005](docs/adr/0005-painel-web-local-somente-leitura.md).
+
+```bash
+python3 $S/painel.py servir --raiz <project-path>      # http://127.0.0.1:8765
+ssh -L 8765:127.0.0.1:8765 <servidor>                    # servidor remoto: túnel e abra no seu navegador
+```
+
+- Escuta só em `127.0.0.1`, recusa `Host` diferente (DNS rebinding) e qualquer método que não seja `GET`.
+- Texto do log é sempre exibido como texto, nunca como HTML; `Content-Security-Policy: default-src 'self'`.
+- Sem build e sem CDN: `scripts/painel_web.html` + `GET /api/estado` (`scripts/painel_estado.py`).
+
+---
+
 ## O que o hook barra
 
 O motivo de cada bloqueio vem na própria mensagem de erro, com a correção sugerida.
@@ -388,7 +403,8 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, e os comandos de log de `cmd_log.py` |
 | `scripts/base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, proteção do log, aviso na tela, saída TOON |
 | `scripts/install.sh` | skill | Liga os hooks (idempotente, com backup) |
-| `scripts/test_agent_board.py`, `test_registro.py` | skill | Testes a seco |
+| `scripts/cmd_web.py`, `painel_estado.py`, `painel_web.html` | skill | Painel web (`painel.py servir`) |
+| `scripts/test_agent_board.py`, `test_registro.py`, `test_web.py` | skill | Testes a seco |
 | `templates/CONTRATO.md` | skill → projeto | Vira `docs/agent-board/CONTRATO.md` |
 | `templates/agent-board.json` | skill → projeto | Vira `docs/agent-board/agent-board.json` |
 | `SKILL.md` | skill | Procedimento do master, que o agente lê ao usar a skill |

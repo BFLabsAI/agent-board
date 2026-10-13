@@ -23,6 +23,9 @@ Log do projeto (cada um aceita --help):
   painel.py reenviar --raiz <path> <id>
       Reenvia uma mensagem (ex.: o painel fechou antes de ler), para o painel atual do destino.
 
+Painel web (só leitura, 127.0.0.1; ver docs/userguide/painel.md):
+  painel.py servir --raiz <path> [--porta 8765]
+
 O cadastro fica em $AGENT_BOARD_HOME/paineis.json (padrão ~/.agent-hooks/agent-board).
 """
 import datetime
@@ -36,6 +39,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
 import cmd_log  # noqa: E402
+import cmd_web  # noqa: E402
 import toon  # noqa: E402
 
 ORCA = achar_orca()
@@ -165,7 +169,7 @@ def init(args):
 
 
 COMANDOS = {"historico": cmd_log.historico, "verificar": cmd_log.verificar,
-            "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar}
+            "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar, "servir": cmd_web.servir}
 
 
 def main():
