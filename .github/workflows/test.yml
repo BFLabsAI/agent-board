@@ -19,6 +19,7 @@ jobs:
       - run: python3 scripts/test_registro.py
       - run: python3 scripts/test_mcp.py
       - run: python3 scripts/test_time.py
+      - run: python3 scripts/test_web.py
 
   lint:
     runs-on: ubuntu-latest

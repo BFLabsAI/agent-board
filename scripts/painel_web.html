@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-board · painel</title>
+<style>
+:root{
+  --bg:#F7F7F5;--card:#FFFFFF;--borda:#E4E4E0;--linha:#F0F0EC;--texto:#1F2328;--fraco:#6B7280;
+  --master:#6D28D9;--master-bg:#F5F3FF;--manager:#2563EB;--manager-bg:#EFF6FF;--research:#0F766E;--research-bg:#F0FDFA;
+  --erro:#DC2626;--erro-bg:#FEF2F2;--erro-borda:#FECACA;--erro-txt:#991B1B;
+  --alerta:#D97706;--alerta-bg:#FFFBEB;--alerta-borda:#FCD34D;--alerta-txt:#B45309;
+  --ok:#16A34A;--ok-bg:#F0FDF4;--ok-borda:#BBF7D0;--ok-txt:#166534;--neutro:#F3F4F6;--aresta:#9CA3AF;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F1115;--card:#171A21;--borda:#2A2F3A;--linha:#20242D;--texto:#E6E8EC;--fraco:#9AA3B2;
+  --master:#A78BFA;--master-bg:#221B36;--manager:#60A5FA;--manager-bg:#152238;--research:#2DD4BF;--research-bg:#10282A;
+  --erro:#F87171;--erro-bg:#2A1517;--erro-borda:#5B2326;--erro-txt:#FCA5A5;
+  --alerta:#FBBF24;--alerta-bg:#2A2212;--alerta-borda:#5C4515;--alerta-txt:#FCD34D;
+  --ok:#4ADE80;--ok-bg:#12261A;--ok-borda:#1F4D2E;--ok-txt:#86EFAC;--neutro:#232833;--aresta:#5B6270;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--texto);font:14px/1.4 Inter,-apple-system,"Segoe UI",Roboto,sans-serif}
+.mono{font-family:"JetBrains Mono",Menlo,monospace}
+.fraco{color:var(--fraco)}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 24px;background:var(--card);border-bottom:1px solid var(--borda)}
+header h1{font-size:20px;margin:0}
+.logo{width:28px;height:28px;border-radius:6px;background:var(--texto);color:var(--card);display:grid;place-items:center;font-weight:700;font-size:13px}
+.pilula{padding:4px 12px;border-radius:999px;font-size:12px;background:var(--neutro);color:var(--fraco)}
+.selo{display:flex;gap:8px;align-items:center;padding:5px 14px;border-radius:999px;font-size:12px;border:1px solid}
+.selo.ok{background:var(--ok-bg);border-color:var(--ok-borda);color:var(--ok-txt)}
+.selo.erro{background:var(--erro-bg);border-color:var(--erro-borda);color:var(--erro-txt)}
+.selo i{width:9px;height:9px;border-radius:50%;background:currentColor}
+.espaco{flex:1}
+.periodo{display:flex;background:var(--neutro);border-radius:999px;padding:3px}
+.periodo button{border:0;background:none;color:var(--fraco);padding:4px 14px;border-radius:999px;font:inherit;font-size:12px;cursor:pointer}
+.periodo button[aria-pressed="true"]{background:var(--card);color:var(--texto);box-shadow:0 0 0 1px var(--borda)}
+main{padding:20px 24px;display:grid;gap:16px;grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+.kpis{grid-column:1/-1;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.card{background:var(--card);border:1px solid var(--borda);border-radius:10px;padding:16px 18px;min-width:0}
+.kpi .rot{font-size:12px;color:var(--fraco)}
+.kpi .num{font-size:26px;font-weight:700;margin-right:8px}
+.kpi.alerta{background:var(--erro-bg);border-color:var(--erro-borda);color:var(--erro-txt)}
+.kpi.alerta .rot{color:inherit}
+h2{font-size:13px;letter-spacing:.04em;margin:0 0 10px;display:flex;justify-content:space-between;gap:8px}
+h2 small{font-weight:400;color:var(--fraco);letter-spacing:0}
+#mapa svg{width:100%;height:auto;display:block}
+.no{cursor:pointer}
+.no text{font-size:12px;fill:var(--texto)}
+.no .sub{font-size:11px;fill:var(--fraco)}
+.legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:var(--fraco);margin-top:6px}
+.legenda span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:var(--c)}
+.quadro{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.coluna h3{font-size:11px;margin:0 0 6px;color:var(--fraco)}
+.cartao{border:1px solid var(--borda);border-radius:8px;padding:7px 8px;margin-bottom:6px;font-size:11px;background:var(--card);overflow-wrap:anywhere}
+.cartao b{display:block;font-size:12px;margin-bottom:3px}
+.c-andamento{background:var(--manager-bg)}.c-atrasado{background:var(--erro-bg);border-color:var(--erro-borda)}
+.c-revisao{background:var(--alerta-bg);border-color:var(--alerta-borda)}.c-fim{background:var(--ok-bg);border-color:var(--ok-borda)}
+.c-rejeitado{background:var(--erro-bg);border-color:var(--erro-borda)}
+.barra{display:grid;grid-template-columns:130px 1fr 24px;gap:8px;align-items:center;font-size:12px;margin:4px 0}
+.barra div{height:10px;border-radius:5px;background:var(--neutro);overflow:hidden}
+.barra div i{display:block;height:100%;background:var(--erro)}
+.aviso{background:var(--erro-bg);border:1px solid var(--erro-borda);color:var(--erro-txt);border-radius:8px;padding:10px 12px;font-size:12px;margin:12px 0}
+.busca{border:1px solid var(--borda);background:var(--bg);color:var(--texto);border-radius:6px;padding:5px 10px;font:inherit;font-size:12px;width:min(260px,100%)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td{padding:8px 6px;border-top:1px solid var(--linha);vertical-align:top}
+tr.msg{cursor:pointer}tr.msg:hover td{background:var(--bg)}
+.chip{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11px;white-space:nowrap}
+.t-pedido{background:var(--master-bg);color:var(--master)}.t-resposta{background:var(--ok-bg);color:var(--ok-txt)}
+.t-andamento{background:var(--manager-bg);color:var(--manager)}.t-entrega{background:var(--alerta-bg);color:var(--alerta-txt)}
+.t-escalacao{background:var(--erro-bg);color:var(--erro-txt)}.t-aviso{background:var(--neutro);color:var(--fraco)}
+.nota{border:1px solid var(--borda);border-radius:8px;padding:10px 12px;margin-bottom:8px;overflow-wrap:anywhere}
+.nota.decisao{background:var(--master-bg);border-color:var(--master)}
+.nota .chip{background:var(--master);color:var(--card);margin-right:6px}
+.vazio{color:var(--fraco);font-size:12px;padding:12px 0}
+dialog{border:1px solid var(--borda);border-radius:10px;background:var(--card);color:var(--texto);max-width:640px;width:calc(100% - 32px)}
+dialog::backdrop{background:#0006}
+@media (max-width:980px){main{grid-template-columns:1fr}.quadro{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){header,main{padding-left:16px;padding-right:16px}.quadro{grid-template-columns:1fr}.barra{grid-template-columns:100px 1fr 24px}td.col-id{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">ab</div><h1>agent-board</h1><span id="projeto" class="fraco"></span>
+  <span id="versao" class="pilula mono"></span>
+  <span class="espaco"></span>
+  <span id="selo" class="selo ok"><i></i><span></span></span>
+  <div class="periodo" role="group" aria-label="Período">
+    <button data-p="hoje" aria-pressed="true">Hoje</button><button data-p="24h" aria-pressed="false">24 h</button><button data-p="7d" aria-pressed="false">7 dias</button>
+  </div>
+  <span id="atualizado" class="fraco" style="font-size:11px"></span>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+  <section class="card" id="mapa"><h2>MAPA DO TIME <small>espessura = mensagens no período · tracejado = ping-pong</small></h2><div id="grafo"></div>
+    <div class="legenda"><span style="--c:var(--master)">master</span><span style="--c:var(--manager)">manager</span><span style="--c:var(--research)">researcher</span><span style="--c:var(--erro)">pendentes do agente</span><span id="filtro-ativo"></span></div></section>
+  <section class="card"><h2>TAREFAS <small>estado derivado do log</small></h2><div class="quadro" id="quadro"></div><div id="alertas"></div><div id="barras"></div></section>
+  <section class="card"><h2>LINHA DO TEMPO <input class="busca" id="busca" type="search" placeholder="filtrar por assunto, agente ou id…" aria-label="Filtrar"></h2><table><tbody id="tempo"></tbody></table></section>
+  <section class="card"><h2>NOTAS E DECISÕES <small class="mono">docs/agent-board/notas/</small></h2><div id="notas"></div></section>
+</main>
+<dialog id="conversa"><h2 id="conversa-titulo"></h2><table><tbody id="conversa-corpo"></tbody></table><form method="dialog" style="text-align:right;margin-top:12px"><button>Fechar</button></form></dialog>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let periodo = "hoje", estado = null, filtroAgente = null, ultimo = 0;
+try { periodo = localStorage.getItem("ab-periodo") || "hoje"; } catch (e) {}
+
+function el(tag, attrs, ...filhos) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v; else n.setAttribute(k, v); }
+  for (const f of filhos) if (f != null) n.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return n;
+}
+function svg(tag, attrs, ...filhos) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+  for (const f of filhos) if (f != null) n.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return n;
+}
+const curto = (nome) => (nome || "").replace(/^[a-z0-9]+-(?=(master|manager|researcher))/, "");
+const hora = (ts) => ts ? ts.slice(11, 16) : "";
+function ha(ts) {
+  if (!ts) return ""; const m = Math.round((Date.now() - Date.parse(ts)) / 60000);
+  return m < 1 ? "agora" : m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} d`;
+}
+const cor = { master: "master", manager: "manager", researcher: "research" };
+
+function kpis(e) {
+  const i = e.indicadores, k = $("kpis"); k.replaceChildren();
+  const delta = i.mensagens_antes ? Math.round((i.mensagens - i.mensagens_antes) * 100 / i.mensagens_antes) : null;
+  const cartao = (rot, num, sub, alerta) => el("div", { class: "card kpi" + (alerta ? " alerta" : "") }, el("div", { class: "rot" }, rot), el("span", { class: "num" }, num), el("span", { class: "fraco" }, sub));
+  k.append(
+    cartao(periodo === "hoje" ? "Mensagens hoje" : "Mensagens no período", i.mensagens, delta == null ? "" : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta)}% vs período anterior`),
+    cartao("Pendentes (sem resposta)", i.pendentes, `em ${i.agentes_com_pendente} agente(s)`),
+    cartao("Atrasados (prazo vencido)", i.atrasados, i.atrasados ? "veja Tarefas" : "nenhum", i.atrasados > 0),
+    cartao("Entregas aguardando revisão", i.revisao, i.revisao_mais_antiga ? `mais antiga ${ha(i.revisao_mais_antiga)}` : ""),
+    cartao("Tempo médio de resposta", i.tempo_resposta ? `${i.tempo_resposta.media} min` : "—", i.tempo_resposta ? `p90: ${i.tempo_resposta.p90} min` : "sem respostas no período"));
+}
+
+function mapa(e) {
+  const camadas = [[], [], []];
+  for (const a of e.agentes) camadas[a.papel === "master" ? 0 : a.papel === "manager" ? 1 : 2].push(a);
+  const L = 820, pos = {}, alturas = [60, 175, 290];
+  camadas.forEach((c, i) => c.forEach((a, j) => { pos[a.agente] = { x: (L / (c.length + 1)) * (j + 1), y: alturas[i] }; }));
+  const g = svg("svg", { viewBox: `0 0 ${L} 340`, role: "img", "aria-label": "Mapa do time" });
+  g.append(svg("defs", {}, svg("marker", { id: "seta", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, svg("path", { d: "M0,0 L10,5 L0,10 z", fill: "var(--aresta)" }))));
+  const pares = {}; for (const a of e.arestas) pares[a.de + ">" + a.para] = a.n;
+  const ping = new Set(e.alertas.map((m) => [m.de, m.para].sort().join("|")));
+  for (const a of e.arestas) {
+    const p = pos[a.de], q = pos[a.para]; if (!p || !q) continue;
+    const volta = pares[a.para + ">" + a.de] ? 14 : 0, dy = q.y > p.y ? 1 : -1;
+    const x1 = p.x + volta, y1 = p.y + 24 * dy, x2 = q.x + volta, y2 = q.y - 24 * dy;
+    const quente = ping.has([a.de, a.para].sort().join("|"));
+    const apagada = filtroAgente && a.de !== filtroAgente && a.para !== filtroAgente;
+    g.append(svg("path", { d: `M${x1},${y1} C${x1},${(y1 + y2) / 2} ${x2},${(y1 + y2) / 2} ${x2},${y2}`, fill: "none", stroke: quente ? "var(--erro)" : "var(--aresta)", "stroke-width": Math.min(1 + a.n / 3, 7), "stroke-dasharray": quente ? "6 4" : "", "marker-end": "url(#seta)", opacity: apagada ? .15 : 1 }, svg("title", {}, `${a.de} → ${a.para}: ${a.n} mensagem(ns)`)));
+  }
+  for (const a of e.agentes) {
+    const p = pos[a.agente], c = cor[a.papel] || "research", fechado = a.aberto === false, w = 176;
+    const n = svg("g", { class: "no", transform: `translate(${p.x - w / 2},${p.y - 23})`, tabindex: 0, role: "button", "aria-label": `Filtrar por ${a.agente}`, opacity: filtroAgente && filtroAgente !== a.agente ? .35 : 1 });
+    n.append(svg("rect", { width: w, height: 46, rx: 23, fill: fechado ? "var(--neutro)" : `var(--${c}-bg)`, stroke: fechado ? "var(--aresta)" : `var(--${c})`, "stroke-width": 2, "stroke-dasharray": fechado ? "4 3" : "" }),
+      svg("circle", { cx: 23, cy: 23, r: 13, fill: fechado ? "var(--aresta)" : `var(--${c})` }),
+      svg("text", { x: 23, y: 27, "text-anchor": "middle", fill: "var(--card)", "font-weight": 700 }, (a.papel || "r")[0].toUpperCase()),
+      svg("text", { x: 42, y: 20, "font-weight": 600 }, curto(a.agente).slice(0, 20)),
+      svg("text", { x: 42, y: 35, class: "sub", fill: fechado ? "var(--alerta-txt)" : "" }, fechado ? "painel fechado · recadastrar" : (a.worktree ? "branch ab/" + curto(a.agente) : a.papel)));
+    if (a.pendentes) n.append(svg("circle", { cx: w - 6, cy: 4, r: 10, fill: "var(--erro)" }), svg("text", { x: w - 6, y: 8, "text-anchor": "middle", fill: "#fff", "font-size": 11, "font-weight": 700 }, a.pendentes));
+    n.append(svg("title", {}, `${a.agente} · ${a.pendentes} pendente(s)`));
+    const alternar = () => { filtroAgente = filtroAgente === a.agente ? null : a.agente; desenhar(); };
+    n.addEventListener("click", alternar); n.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); alternar(); } });
+    g.append(n);
+  }
+  if (!e.agentes.length) g.append(svg("text", { x: L / 2, y: 170, "text-anchor": "middle", fill: "var(--fraco)" }, "Nenhum painel cadastrado: painel.py listar e cadastrar"));
+  $("grafo").replaceChildren(g);
+  $("filtro-ativo").textContent = filtroAgente ? `filtrando: ${filtroAgente} (clique de novo para limpar)` : "clique num agente para filtrar";
+}
+
+function quadro(e) {
+  const doAgente = (t) => !filtroAgente || t.de === filtroAgente || t.para === filtroAgente;
+  const cols = [["ABERTO", ["aberto"], ""], ["EM ANDAMENTO", ["em_andamento"], "c-andamento"], ["ATRASADO", ["atrasado"], "c-atrasado"], ["REVISÃO", ["aguardando_revisao"], "c-revisao"], ["CONCLUÍDO", ["concluido", "aprovado", "rejeitado"], "c-fim"]];
+  $("quadro").replaceChildren(...cols.map(([nome, estados, classe]) => {
+    const ts = e.tarefas.filter((t) => estados.includes(t.estado) && doAgente(t));
+    return el("div", { class: "coluna" }, el("h3", {}, `${nome} · ${ts.length}`), ...ts.slice(0, 6).map((t) => el("div", { class: `cartao ${t.estado === "rejeitado" ? "c-rejeitado" : classe}`, title: t.id },
+      el("b", {}, t.assunto || t.id),
+      t.tipo === "entrega" ? `${curto(t.de)} → master` : `→ ${curto(t.para)}`,
+      t.andamento ? el("div", { class: "fraco" }, `“${t.andamento}” ${ha(t.andamento_ts)}`) : null,
+      t.prazo ? el("div", {}, `prazo ${hora(t.prazo)}`) : null,
+      t.issues.length ? el("div", { class: "fraco" }, t.issues.map((n) => "#" + n).join(" ")) : null,
+      t.branch ? el("div", { class: "fraco mono" }, t.branch) : null,
+      t.estado === "aprovado" ? el("div", {}, "aprovado ✓") : t.estado === "rejeitado" ? el("div", {}, "rejeitado ✗") : null)),
+      ts.length > 6 ? el("div", { class: "fraco" }, `+ ${ts.length - 6}`) : null);
+  }));
+  $("alertas").replaceChildren(...e.alertas.slice(0, 3).map((m) => el("div", { class: "aviso" }, el("b", {}, `⚠ Ping-pong: ${curto(m.de)} ⇄ ${curto(m.para)}`), el("div", {}, `${m.n} mensagens em ${m.janela_min} min sem entrega (até ${hora(m.ate)})`))));
+  const ags = e.agentes.filter((a) => a.pendentes).sort((a, b) => b.pendentes - a.pendentes), max = Math.max(1, ...ags.map((a) => a.pendentes));
+  $("barras").replaceChildren(el("h3", { class: "fraco", style: "font-size:11px;margin:12px 0 4px" }, "PENDÊNCIAS POR AGENTE"),
+    ...(ags.length ? ags.map((a) => el("div", { class: "barra" }, el("span", {}, curto(a.agente)), el("div", {}, el("i", { style: `width:${(a.pendentes * 100) / max}%` })), el("span", { class: "fraco" }, a.pendentes))) : [el("div", { class: "vazio" }, "Ninguém devendo resposta.")]));
+}
+
+function linhaDoTempo(e) {
+  const q = $("busca").value.trim().toLowerCase();
+  const msgs = e.linha_do_tempo.filter((m) => (!filtroAgente || m.de === filtroAgente || m.para === filtroAgente) && (!q || [m.assunto, m.de, m.para, m.id].some((x) => (x || "").toLowerCase().includes(q))));
+  $("tempo").replaceChildren(...(msgs.length ? msgs.slice(0, 80).map((m) => {
+    const tr = el("tr", { class: "msg", tabindex: 0 }, el("td", { class: "mono fraco" }, hora(m.ts)), el("td", {}, el("span", { class: `chip t-${m.tipo}` }, m.tipo || "evento")),
+      el("td", {}, `${curto(m.de)} → ${curto(m.para)}`), el("td", {}, m.assunto || ""), el("td", { class: "mono fraco col-id" }, (m.id || "").slice(-9)));
+    const abrir = () => conversa(m); tr.addEventListener("click", abrir); tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter") abrir(); });
+    return tr;
+  }) : [el("tr", {}, el("td", { class: "vazio" }, "Nenhuma mensagem no período."))]));
+}
+
+function conversa(m) {
+  const raiz = (m.responde_a || "").split(",")[0].trim() || m.id;
+  const ligadas = estado.linha_do_tempo.filter((x) => x.id === raiz || (x.responde_a || "").split(",").map((s) => s.trim()).includes(raiz)).reverse();
+  $("conversa-titulo").textContent = `Conversa ${raiz}`;
+  $("conversa-corpo").replaceChildren(...(ligadas.length ? ligadas : [m]).map((x) => el("tr", {}, el("td", { class: "mono fraco" }, hora(x.ts)), el("td", {}, el("span", { class: `chip t-${x.tipo}` }, x.tipo)), el("td", {}, `${curto(x.de)} → ${curto(x.para)}`), el("td", {}, x.assunto || "", x.veredito ? ` (${x.veredito})` : ""))));
+  $("conversa").showModal();
+}
+
+function notas(e) {
+  $("notas").replaceChildren(...(e.notas.length ? e.notas.map((n) => el("div", { class: "nota" + (n.decisao ? " decisao" : "") },
+    el("div", {}, n.decisao ? el("span", { class: "chip" }, "Decisão") : null, el("b", {}, `${n.tema || ""} · ${n.titulo || ""}`)),
+    el("div", { class: "fraco", style: "font-size:11px" }, [n.de, n.ts ? `${n.ts.slice(0, 10)} ${hora(n.ts)}` : ""].filter(Boolean).join(" · ")),
+    n.trecho ? el("div", { style: "font-size:12px;margin-top:4px" }, n.trecho) : null)) : [el("div", { class: "vazio" }, "Sem notas ainda. Registre com painel.py nota.")]));
+}
+
+function desenhar() {
+  if (!estado) return;
+  const e = estado;
+  $("projeto").textContent = "/ " + e.projeto;
+  $("versao").textContent = e.versao ? "v" + e.versao : "";
+  const selo = $("selo");
+  selo.className = "selo " + (e.cadeia.integra ? "ok" : "erro");
+  selo.lastChild.textContent = e.cadeia.integra ? `Cadeia íntegra · ${e.cadeia.linhas} linhas` : `Log adulterado · ${e.cadeia.problemas.length} problema(s)`;
+  selo.title = e.cadeia.problemas.join("\n");
+  kpis(e); mapa(e); quadro(e); linhaDoTempo(e); notas(e);
+}
+
+async function carregar() {
+  try {
+    const r = await fetch(`/api/estado?periodo=${encodeURIComponent(periodo)}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    estado = await r.json(); ultimo = Date.now(); desenhar();
+  } catch (err) { $("atualizado").textContent = "sem conexão com o servidor ⚠"; }
+}
+setInterval(() => { if (ultimo) $("atualizado").textContent = `atualizado há ${Math.round((Date.now() - ultimo) / 1000)} s ⟳`; }, 1000);
+setInterval(carregar, 5000);
+document.querySelectorAll(".periodo button").forEach((b) => {
+  b.setAttribute("aria-pressed", String(b.dataset.p === periodo));
+  b.addEventListener("click", () => {
+    periodo = b.dataset.p; try { localStorage.setItem("ab-periodo", periodo); } catch (e) {}
+    document.querySelectorAll(".periodo button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); carregar();
+  });
+});
+$("busca").addEventListener("input", () => estado && linhaDoTempo(estado));
+carregar();
+</script>
+</body>
+</html>
