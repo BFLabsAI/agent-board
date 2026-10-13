@@ -17,6 +17,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python3 scripts/test_agent_board.py
       - run: python3 scripts/test_registro.py
+      - run: python3 scripts/test_politica.py
 
   lint:
     runs-on: ubuntu-latest
