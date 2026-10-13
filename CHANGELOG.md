@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.10.0 — 2026-10-13
+
+A interface do time (Orca ou Maestri) passa a ser escolhida no setup, e o contrato dos agentes sai escrito só para ela. Ver [ADR-0008](docs/adr/0008-interface-escolhida-no-setup-e-contrato-adaptado.md).
+
+### Novo
+- `painel.py init --transporte orca|maestri` grava `"transporte"` no `agent-board.json` e gera o `CONTRATO.md` adaptado: a versão do Orca não fala do Maestri, e a do Maestri não fala do Orca. Trocar de interface num projeto existente refaz a config e o contrato.
+- `cadastrar` recusa terminal da outra interface (só em projeto com `"transporte"`).
+- Seção "Delegar: subagent ou agente do time" no contrato e no `SKILL.md` (procedimento do master): subagent interno só para tarefa curta; o que precisa de outro papel ou harness vira pedido ao time.
+- `scripts/contrato.py` e `test_contrato.py` (25 testes, inclusive o que garante que nenhuma versão cita a outra interface).
+
+### Muda comportamento
+- `init` em projeto **novo** exige a interface: `--transporte`, ou a do terminal atual quando é uma só (ele avisa). Sem nenhuma das duas, falha pedindo a flag. Projeto antigo, sem `"transporte"`, continua como estava até alguém passar `--transporte`.
+- Para atualizar: `painel.py init … --transporte <orca|maestri> --atualizar-contrato` em cada projeto.
+
+### Documentação
+- Guias do Orca e do Maestri, referência, README e `SKILL.md` descrevem a escolha.
+
 ## 1.9.3 — 2026-10-13
 
 Guia do MCP e teste ao vivo. Só documentação.

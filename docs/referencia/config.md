@@ -4,11 +4,12 @@
 
 ## agent-board.json
 
-O `painel.py init` copia `templates/agent-board.json` para o projeto e preenche `projeto` e `prefixo`. Chave ausente ou `null` desliga a regra correspondente.
+O `painel.py init` copia `templates/agent-board.json` para o projeto e preenche `projeto`, `prefixo` e `transporte`. Chave ausente ou `null` desliga a regra correspondente.
 
 | Chave | Template | Quem lê | Efeito |
 |---|---|---|---|
 | `versao` | `1` | ninguém | Informativa |
+| `transporte` | `null` | `init`, `cadastrar` | Interface do time: `orca` ou `maestri`. Escolhida no `init`. Define a versão do `CONTRATO.md` e faz o `cadastrar` recusar terminal da outra interface. `null` (projeto antigo): contrato com as duas e sem a recusa |
 | `projeto` | `<project-name>` | `cadastrar`, `nota`, `vigiar`, `reenviar`, `servir`, `maestri conectar`/`rotina` | Nome do projeto. Agentes só falam com cadastrados do mesmo projeto |
 | `prefixo` | `<project-prefix>` | `cadastrar`, hook | Começo de todo nome (`<prefixo>-master`…). Completa o nome curto no `--to` |
 | `papeis.<papel>.tipos` | ver abaixo | `politica.py` | Tipos que o papel pode enviar. `andamento` passa mesmo fora da lista |

@@ -3,10 +3,14 @@
 painel.py: cadastro de painéis e comandos do projeto no agent-board.
 Cadastro, arquivar, reenviar, vigiar e maestri são do master; os demais servem a qualquer agente.
 
-  painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix> [--atualizar-contrato]
+  painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix>
+                 [--transporte orca|maestri] [--atualizar-contrato]
       Cria docs/agent-board/ no projeto (config, CONTRATO.md, log vazio) e a linha
-      merge=union no .gitattributes. Não sobrescreve o que já existe; com
-      --atualizar-contrato, troca o CONTRATO.md pela versão atual da skill.
+      merge=union no .gitattributes. Projeto novo precisa saber a interface do time:
+      --transporte orca|maestri (sem a flag, usa a do terminal atual, se for uma só).
+      O CONTRATO.md sai adaptado a ela. Num projeto que já existe, --transporte troca
+      de interface e refaz o contrato. Não sobrescreve o que já existe; com
+      --atualizar-contrato, refaz o CONTRATO.md pela versão atual da skill.
   painel.py listar [--formato toon]
       Mostra os terminais abertos no Orca, o cadastro de cada um e os pedidos de cadastro do Maestri.
   painel.py cadastrar --raiz <project-path> [--worktree] <term_...|maestri:<id>>=<agente> [...]
@@ -60,13 +64,13 @@ import datetime
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, papel_do_nome, trava  # noqa: E402
+from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, ler_json, papel_do_nome, trava  # noqa: E402
 import cmd_log  # noqa: E402
+import contrato  # noqa: E402
 import cmd_maestri  # noqa: E402
 import cmd_tarefas  # noqa: E402
 import cmd_time  # noqa: E402
@@ -160,6 +164,9 @@ def cadastrar(args):
         h, _, agente = par.partition("=")
         if not h.startswith(("term_", "maestri:")) or not agente:
             sys.exit(f"formato esperado term_...=<agente> ou maestri:<id>=<agente>, recebi: {par}")
+        erro = contrato.checar_handle(cfg, h)
+        if erro:
+            sys.exit(erro)
         if h.startswith("maestri:"):  # o nome no canvas vem do pedido que o próprio terminal fez
             s = cmd_maestri.solicitacao(h)
             if not s or not s.get("nome_canvas"):
@@ -214,28 +221,56 @@ def remover(handles):
 
 
 def init(args):
-    def valor(flag):
+    def valor(flag, obrigatorio=True):
         if flag not in args:
-            sys.exit(f"informe {flag}")
-        return args[args.index(flag) + 1]
+            if obrigatorio:
+                sys.exit(f"informe {flag}")
+            return None
+        i = args.index(flag)
+        if i + 1 >= len(args) or args[i + 1].startswith("--"):
+            sys.exit(f"{flag} precisa de um valor")
+        return args[i + 1]
     raiz, projeto, prefixo = os.path.abspath(valor("--raiz")), valor("--projeto"), valor("--prefixo")
+    pedido = valor("--transporte", obrigatorio=False)
     if not re.fullmatch(r"[a-z0-9]+", prefixo):
         sys.exit("prefixo: só letras minúsculas e números, sem hífen (ex.: <project-prefix>)")
-    pasta = os.path.join(raiz, "docs", "agent-board")
-    os.makedirs(pasta, exist_ok=True)
+    if pedido is not None and pedido not in contrato.TRANSPORTES:
+        sys.exit(f"--transporte: use orca ou maestri (recebi {pedido!r})")
     cfg = os.path.join(raiz, CONFIG_REL)
-    if not os.path.exists(cfg):
+    dados = ler_json(cfg, None)
+    transporte, mudou = contrato.transporte_de(dados), False
+    if dados is None:  # projeto novo: a interface precisa estar clara antes de criar qualquer coisa
+        try:
+            transporte, como = contrato.escolher(pedido)
+        except ValueError as exc:
+            sys.exit(str(exc))
         with open(os.path.join(TEMPLATES, "agent-board.json")) as f:
             dados = json.load(f)
-        dados["projeto"], dados["prefixo"] = projeto, prefixo
+        dados["projeto"], dados["prefixo"], dados["transporte"] = projeto, prefixo, transporte
+        mudou = True
+        aviso = f"transporte: {transporte}" + (" (detectado neste terminal; use --transporte para mudar)"
+                                               if como == "detectado" else "")
+    elif pedido is not None and pedido != transporte:  # trocar de interface num projeto que já existe
+        aviso = f"transporte: {transporte or 'sem escolha'} → {pedido}"
+        transporte, dados["transporte"], mudou = pedido, pedido, True
+    else:
+        aviso = f"transporte: {transporte}" if transporte else "transporte: sem escolha (contrato com as duas interfaces)"
+    pasta = os.path.join(raiz, "docs", "agent-board")
+    os.makedirs(pasta, exist_ok=True)
+    if mudou:
+        existia = os.path.exists(cfg)
         with open(cfg, "w") as f:
             json.dump(dados, f, ensure_ascii=False, indent=2)
             f.write("\n")
-        print("criado", cfg)
-    contrato = os.path.join(pasta, "CONTRATO.md")
-    if not os.path.exists(contrato) or "--atualizar-contrato" in args:
-        shutil.copy(os.path.join(TEMPLATES, "CONTRATO.md"), contrato)
-        print("criado", contrato)
+        print("atualizado" if existia else "criado", cfg)
+    print(aviso)
+    arq_contrato = os.path.join(pasta, "CONTRATO.md")
+    if not os.path.exists(arq_contrato) or "--atualizar-contrato" in args or (mudou and pedido is not None):
+        with open(os.path.join(TEMPLATES, "CONTRATO.md")) as f:
+            texto = contrato.renderizar(f.read(), transporte)
+        with open(arq_contrato, "w") as f:
+            f.write(texto)
+        print("criado", arq_contrato)
     log = os.path.join(raiz, LOG_REL)
     if not os.path.exists(log):
         open(log, "a").close()

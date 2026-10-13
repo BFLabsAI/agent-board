@@ -2,6 +2,7 @@
   "versao": 1,
   "projeto": "<project-name>",
   "prefixo": "<project-prefix>",
+  "transporte": null,
   "papeis": {
     "master": {
       "tipos": [

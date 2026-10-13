@@ -29,6 +29,7 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 | [`scripts/cmd_maestri.py`](scripts/cmd_maestri.py) | skill | `eu`, `solicitar`, `solicitacoes`, `maestri conectar`, `maestri rotina` |
 | [`scripts/notificar.py`](scripts/notificar.py) | skill | Webhook e comentário no GitHub depois de um envio, em processo separado |
 | [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks e registra o servidor MCP no Claude Code (idempotente, com backup) |
+| [`scripts/contrato.py`](scripts/contrato.py) | skill | A interface do projeto (Orca ou Maestri) e o `CONTRATO.md` adaptado a ela |
 | [`scripts/envio.py`](scripts/envio.py), [`scripts/maestri.py`](scripts/maestri.py) | skill | Envio pelo transporte do destino (usado por `board.py` e MCP) e a CLI do Maestri |
 | [`scripts/cmd_log.py`](scripts/cmd_log.py), [`cmd_tarefas.py`](scripts/cmd_tarefas.py), [`cmd_time.py`](scripts/cmd_time.py), [`cmd_web.py`](scripts/cmd_web.py) | skill | Subcomandos do `painel.py` (log, tarefas/vigiar/simular, nota/resumo/worktree, servir) |
 | [`scripts/painel_estado.py`](scripts/painel_estado.py), [`painel_web.html`](scripts/painel_web.html) | skill | Painel web (`painel.py servir`) |
@@ -61,14 +62,15 @@ Com o cadastro vazio, os hooks não agem sobre ninguém.
 ## 2. Configurar um projeto
 
 1. Combine com o CEO o **prefixo** do projeto: curto, só minúsculas e números (ex.: `<project-prefix>`).
-2. Crie os arquivos do projeto:
+2. Pergunte ao CEO **qual interface o time vai usar: Orca ou Maestri**. A escolha vale para o projeto inteiro (time misto não é suportado) e define o `CONTRATO.md` que os agentes vão ler.
+3. Crie os arquivos do projeto:
    ```bash
-   python3 $S/painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix>
+   python3 $S/painel.py init --raiz <project-path> --projeto <project-name> --prefixo <project-prefix> --transporte <orca|maestri>
    ```
-   Isso cria `docs/agent-board/` com a config, o `CONTRATO.md` e o log vazio, e acrescenta `merge=union` do log no `.gitattributes`. Não sobrescreve o que já existe.
-3. Ajuste os papéis em `agent-board.json` se o CEO quiser regras diferentes das padrão. As chaves opcionais `prazo_padrao`, `limites` (`pedidos_abertos_max`, `ping_pong_max`, `ping_pong_janela_min`) e `ligacoes` (pares `[de, para]` por papel ou nome) só valem quando preenchidas; veja [docs/referencia/config.md](docs/referencia/config.md) e [docs/conceitos/regras.md](docs/conceitos/regras.md). Antes de mudar a config de um projeto em uso, rode `python3 $S/painel.py simular --raiz <project-path> --config <novo.json>` e mostre ao CEO o que passaria a ser barrado.
-4. Acrescente uma linha nas regras do projeto (AGENTS.md ou equivalente): "Agentes se falam só pelo agent-board (`orca orchestration send` no Orca, `board.py send` no Maestri), conforme `docs/agent-board/CONTRATO.md`".
-5. Faça o commit numa branch e siga o fluxo de merge do projeto.
+   Isso cria `docs/agent-board/` com a config (`"transporte"` guardado nela), o `CONTRATO.md` **escrito só para a interface escolhida**, o log vazio, e acrescenta `merge=union` do log no `.gitattributes`. Não sobrescreve o que já existe. Sem `--transporte`, ele usa a interface do terminal atual, se for uma só, e avisa; não adivinhe: confirme com o CEO. Para trocar de interface depois, rode o mesmo comando com a outra e refaça os cadastros: o `cadastrar` recusa terminal da interface errada.
+4. Ajuste os papéis em `agent-board.json` se o CEO quiser regras diferentes das padrão. As chaves opcionais `prazo_padrao`, `limites` (`pedidos_abertos_max`, `ping_pong_max`, `ping_pong_janela_min`) e `ligacoes` (pares `[de, para]` por papel ou nome) só valem quando preenchidas; veja [docs/referencia/config.md](docs/referencia/config.md) e [docs/conceitos/regras.md](docs/conceitos/regras.md). Antes de mudar a config de um projeto em uso, rode `python3 $S/painel.py simular --raiz <project-path> --config <novo.json>` e mostre ao CEO o que passaria a ser barrado.
+5. Acrescente uma linha nas regras do projeto (AGENTS.md ou equivalente), com o comando da interface escolhida: "Agentes se falam só pelo agent-board (`orca orchestration send` no Orca; `board.py send` no Maestri), conforme `docs/agent-board/CONTRATO.md`".
+6. Faça o commit numa branch e siga o fluxo de merge do projeto.
 
 ## 3. Cadastrar os painéis (sempre com confirmação do CEO)
 
@@ -140,6 +142,15 @@ A resposta de cada um confirma que leu. Na mesma virada, aposente os canais para
 
 - **Atualizar:** depois de atualizar a skill, rode `install.sh` de novo. Se o contrato mudou, rode em cada projeto `painel.py init ... --atualizar-contrato`, faça o commit e avise o time por `aviso`.
 - **Desinstalar:** tire da configuração de hooks do usuário no Claude Code as entradas que contêm `agent-board` (o `install.sh` mostra o arquivo e guarda um backup em `~/.agent-hooks/agent-board/`), e apague `~/.omp/agent/hooks/pre/agent-board.ts`. Tire também o servidor MCP: `claude mcp remove --scope user agent-board`. Esvaziar o `paineis.json` já desliga o efeito.
+
+## Delegar o trabalho ao time
+
+Com o time cadastrado, trabalho que cabe a outro papel, a outro harness (um Codex, por exemplo) ou que o CEO queira acompanhar vai como **`pedido` a um agente do time**, e não como subagent interno do seu harness (a ferramenta Agent do Claude Code, por exemplo).
+
+- **Subagent interno** serve para uma tarefa curta dentro do seu próprio trabalho. Ele não aparece no log, ninguém cobra resposta dele e o CEO não o vê. Skills genéricas de orquestração (como `/developer`) mandam delegar a subagents: num projeto com agent-board, prefira o time cadastrado e use subagent só nesse caso curto.
+- **Maestri:** falta gente? Recrute (`maestri recruit`), peça o `solicitar`, confirme com o CEO, cadastre e ligue as cordas (`painel.py maestri conectar`). Passo a passo: [guia do Maestri](docs/guias/maestri/2-montar-o-time.md).
+- **Orca:** falta gente? Peça ao CEO mais um painel do Orca e cadastre-o. Passo a passo: [guia do Orca](docs/guias/orca/2-montar-o-time.md).
+- O pedido leva `--modo executar` (o manager faz) ou `--modo orquestrar` (o manager coordena subagents dele), `--prazo` quando houver, e a resposta volta pelo mesmo canal. Acompanhe com `painel.py tarefas`.
 
 ## Regras que você não quebra
 

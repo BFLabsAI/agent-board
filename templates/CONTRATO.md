@@ -1,16 +1,26 @@
 # Agent-board: contrato de comunicação entre agentes
 
-Vale para todo projeto que tem `docs/agent-board/agent-board.json`. Os hooks da skill `agent-board` já estão instalados no servidor e aplicam estas regras sozinhos. Este texto explica o que eles fazem. O prefixo e os papéis deste projeto estão em `agent-board.json`.
+<!-- orca --> Este projeto usa o **Orca**. Os hooks da skill `agent-board` já estão instalados no servidor e aplicam estas regras sozinhos; este texto explica o que eles fazem. O prefixo e os papéis deste projeto estão em `agent-board.json`.
+<!-- maestri --> Este projeto usa o **Maestri**. Os hooks da skill `agent-board` já estão instalados e aplicam estas regras sozinhos; este texto explica o que eles fazem. O prefixo e os papéis deste projeto estão em `agent-board.json`.
 
 ## Em uma frase
 
-Agente fala com agente **só** pelo agent-board (`orca orchestration send` no Orca, `board.py send` no Maestri, ou a ferramenta `board_send`), usando o **nome** do destino. O hook confere, registra no log, entrega e avisa na tela do destino. Toda mensagem recebida precisa de resposta.
+<!-- orca --> Agente fala com agente **só** por `orca orchestration send` (ou pela ferramenta `board_send`), usando o **nome** do destino. O hook confere, registra no log, entrega e avisa na tela do destino. Toda mensagem recebida precisa de resposta.
+<!-- maestri --> Agente fala com agente **só** por `board.py send` (ou pela ferramenta `board_send`), usando o **nome** do destino. O agent-board confere, registra no log e digita a mensagem no terminal do destino. Toda mensagem recebida precisa de resposta.
 
 ## Como mandar
 
+<!-- orca -->
 ```bash
 orca orchestration send --to <nome-do-agente> --type <tipo> --subject "assunto curto" --body "texto"
 ```
+<!-- /orca -->
+<!-- maestri -->
+```bash
+python3 ~/.agents/skills/agent-board/scripts/board.py send --to <nome-do-agente> --type <tipo> --subject "assunto curto" --body "texto"
+python3 ~/.agents/skills/agent-board/scripts/board.py send --to master --type entrega --subject "Login pronto" --body-file relatorio.md
+```
+<!-- /maestri -->
 
 - **`--type`** é um dos tipos do time:
   - `pedido`: pede um trabalho.
@@ -25,45 +35,48 @@ orca orchestration send --to <nome-do-agente> --type <tipo> --subject "assunto c
 - **`--responde-a <id>[,<id>...]`** é obrigatório em `resposta`. Uma única resposta pode cobrir várias mensagens.
 - **`--veredito aprovado|rejeitado`** é obrigatório na `resposta` a uma `entrega` (só o master recebe entregas) e inválido em qualquer outro caso. Se rejeitar, diga no `--body` o que falta.
 - **`--prazo 30m|2h|1d`** é opcional em `pedido` e grava a hora-limite no log. O projeto pode ter um prazo padrão. Pedido vencido sem resposta é marcado `atrasado` e avisado ao master pelo `painel.py vigiar`.
-- **`--to papel:<papel>`** (ex.: `--to papel:researcher`) deixa o hook escolher o agente desse papel com menos pedidos abertos.
+- **`--to papel:<papel>`** (ex.: `--to papel:researcher`) escolhe o agente desse papel com menos pedidos abertos.
 - **`--issues 412,413`** é opcional e liga a mensagem às Issues do GitHub. O conteúdo longo vai na Issue, não na mensagem.
-- O comando `orca` roda **sozinho**: sem `&&`, `;`, `|`, redirecionamento ou `$( )`.
-- Não use `orca orchestration reply` nem `orchestration ask` com outro agente do time: eles ficam fora do registro e são barrados. Responda com `send --type resposta` e pergunte com `send --type pedido`.
+<!-- orca --> - O comando `orca` roda **sozinho**: sem `&&`, `;`, `|`, redirecionamento ou `$( )`.
+<!-- orca --> - Não use `orca orchestration reply` nem `orchestration ask` com outro agente do time: eles ficam fora do registro e são barrados. Responda com `send --type resposta` e pergunte com `send --type pedido`.
+<!-- maestri --> - Texto com crase, `$` ou aspas: use aspas simples ou `--body-file <arquivo>` (ou `--body-file -`). Entre aspas duplas, o shell executa `$( )` e crase antes de o `board.py` ver o texto.
+<!-- maestri --> - **Não use `maestri ask` direto com um agente do time** (nem `--batch`): fica sem registro, sem regra e sem cobrança, e o hook barra. `maestri ask` com ajudantes de fora do time continua livre. `maestri check` (só leitura) também.
+<!-- maestri --> - Só entrega entre terminais **ligados por uma corda** no canvas. Sem corda, o envio falha na hora, o log marca `falhou` e o master liga os dois (`painel.py maestri conectar`).
 
+<!-- orca -->
 O hook troca o nome pelo ID atual do painel, converte o tipo para um tipo aceito pelo Orca e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). No corpo, ele acrescenta um rodapé com o comando de resposta pronto.
-
-### No Maestri
-
-Num terminal do canvas do Maestri (`$MAESTRI_TERMINAL_ID` definido), o `orca` não entrega. Use o `board.py`, com **as mesmas flags e as mesmas regras** do comando acima:
-
-```bash
-python3 ~/.agents/skills/agent-board/scripts/board.py send --to <nome-do-agente> --type <tipo> --subject "assunto curto" --body "texto"
-python3 ~/.agents/skills/agent-board/scripts/board.py send --to master --type entrega --subject "Login pronto" --body-file relatorio.md
-```
-
-- A mensagem chega **digitada no terminal do destino** pelo `maestri ask`, com o id no assunto e o rodapé com o comando de resposta pronto.
-- Só entrega entre terminais **ligados por uma corda** no canvas. Sem corda, o envio falha na hora, o log marca `falhou` e o master liga os dois (`painel.py maestri conectar`).
-- **Não use `maestri ask` direto com um agente do time** (nem `--batch`): fica sem registro, sem regra e sem cobrança, e o hook barra. `maestri ask` com ajudantes de fora do time continua livre. `maestri check` (só leitura) também.
-- Texto com crase, `$` ou aspas: use aspas simples ou `--body-file <arquivo>` (ou `--body-file -`). Entre aspas duplas, o shell executa `$( )` e crase antes de o `board.py` ver o texto.
-- O time inteiro fica num transporte só. Time misto (parte no Orca, parte no Maestri) não é suportado.
+<!-- /orca -->
+<!-- maestri -->
+O `board.py` troca o nome pelo terminal atual do destino e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). A mensagem chega **digitada no terminal do destino**, com um rodapé com o comando de resposta pronto.
+<!-- /maestri -->
 
 ### Pelas ferramentas MCP (Claude Code)
 
 Se a sessão tiver as ferramentas `board_*` do servidor MCP `agent-board`, use-as no lugar do comando acima: os parâmetros são tipados e não há problema de aspas. Não vê as ferramentas? Use o comando acima e avise o master: registrar e aprovar o servidor é passo de quem monta o time (`docs/guias/mcp.md` na skill agent-board).
 
 - `board_send(para, tipo, assunto, corpo?, modo?, issues?, responde_a?, prazo?, veredito?)`: envia. Mesmas regras: `modo` em pedido para manager, `responde_a` em resposta, `veredito` na resposta a uma entrega, `prazo` só em pedido. O corpo é texto puro (crase e `$( )` chegam como texto).
-- `board_inbox()`: lê o seu correio inteiro (o mesmo `check --format`).
+<!-- orca --> - `board_inbox()`: lê o seu correio inteiro (o mesmo `check --format`).
+<!-- maestri --> - `board_inbox()`: devolve o que você recebeu e ainda não respondeu (a mensagem já chega digitada no seu terminal).
 - `board_pendentes()`: o que você recebeu e ainda não respondeu.
 - `board_historico(agente, sobre, n, tudo)` e `board_status()`: log do projeto e quem você é no time.
 
+<!-- orca -->
 As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e avisam o destino do mesmo jeito. Elas não passam pelo hook do shell, por isso o servidor chama a regra do hook ele mesmo. O comando `orca` no shell continua valendo e continua passando pelo hook.
+<!-- /orca -->
+<!-- maestri -->
+As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e entregam do mesmo jeito. Elas não passam pelo hook do shell, por isso o servidor chama a regra do hook ele mesmo. O `board.py send` no shell continua valendo.
+<!-- /maestri -->
 
 ## Como receber
 
-No Maestri, a mensagem inteira já chega digitada no seu terminal. Não responda só no chat (essa resposta não entra no log nem fecha a pendência): pule para o passo 3 e responda com `board.py send`, como mostra o rodapé.
-
-1. No Orca, uma linha aparece na sua tela: `[agent-board] Nova mensagem <id> (<tipo>[·<modo>]) de <agente>. Leia com: orca orchestration check --terminal <seu painel> --format`.
+<!-- orca -->
+1. Uma linha aparece na sua tela: `[agent-board] Nova mensagem <id> (<tipo>[·<modo>]) de <agente>. Leia com: orca orchestration check --terminal <seu painel> --format`.
 2. Rode esse `check` **com `--format`**, porque sem ele aparece só o assunto, e leia a mensagem inteira.
+<!-- /orca -->
+<!-- maestri -->
+1. A mensagem chega inteira, digitada no seu terminal, com o id no assunto (`[c-… pedido·executar] ...`) e o rodapé com o comando de resposta pronto.
+2. **Não responda só no chat.** Essa resposta não entra no log nem fecha a pendência: responda com `board.py send`, como mostra o rodapé.
+<!-- /maestri -->
 3. **Pedido não leva confirmação de recebimento.** Se o pedido vai demorar (subagents, testes longos), mande `--type andamento --responde-a <id>` com o progresso: o hook para de cobrar no fim do turno, e a `resposta` vem quando terminar. Responda a ele só com o resultado ou com o bloqueio (`--type resposta --responde-a <id>`), nunca com "Recebido". **Aviso exige uma resposta curta**, também com `--type resposta --responde-a <id>`. Se um aviso não pede nada a fazer, responda "recebido, nada a fazer".
    - **Resposta fecha a conversa: resposta não se responde.** Não mande "recebido" para uma resposta. Se a resposta deixou algo pendente, abra uma mensagem nova (`pedido` ou `aviso`). O hook barra resposta a resposta.
    - Se você tentar encerrar o turno com mensagens sem resposta, o hook segura e mostra o comando pronto.
@@ -84,8 +97,18 @@ No Maestri, a mensagem inteira já chega digitada no seu terminal. Não responda
 - Ninguém fica esperando comando travado (teste, build, lock, servidor). Comando longo leva `timeout`. Passou de ~5 min sem progresso: interrompa (nunca com `pkill` ou `killall`) e mande `escalacao` ao master dizendo o que estava esperando.
 - Mande mensagem só quando for necessário: pedido, pergunta que bloqueia o trabalho, escalação, fim de fase ou entrega. Nada de mensagem de cortesia.
 - Você só fala com os agentes cadastrados do seu projeto. Qualquer outro destino é barrado, com a lista dos nomes válidos. O nome curto também funciona: `manager01-omp` vira `<project-prefix>-manager01-omp`. Mensagem entre projetos diferentes é barrada.
-- Subagent não fala com outro agente, só a sessão principal. No Claude Code, o hook garante isso no `orca`, no `board.py` e no `board_send`. No OMP, o hook só vê o shell; o resto é regra deste contrato.
-- O `SendMessage` nativo do Claude entre sessões é barrado entre agentes do time: ele fica sem registro e pode travar esperando aprovação. Use o agent-board (`orca` ou `board.py`). Digitar no painel de outro agente (`orca terminal send`, `maestri ask --raw`) também é barrado. Só o master pode, e só nos painéis do próprio time (por exemplo, para um `/clear`).
+<!-- orca --> - Subagent não fala com outro agente, só a sessão principal. No Claude Code, o hook garante isso no `orca` e no `board_send`. No OMP, o hook só vê o shell; o resto é regra deste contrato.
+<!-- maestri --> - Subagent não fala com outro agente, só a sessão principal. No Claude Code, o hook garante isso no `board.py` e no `board_send`. No OMP, o hook só vê o shell; o resto é regra deste contrato.
+<!-- orca --> - O `SendMessage` nativo do Claude entre sessões é barrado entre agentes do time: ele fica sem registro e pode travar esperando aprovação. Use o agent-board (`orca`). Digitar no painel de outro agente (`orca terminal send`) também é barrado. Só o master pode, e só nos painéis do próprio time (por exemplo, para um `/clear`).
+<!-- maestri --> - O `SendMessage` nativo do Claude entre sessões é barrado entre agentes do time: ele fica sem registro e pode travar esperando aprovação. Use o agent-board (`board.py`). Digitar no terminal de outro agente (`maestri ask --raw`) também é barrado. Só o master pode, e só nos terminais do próprio time (por exemplo, para um `/clear`).
+
+## Delegar: subagent ou agente do time
+
+- **Subagent do seu harness** (por exemplo, a ferramenta Agent do Claude Code) serve para uma tarefa curta **dentro do seu próprio trabalho**. Ele não aparece no log, não recebe mensagem do time e não fala com ninguém do time.
+- **Pedido a um agente do time** (`pedido`, com `--modo`) serve para o que precisa de outro papel, de outro harness (um Codex, por exemplo), de revisão ou de acompanhamento do CEO. Fica no log, tem prazo e resposta cobrada.
+<!-- orca --> - Falta gente? Peça ao master para abrir mais um painel do Orca e cadastrá-lo.
+<!-- maestri --> - Falta gente? Peça ao master para recrutar no canvas (`maestri recruit`). O novo agente só passa a ser do time depois de cadastrado.
+<!-- maestri --> - Os agentes do canvas ficam visíveis para o CEO, que pode acompanhar e intervir. Um subagent interno, não.
 
 ## Notas e decisões do time
 
@@ -108,12 +131,14 @@ Códigos de runtime: `cc` = Claude Code, `omp` = Oh My Pi, `cx` = Codex, `agy` =
 
 Exemplos: `<project-prefix>-master`, `<project-prefix>-manager01-cc`, `<project-prefix>-manager01-omp`, `<project-prefix>-researcher01-cc`.
 
-Use o mesmo nome na sessão (`/rename`) para facilitar a leitura na tela. Quem prova a identidade, porém, é o **ID do painel** (`$ORCA_TERMINAL_HANDLE` no Orca, `maestri:<$MAESTRI_TERMINAL_ID>` no Maestri), cadastrado pelo master, e não o nome.
+<!-- orca --> Use o mesmo nome na sessão (`/rename`) para facilitar a leitura na tela. Quem prova a identidade, porém, é o **ID do painel** (`$ORCA_TERMINAL_HANDLE`), cadastrado pelo master, e não o nome.
+<!-- maestri --> Dê ao terminal o mesmo nome no canvas, para facilitar a leitura. Quem prova a identidade, porém, é o **ID do terminal** (`maestri:<$MAESTRI_TERMINAL_ID>`), cadastrado pelo master, e não o nome. A entrega usa o nome gravado no cadastro: renomeou o terminal, peça novo cadastro.
 
 ## Cadastro de painéis (só o master)
 
 O cadastro fica em `~/.agent-hooks/agent-board/paineis.json`, fora do git, porque o ID muda quando um painel é reaberto.
 
+<!-- orca -->
 1. O CEO informa quem é quem, de um destes jeitos:
    - manda a lista;
    - ou pede "lê os painéis abertos".
@@ -124,13 +149,21 @@ O cadastro fica em `~/.agent-hooks/agent-board/paineis.json`, fora do git, porqu
    ```
    Recadastrar um agente substitui o painel antigo dele.
 4. Um painel reaberto tem um ID novo. Se ele tentar enviar, o hook barra com o aviso "peça ao master para recadastrar", e o master repete os passos 2 e 3.
-5. Para tirar um painel do cadastro: `painel.py remover <term_...|maestri:<id>>`. O passo a passo completo está na skill `agent-board`.
-
-**No Maestri** o master não vê o ID dos terminais. O cadastro começa no agente:
+5. Para tirar um painel do cadastro: `painel.py remover term_...`. O passo a passo completo está na skill `agent-board`.
+<!-- /orca -->
+<!-- maestri -->
+O master não vê o ID dos terminais do canvas. O cadastro começa no agente:
 
 1. No terminal do agente: `python3 ~/.agents/skills/agent-board/scripts/painel.py solicitar --raiz <project-path> --agente <project-prefix>-manager01-cc`. Isso registra o ID e o nome do terminal no canvas.
-2. O master roda `painel.py solicitacoes`, mostra a lista ao CEO e, **depois da confirmação**, cadastra com o comando que a lista sugere (`maestri:<id>=<agente>`).
-3. Renomeou o terminal no canvas? Rode `solicitar` de novo e o master recadastra.
+2. O master roda `painel.py solicitacoes` e mostra a lista ao CEO.
+3. **Só depois da confirmação**, o master cadastra com o comando que a lista sugere:
+   ```bash
+   python3 ~/.agents/skills/agent-board/scripts/painel.py cadastrar --raiz <project-path> maestri:<id>=<project-prefix>-manager01-cc
+   ```
+   Recadastrar um agente substitui o terminal antigo dele.
+4. Terminal recriado ou renomeado: o agente roda `solicitar` de novo e o master recadastra.
+5. Para tirar um terminal do cadastro: `painel.py remover maestri:<id>`. O passo a passo completo está na skill `agent-board`.
+<!-- /maestri -->
 
 Um painel sem cadastro não é afetado em nada, a menos que tente falar com um agente cadastrado.
 
@@ -148,9 +181,11 @@ Consulta: `jq -c 'select(.para=="<project-prefix>-master")' docs/agent-board/com
 
 ## Limites conhecidos
 
-- O hook só vê o que passa pelas ferramentas de shell e pelo `SendMessage`. Um script que chama o `orca` por dentro escapa da checagem, e este contrato proíbe isso.
-- O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e o master pode reenviar.
-- O aviso na tela é digitado como se fosse texto do usuário. Se a tela do destino tiver uma pergunta aberta, o aviso não é digitado, e o motivo fica em `~/.agent-hooks/agent-board/avisos.log`.
+<!-- orca --> - O hook só vê o que passa pelas ferramentas de shell e pelo `SendMessage`. Um script que chama o `orca` por dentro escapa da checagem, e este contrato proíbe isso.
+<!-- maestri --> - O hook só vê o que passa pelas ferramentas de shell e pelo `SendMessage`. Um script que chama o `maestri ask` por dentro escapa da checagem, e este contrato proíbe isso.
+<!-- orca --> - O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e o master pode reenviar.
+<!-- orca --> - O aviso na tela é digitado como se fosse texto do usuário. Se a tela do destino tiver uma pergunta aberta, o aviso não é digitado, e o motivo fica em `~/.agent-hooks/agent-board/avisos.log`.
 - O hook do OMP vale para sessões abertas depois da instalação. Confira com `/extensions`.
-- No Maestri, a mensagem é digitada no terminal do destino: não digite nos terminais dos agentes enquanto o time troca mensagens.
-- No Maestri, o envio só confirma que o `maestri ask` não falhou nos primeiros 3 s.
+<!-- maestri --> - A mensagem é digitada no terminal do destino: não digite nos terminais dos agentes enquanto o time troca mensagens.
+<!-- maestri --> - O envio só confirma que o `maestri ask` não falhou nos primeiros 3 s. A saída de cada um fica em `~/.agent-hooks/agent-board/maestri-ask/`.
+<!-- maestri --> - O time inteiro fica no Maestri. Time misto (parte dos agentes em outra interface) não é suportado.

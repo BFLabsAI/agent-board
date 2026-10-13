@@ -13,10 +13,10 @@ S=~/.agents/skills/agent-board/scripts
 Uma vez por projeto. Combine antes o **prefixo**: curto, só minúsculas e números, sem hífen (ex.: `app`).
 
 ```bash
-python3 $S/painel.py init --raiz <projeto> --projeto <nome> --prefixo <prefixo>
+python3 $S/painel.py init --raiz <projeto> --projeto <nome> --prefixo <prefixo> --transporte orca
 ```
 
-Cria `docs/agent-board/` com `agent-board.json` (papéis), `CONTRATO.md` (regras que todo agente lê) e o log vazio `comunicacoes.jsonl`. Acrescenta `merge=union` do log no `.gitattributes`. Não sobrescreve nada que já exista.
+Cria `docs/agent-board/` com `agent-board.json` (papéis e a interface do time: `"transporte": "orca"`), `CONTRATO.md` (regras que todo agente lê, **já escrito para o Orca**) e o log vazio `comunicacoes.jsonl`. Acrescenta `merge=union` do log no `.gitattributes`. Não sobrescreve nada que já exista. Rodando num terminal do Orca, dá para omitir `--transporte`: ele detecta.
 
 Depois, ponha uma linha nas instruções do projeto (`AGENTS.md`, `CLAUDE.md`…): *"Agentes se falam só pelo agent-board, conforme `docs/agent-board/CONTRATO.md`."* Faça o commit.
 
