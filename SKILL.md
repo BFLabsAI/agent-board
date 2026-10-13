@@ -22,7 +22,8 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 |---|---|---|
 | [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta) |
 | [`scripts/omp-agent-board.ts`](scripts/omp-agent-board.ts) | skill | Adaptador do OMP para o mesmo core |
-| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar` |
+| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar`, `nota`, `notas`, `resumo` |
+| [`scripts/notificar.py`](scripts/notificar.py) | skill | Webhook e comentário no GitHub depois de um envio, em processo separado |
 | [`scripts/install.sh`](scripts/install.sh) | skill | Liga os hooks no servidor (idempotente, com backup) |
 | [`scripts/test_agent_board.py`](scripts/test_agent_board.py) | skill | Testes a seco, sem envio real |
 | [`scripts/VERSION`](scripts/VERSION) | skill | Versão do pacote |
@@ -67,6 +68,7 @@ Com o cadastro vazio, os hooks não agem sobre ninguém.
    ```bash
    python3 $S/painel.py cadastrar --raiz <project-path> term_...=<project-prefix>-master term_...=<project-prefix>-manager01-cc ...
    ```
+   Se o CEO quiser cada manager numa branch isolada, acrescente `--worktree`: cada manager ganha `<project-path>/../<projeto>-worktrees/<agente>` na branch `ab/<agente>`. O log continua no checkout principal; você faz o merge das branches.
 6. Peça ao CEO que dê às sessões o mesmo nome do cadastro. Isso ajuda a leitura na tela, mas não serve de identidade.
 
 ## 4. Apresentar o time (virada)
@@ -101,6 +103,9 @@ A resposta de cada um confirma que leu. Na mesma virada, aposente os canais para
 - **Mensagem que não chegou** (painel fechou antes de ler, envio falhou): `python3 $S/painel.py reenviar --raiz <project-path> <id>`.
 - **Integridade do log:** `python3 $S/painel.py verificar --raiz <project-path>` antes de um merge importante ou se suspeitar de edição à mão.
 - **Log grande:** `python3 $S/painel.py arquivar --raiz <project-path>` uma vez por mês, numa branch, com commit.
+- **CEO voltou e quer saber o que houve:** `python3 $S/painel.py resumo --raiz <project-path> --desde 8h` (contagens, quem espera resposta, entregas, escalações, notas novas).
+- **Registrar uma decisão:** `python3 $S/painel.py nota --raiz <project-path> --tema <tema> --decisao "<texto>"`. Consultar: `painel.py notas --raiz <project-path> [--tema <tema>]` ou `historico --sobre <tema>`. Os arquivos ficam em `docs/agent-board/notas/` e vão no commit junto com o log.
+- **Notificação fora do terminal:** `AGENT_BOARD_WEBHOOK` (e opcionalmente `AGENT_BOARD_WEBHOOK_TIPOS`, padrão `escalacao,entrega`) no ambiente dos agentes, nunca no git. Comentário automático nas Issues de cada `entrega`: `"github": {"comentar_entregas": true}` no `agent-board.json` (precisa do `gh` autenticado). Falhas ficam em `avisos.log`.
 
 ## 6. Atualizar ou desinstalar
 

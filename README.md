@@ -242,6 +242,7 @@ Quem cadastra é o **master**, o agente que coordena o time, ou você mesmo no t
      term_cccc…=<project-prefix>-manager01-omp \
      term_dddd…=<project-prefix>-researcher01-cc
    ```
+   Com `--worktree`, cada manager ganha também a própria branch isolada (veja [Worktree por agente](#worktree-por-agente)).
 5. (Opcional) Renomeie cada sessão com o mesmo nome (`/rename <project-prefix>-manager01-cc` no Claude Code e no OMP). Isso só ajuda a leitura na tela, porque a identidade continua sendo o ID do painel.
 
 ### Manutenção
@@ -354,6 +355,52 @@ mensagens[2]{id,ts,de,para,tipo,modo,assunto,responde_a,issues}:
 
 `arquivar` e `reenviar` escrevem no log: só o master (ou um humano num terminal fora do cadastro) roda.
 
+### Notas do time
+
+Memória compartilhada do time: decisões e contexto que não cabem numa mensagem e que ninguém deve precisar perguntar de novo.
+
+```bash
+python3 $S/painel.py nota --raiz <project-path> --tema pagamentos --decisao "Gateway: Stripe. Motivo: ..."
+python3 $S/painel.py notas --raiz <project-path>                       # lista os temas
+python3 $S/painel.py notas --raiz <project-path> --tema pagamentos     # as notas do tema (TOON; --formato json|md)
+python3 $S/painel.py historico --raiz <project-path> --sobre pagamentos  # notas e mensagens do tema
+```
+
+- Cada nota é acrescentada em `docs/agent-board/notas/<tema>.md` (no git), com data, autor e a marca **Decisão** quando há `--decisao`.
+- O tema vira um nome de arquivo seguro: só `a-z`, `0-9` e `-`, até 60 caracteres (`../../etc` vira `etc`).
+- **Autor provado:** num painel cadastrado, o autor é sempre o agente daquele painel (`--de` é ignorado). Fora do cadastro (um humano), `--de <nome>` é obrigatório.
+- Cada nota também vira uma linha no log: `{"id": "n-…", "ts", "de", "tipo": "nota", "tema", "decisao"}`. Sem `para`, ninguém é cobrado por ela.
+
+### Resumo
+
+Para voltar depois de um tempo fora e ver o que aconteceu, sem ler o log inteiro:
+
+```bash
+python3 $S/painel.py resumo --raiz <project-path> --desde 2h      # 30m, 2h, 1d (padrão 1d)
+python3 $S/painel.py resumo --raiz <project-path> --formato toon  # para o contexto de um agente
+```
+
+Conta direto do log (sem LLM, sempre o mesmo resultado): mensagens por tipo, quanto cada agente enviou e recebeu, quem está esperando resposta (no log inteiro, não só no período), as últimas entregas e escalações, e as notas e decisões novas.
+
+### Worktree por agente
+
+```bash
+python3 $S/painel.py cadastrar --raiz <project-path> --worktree term_…=<project-prefix>-manager01-cc ...
+```
+
+- Cada **manager** ganha um `git worktree` em `<project-path>/../<projeto>-worktrees/<agente>`, na branch `ab/<agente>`, criada a partir do HEAD da raiz. Worktree que já existe é reaproveitado. Master e researchers não ganham worktree.
+- O caminho fica no cadastro (`"worktree"`). Recadastrar o agente sem `--worktree` mantém o worktree dele.
+- Se o git falhar (raiz sem git, pasta ocupada), o comando explica, desfaz os worktrees que tinha criado e **não cadastra ninguém**.
+- Numa `entrega` de quem tem worktree, a linha do log ganha `"branch"` (a branch atual do worktree).
+- **O log continua no checkout principal** (a raiz do cadastro), não no worktree: o hook grava sempre em `<project-path>/docs/agent-board/`. Abra o agente dentro do worktree; quem faz o merge da branch dele é o master.
+
+### Notificações
+
+Depois de um envio bem-sucedido, o hook pode avisar fora do terminal. Roda num processo separado: falha de rede ou do `gh` nunca atrasa nem barra o envio, só vai para `avisos.log`.
+
+- **Webhook:** defina `AGENT_BOARD_WEBHOOK` no ambiente dos agentes (nunca no git). Para os tipos de `AGENT_BOARD_WEBHOOK_TIPOS` (padrão `escalacao,entrega`), o hook faz `POST` JSON `{"text": "..."}`, formato aceito pelo Slack (incoming webhook) e por serviços compatíveis. Timeout de 10 s. A URL não aparece no `avisos.log`.
+- **GitHub:** com `"github": {"comentar_entregas": true}` no `agent-board.json` do projeto, toda `entrega` com `--issues` vira um comentário em cada Issue (`gh issue comment`, rodado na raiz do projeto, timeout de 30 s). Sem o `gh` no PATH, o hook registra e segue. Vem desligado no template.
+
 ---
 
 ## O que o hook barra
@@ -385,10 +432,12 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 |---|---|---|
 | `scripts/hook_core.py` | skill | Todas as regras: antes do envio, depois do envio e ao encerrar |
 | `scripts/omp-agent-board.ts` | skill | Adaptador do OMP para o mesmo core |
-| `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, e os comandos de log de `cmd_log.py` |
+| `scripts/painel.py` | skill | `init`, `listar`, `cadastrar`, `remover`, os comandos de log de `cmd_log.py` e os do time de `cmd_time.py` |
+| `scripts/cmd_time.py` | skill | `nota`, `notas`, `resumo` e o worktree por agente do `cadastrar --worktree` |
+| `scripts/notificar.py` | skill | Webhook e comentário no GitHub depois de um envio (processo separado) |
 | `scripts/base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Módulos do core: caminhos e trava, log com cadeia de hash, proteção do log, aviso na tela, saída TOON |
 | `scripts/install.sh` | skill | Liga os hooks (idempotente, com backup) |
-| `scripts/test_agent_board.py`, `test_registro.py` | skill | Testes a seco |
+| `scripts/test_agent_board.py`, `test_registro.py`, `test_time.py` | skill | Testes a seco |
 | `templates/CONTRATO.md` | skill → projeto | Vira `docs/agent-board/CONTRATO.md` |
 | `templates/agent-board.json` | skill → projeto | Vira `docs/agent-board/agent-board.json` |
 | `SKILL.md` | skill | Procedimento do master, que o agente lê ao usar a skill |
@@ -400,6 +449,8 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 | `~/.agent-hooks/agent-board/travas/` | máquina | Arquivos de trava do log de cada projeto |
 | `docs/agent-board/comunicacoes.jsonl` | projeto, no git | O log das mensagens |
 | `docs/agent-board/arquivo/AAAA-MM.jsonl` | projeto, no git | Arquivo morto do log (`painel.py arquivar`) |
+| `docs/agent-board/notas/<tema>.md` | projeto, no git | Notas e decisões do time (`painel.py nota`) |
+| `<project-path>/../<projeto>-worktrees/<agente>` | máquina | Worktree de cada manager (`cadastrar --worktree`), branch `ab/<agente>` |
 
 ---
 
@@ -409,6 +460,8 @@ Um painel **sem cadastro** que não fala com o time não é afetado em nada. Os 
 |---|---|---|
 | `AGENT_BOARD_HOME` | `~/.agent-hooks/agent-board` | Onde fica o estado (cadastro, avisos). Defina antes do `install.sh` e no ambiente dos agentes |
 | `AGENT_BOARD_JANELA_AVISO` | `60` | Segundos mínimos entre dois avisos digitados no mesmo destino |
+| `AGENT_BOARD_WEBHOOK` | vazia (desligado) | URL do webhook que recebe `{"text": "..."}` a cada envio dos tipos escolhidos. É segredo: só no ambiente, nunca no git |
+| `AGENT_BOARD_WEBHOOK_TIPOS` | `escalacao,entrega` | Tipos que vão para o webhook, separados por vírgula |
 | `ORCA_BIN` | autodetectado | Força o binário do `orca` usado pelos hooks e pelo `painel.py` |
 | `ORCA_TERMINAL_HANDLE` | definida pelo Orca | ID do painel. Não defina à mão |
 | `ORCA_REMOTE_CLI_BIN_DIR` | definida pelo Orca | Pasta da CLI `orca` em workspaces remotos |
@@ -472,6 +525,8 @@ Para só **desligar** sem desinstalar, esvazie o cadastro: com `paineis.json` va
 - O aviso na tela é digitado como se fosse texto do usuário. Por isso, o hook não digita quando há um diálogo aberto no destino.
 - Num pedido longo, com subagents rodando em segundo plano, o hook de fim de turno pode cobrar a resposta antes de o trabalho terminar. Depois de 3 cobranças, ele libera.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.
+- As notas em `docs/agent-board/notas/` são Markdown comum: a autoria provada é a da linha no log, não a do cabeçalho no arquivo, que pode ser editado como qualquer arquivo do repositório.
+- A notificação (webhook, GitHub) não tem nova tentativa: se falhar, fica só a linha no `avisos.log`.
 
 ---
 

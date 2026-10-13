@@ -54,6 +54,19 @@ O hook troca o nome pelo ID atual do painel, converte o tipo para um tipo aceito
 - Subagent não fala com outro agente, só a sessão principal. No Claude, o hook garante isso. No OMP, é regra deste contrato.
 - O `SendMessage` nativo do Claude entre sessões é barrado entre agentes do time: ele fica sem registro e pode travar esperando aprovação. Use o `orca`. O comando `orca terminal send` no painel de outro agente também é barrado. Só o master pode usá-lo, e só nos painéis do próprio time (por exemplo, para um `/clear`).
 
+## Notas e decisões do time
+
+Decisão tomada ou contexto que outro agente vai precisar depois vira nota, e não mensagem:
+
+```bash
+python3 ~/.agents/skills/agent-board/scripts/painel.py nota --raiz <project-path> --tema <tema> [--decisao] "<texto>"
+```
+
+- A nota é acrescentada em `docs/agent-board/notas/<tema>.md` e registrada no log com você como autor (o hook sabe quem você é pelo painel).
+- Use `--decisao` só para o que foi decidido. Decisão de produto continua sendo do master e do CEO.
+- Antes de perguntar algo que pode já ter sido decidido, consulte: `painel.py notas --raiz <project-path> [--tema <tema>]` ou `painel.py historico --raiz <project-path> --sobre <tema>`.
+- Nota não pede resposta e não é cobrada de ninguém.
+
 ## Nomes
 
 `<project-prefix>-<papel><NN>-<runtime>`. O master é único: `<project-prefix>-master`.
@@ -84,7 +97,7 @@ Um painel sem cadastro não é afetado em nada, a menos que tente falar com um a
 
 ## Log
 
-O log é `docs/agent-board/comunicacoes.jsonl`, com uma linha por mensagem, e é gravado sempre no checkout principal do projeto. O master inclui o log no commit quando faz merge.
+O log é `docs/agent-board/comunicacoes.jsonl`, com uma linha por mensagem, e é gravado sempre no checkout principal do projeto, mesmo quando você trabalha num worktree próprio (`<projeto>-worktrees/<agente>`, branch `ab/<agente>`). O master inclui o log no commit quando faz merge.
 
 **Ninguém edita o log nem o cadastro à mão.** O log é escrito só pelo hook a cada envio, e o cadastro só pelo `painel.py`. O hook barra qualquer escrita direta, pelo shell ou pelas ferramentas de edição. Ler com `cat`, `jq` ou `grep` é livre.
 
