@@ -90,6 +90,7 @@ python3 $S/painel.py listar
 |---|---|
 | `/hooks` não mostra `agent-board` | Rode `bash $S/install.sh` de novo e abra uma sessão nova |
 | OMP sem `agent-board` em `/extensions` | O hook só vale em sessão aberta depois da instalação. Abra outra |
+| Quero testar um adaptador sem o instalado | `omp --no-extensions --hook /caminho/omp-agent-board.ts` (detalhes em [Hooks e limites](../../referencia/hooks-e-limites.md)) |
 | `claude: command not found` no install | Rode à mão: `claude mcp add --scope user agent-board -- python3 $S/mcp_server.py` |
 | `orca status` falha | Resolva a conexão com o Orca primeiro. Em SSH, abra o app e reconecte |
 | `painel.py listar` diz `orca indisponível` | O `orca` não foi achado. Defina `ORCA_BIN` com o caminho do binário |

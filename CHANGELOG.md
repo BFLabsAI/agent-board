@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.10.1 — OMP
+
+Subseção do adaptador do OMP (`scripts/omp-agent-board.ts`), conferida no OMP 18.8.6.
+
+### Corrigido
+- O aviso digitado no destino não conferia o resultado do envio: o `tool_result` do OMP não levava o texto da saída, então um `orca send` que falhou ainda disparava o aviso. Agora o adaptador manda o texto e o `isError`.
+- Subagent não era barrado no OMP: o adaptador não mandava a identidade. Agora `ctx.agent.kind === "sub"` vira `agent_id` e o core barra o envio (shell, `board.py` e `board_send`).
+- `board_send` do MCP: o OMP nomeia `mcp__agent-board_board_send` (um `_`), e o core procurava `__board_send`. O adaptador reescreve o nome.
+- Escrita à mão no log e no cadastro: `edit` com vários arquivos (só `paths[]`), `ast_edit` e `eval` escapavam. Agora são tratados; o `eval` que cita o log ou o cadastro é barrado.
+- `board.py` e o `cwd` da sessão passam pelo core (antes o filtro do adaptador não incluía o `board.py`).
+
+### Novo
+- `scripts/test_omp.py` (14 testes): roda o adaptador de verdade no bun, com eventos no formato do OMP e o core real. Sem o bun, a suíte é pulada.
+- `AGENT_BOARD_PYTHON` escolhe o interpretador do adaptador (padrão `python3`).
+- Documentado como abrir uma sessão do OMP só com um adaptador (`omp --no-extensions --hook <caminho>`), os nomes e campos reais das ferramentas e o limite do `eval`.
+
 ## 1.10.0 — 2026-10-13
 
 A interface do time (Orca ou Maestri) passa a ser escolhida no setup, e o contrato dos agentes sai escrito só para ela. Ver [ADR-0008](docs/adr/0008-interface-escolhida-no-setup-e-contrato-adaptado.md).
