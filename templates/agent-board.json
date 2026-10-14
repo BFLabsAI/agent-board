@@ -2,6 +2,7 @@
   "versao": 1,
   "projeto": "<project-name>",
   "prefixo": "<project-prefix>",
+  "transporte": null,
   "papeis": {
     "master": {
       "tipos": [
@@ -20,7 +21,8 @@
         "resposta",
         "aviso",
         "escalacao",
-        "entrega"
+        "entrega",
+        "andamento"
       ],
       "pode_pedir_a": [
         "manager",
@@ -31,9 +33,23 @@
       "tipos": [
         "resposta",
         "aviso",
-        "escalacao"
+        "escalacao",
+        "andamento"
       ],
       "pode_pedir_a": []
     }
+  },
+  "prazo_padrao": null,
+  "limites": {
+    "pedidos_abertos_max": null,
+    "ping_pong_max": null,
+    "ping_pong_janela_min": null
+  },
+  "github": {
+    "comentar_entregas": false
+  },
+  "maestri": {
+    "espelhar_notas": false,
+    "status_do_floor": false
   }
 }
