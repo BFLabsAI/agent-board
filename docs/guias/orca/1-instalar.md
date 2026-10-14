@@ -76,7 +76,7 @@ python3 $S/painel.py listar
 
 ✅ **Deu certo se:** os três listam o runtime e os painéis abertos, sem erro.
 
-### Workspace remoto (SSH)
+### Workspace remoto (Orca server ou SSH)
 
 É o caso mais comum: o Orca roda no seu computador e os agentes num servidor.
 
