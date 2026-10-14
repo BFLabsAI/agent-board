@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.1 — 2026-10-14
+
+Corrige o ciclo de vida do pedido quando o trabalho é entregue. Ver [ADR-0009](docs/adr/0009-entrega-fecha-o-pedido.md).
+
+### Corrigido
+- `entrega --responde-a <id>` agora fecha o pedido `<id>` (antes só `resposta` fechava): o pedido sai de `em_andamento`/`aberto` no `painel.py tarefas` e no painel web, não é mais escalado como `atrasado` pelo `vigiar`, deixa de ser cobrado no Stop e de contar em `pedidos_abertos_max`. A entrega mantém o próprio ciclo (`aguardando_revisao`, `aprovado`, `rejeitado`); entrega rejeitada não reabre o pedido.
+- `--responde-a` na `entrega` (opcional) passa a ser validado como na resposta.
+
+### Alterado
+- O rodapé de um pedido a um manager mostra os dois comandos prontos: `--type entrega --responde-a <id>` para trabalho feito e `--type resposta --responde-a <id>` para pergunta ou bloqueio. `CONTRATO.md` e os guias de dia a dia explicam a diferença. `resposta` a pedido de trabalho continua permitida.
+
 ## 1.10.0 — 2026-10-13
 
 A interface do time (Orca ou Maestri) passa a ser escolhida no setup, e o contrato dos agentes sai escrito só para ela. Ver [ADR-0008](docs/adr/0008-interface-escolhida-no-setup-e-contrato-adaptado.md).

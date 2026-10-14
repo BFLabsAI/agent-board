@@ -222,6 +222,11 @@ def pre_send(ev, argv, sub_inicio, paineis, eu_handle, eu):
     if tipo in ("resposta", "andamento"):  # resposta e andamento não se respondem (o hook barraria)
         corpo += ("Não responda a esta mensagem: " + ("ela fecha a conversa; para algo novo, mande um pedido ou aviso."
                   if tipo == "resposta" else "é o progresso de um pedido seu; a resposta final ainda vem."))
+    elif tipo == "pedido" and para["papel"] == "manager":  # trabalho pedido: entrega com veredito; pergunta: resposta
+        base = f"{cmd_envio(para_handle)} --to {eu['agente']}"
+        corpo += (f"Para responder, trabalho feito (código, doc, entrega para revisão): {base} --type entrega --responde-a {cid} "
+                  "--subject \"...\" --body \"...\" (o master dá o veredito e a entrega fecha este pedido). "
+                  f"Para pergunta ou bloqueio: {base} --type resposta --responde-a {cid} --subject \"...\" --body \"...\"")
     else:
         corpo += (f"Para responder: {cmd_envio(para_handle)} --to {eu['agente']} --type resposta "
                   f"--responde-a {cid}" + (" --veredito aprovado|rejeitado" if tipo == "entrega" else "")
@@ -426,7 +431,7 @@ def decide_stop(ev):
                     f"--responde-a {lista} --subject \"...\" --body \"...\"")
     return {"action": "continue", "reason": (
         "agent-board: regra do time - toda mensagem recebida precisa de resposta antes de encerrar: "
-        "pedido se responde com o resultado ou o bloqueio (sem 'Recebido'); aviso, com uma resposta curta. "
+        "pedido se responde com o resultado ou o bloqueio (sem 'Recebido'; trabalho feito por manager vai em --type entrega --responde-a <id>); aviso, com uma resposta curta. "
         "Pedido longo ainda em curso: mande --type andamento --responde-a <id> com o progresso (para a cobrança; "
         "o pedido segue aberto até a resposta). "
         + ("A mensagem chegou digitada neste terminal (role a tela se não leu)"

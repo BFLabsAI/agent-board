@@ -24,15 +24,15 @@ python3 ~/.agents/skills/agent-board/scripts/board.py send --to master --type en
 
 - **`--type`** é um dos tipos do time:
   - `pedido`: pede um trabalho.
-  - `resposta`: devolve o resultado de um pedido ou responde a um aviso. Fecha a conversa.
+  - `resposta`: responde a uma pergunta, a um bloqueio ou a um aviso. Fecha a conversa. Trabalho pedido que você terminou não vai por aqui: vai por `entrega`.
   - `aviso`: informa algo, sem pedir trabalho.
   - `escalacao`: algo travou ou precisa de decisão. Vai só para o master.
-  - `entrega`: trabalho pronto para revisão ou merge. Vai só para o master.
+  - `entrega`: trabalho pronto para revisão ou merge. Vai só para o master. Responda a um pedido de trabalho com `--type entrega --responde-a <id do pedido>`: a entrega fecha o pedido (para o quadro, o `vigiar` e a cobrança) e o master dá o veredito nela.
   - `andamento`: progresso de um pedido longo que você recebeu. Vai para quem pediu, com `--responde-a <id do pedido>`. Qualquer papel pode mandar. O pedido continua aberto até a sua `resposta`.
 - **`--modo orquestrar|executar`** é obrigatório quando o pedido vai para um manager:
   - `orquestrar`: o manager trabalha com subagents, seguindo a skill `/orchestrator`, com revisão e QA.
   - `executar`: o manager faz o trabalho ele mesmo.
-- **`--responde-a <id>[,<id>...]`** é obrigatório em `resposta`. Uma única resposta pode cobrir várias mensagens.
+- **`--responde-a <id>[,<id>...]`** é obrigatório em `resposta` e `andamento`, e recomendado em `entrega` (é ele que fecha o pedido). Uma única resposta pode cobrir várias mensagens.
 - **`--veredito aprovado|rejeitado`** é obrigatório na `resposta` a uma `entrega` (só o master recebe entregas) e inválido em qualquer outro caso. Se rejeitar, diga no `--body` o que falta.
 - **`--prazo 30m|2h|1d`** é opcional em `pedido` e grava a hora-limite no log. O projeto pode ter um prazo padrão. Pedido vencido sem resposta é marcado `atrasado` e avisado ao master pelo `painel.py vigiar`.
 - **`--to papel:<papel>`** (ex.: `--to papel:researcher`) escolhe o agente desse papel com menos pedidos abertos.
@@ -44,10 +44,10 @@ python3 ~/.agents/skills/agent-board/scripts/board.py send --to master --type en
 <!-- maestri --> - Só entrega entre terminais **ligados por uma corda** no canvas. Sem corda, o envio falha na hora, o log marca `falhou` e o master liga os dois (`painel.py maestri conectar`).
 
 <!-- orca -->
-O hook troca o nome pelo ID atual do painel, converte o tipo para um tipo aceito pelo Orca e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). No corpo, ele acrescenta um rodapé com o comando de resposta pronto.
+O hook troca o nome pelo ID atual do painel, converte o tipo para um tipo aceito pelo Orca e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). No corpo, ele acrescenta um rodapé com o comando de resposta pronto (em pedido para manager, os dois: `entrega` para trabalho feito, `resposta` para pergunta ou bloqueio).
 <!-- /orca -->
 <!-- maestri -->
-O `board.py` troca o nome pelo terminal atual do destino e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). A mensagem chega **digitada no terminal do destino**, com um rodapé com o comando de resposta pronto.
+O `board.py` troca o nome pelo terminal atual do destino e põe no assunto o ID da mensagem (`[c-20261007-101256-ab68 pedido·executar] ...`). A mensagem chega **digitada no terminal do destino**, com um rodapé com o comando de resposta pronto (em pedido para manager, os dois: `entrega` para trabalho feito, `resposta` para pergunta ou bloqueio).
 <!-- /maestri -->
 
 ### Pelas ferramentas MCP (Claude Code)
@@ -77,7 +77,7 @@ As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e entregam 
 1. A mensagem chega inteira, digitada no seu terminal, com o id no assunto (`[c-… pedido·executar] ...`) e o rodapé com o comando de resposta pronto.
 2. **Não responda só no chat.** Essa resposta não entra no log nem fecha a pendência: responda com `board.py send`, como mostra o rodapé.
 <!-- /maestri -->
-3. **Pedido não leva confirmação de recebimento.** Se o pedido vai demorar (subagents, testes longos), mande `--type andamento --responde-a <id>` com o progresso: o hook para de cobrar no fim do turno, e a `resposta` vem quando terminar. Responda a ele só com o resultado ou com o bloqueio (`--type resposta --responde-a <id>`), nunca com "Recebido". **Aviso exige uma resposta curta**, também com `--type resposta --responde-a <id>`. Se um aviso não pede nada a fazer, responda "recebido, nada a fazer".
+3. **Pedido não leva confirmação de recebimento.** Se o pedido vai demorar (subagents, testes longos), mande `--type andamento --responde-a <id>` com o progresso: o hook para de cobrar no fim do turno, e a resposta final vem quando terminar. Manager que terminou um trabalho pedido responde com `--type entrega --responde-a <id>`; pergunta, bloqueio, ou pedido a um researcher, com `--type resposta --responde-a <id>`. Nunca responda com "Recebido". **Aviso exige uma resposta curta**, também com `--type resposta --responde-a <id>`. Se um aviso não pede nada a fazer, responda "recebido, nada a fazer".
    - **Resposta fecha a conversa: resposta não se responde.** Não mande "recebido" para uma resposta. Se a resposta deixou algo pendente, abra uma mensagem nova (`pedido` ou `aviso`). O hook barra resposta a resposta.
    - Se você tentar encerrar o turno com mensagens sem resposta, o hook segura e mostra o comando pronto.
    - Ele faz isso no máximo 3 vezes. Depois disso, registra que você encerrou sem responder.
