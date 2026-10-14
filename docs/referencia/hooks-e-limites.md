@@ -28,13 +28,38 @@ O `install.sh` também:
 
 ### OMP (`~/.omp/agent/hooks/pre/agent-board.ts`)
 
-O adaptador chama o mesmo core. Ele só repassa comandos que citam `orca orchestration|terminal send|ask|reply`, `maestri ask` (ou `$MAESTRI_CLI ask`), `comunicacoes.jsonl` ou `paineis.json`.
+O adaptador chama o mesmo core. Verificado no OMP 18.8.6 (código do pacote `@oh-my-pi/pi-coding-agent`).
+
+**Nomes e campos.** O OMP não usa os nomes do Claude Code; o adaptador traduz antes de chamar o core.
+
+| Ferramenta do OMP | Campos | O adaptador repassa quando |
+|---|---|---|
+| `bash` | `command` | cita `orca orchestration\|terminal send\|ask\|reply`, `maestri ask` (ou `$MAESTRI_CLI ask`), `board.py`, `comunicacoes.jsonl` ou `paineis.json` |
+| `edit` | `path`; no modo hashline, `input` com cabeçalhos `[PATH#TAG]` e `path`/`paths` derivados; com vários arquivos, só `paths[]` | sempre que algum caminho existe (o protegido tem prioridade) |
+| `write` | `path`, `content` | sempre |
+| `ast_edit` | `paths[]` | sempre |
+| `eval` (python/js) | `input` | o código cita o log ou o cadastro (não dá para separar leitura de escrita, então barra) |
+| MCP `mcp__agent-board_board_send` | (ferramenta MCP) | sempre; o OMP nomeia com um `_` só, e o adaptador reescreve para o nome que o core conhece |
 
 | Evento do OMP | Vira | Observação |
 |---|---|---|
-| `tool_call` | `PreToolUse` | Se o core falhar, o comando é barrado |
-| `tool_result` | `PostToolUse` | |
-| `session_stop` | `Stop` | Cobrança de resposta |
+| `tool_call` | `PreToolUse` | Devolve `{ block, reason }` ou `{ input }`. O `input` é o objeto de argumentos **completo** (o adaptador mescla com os campos originais, como `timeout` e `cwd`). Se o core falhar, o comando é barrado |
+| `tool_result` | `PostToolUse` | Leva o texto do resultado e o `isError`; é daí que sai o aviso digitado no destino (e o "envio falhou" que cancela o aviso) |
+| `session_stop` | `Stop` | Devolve `{ decision: "block", reason }`. Só dispara na sessão principal, nunca em subagent |
+
+**Cobrança no `Stop`.** O OMP manda `stop_hook_active: true` a partir da segunda passada, mas não põe teto no `block`. Quem para o laço é o contador do core: 3 cobranças pelas mesmas pendências, depois o agente encerra e o master recebe um aviso.
+
+**Subagent.** As extensões são religadas em cada subagent (`task`, `eval`), e o `ctx.agent.kind` vale `"sub"` neles. O adaptador manda isso ao core como `agent_id`, e o core barra `orca orchestration send`, `board.py send` e `board_send` de subagent.
+
+**Falhas.** Exceção ou estouro de tempo (30 s por handler; o adaptador usa 10 s) num `tool_call` **barra** a chamada. Erro em `tool_result` ou `session_stop` só é registrado, e o agente segue.
+
+**Sessão só com o agent-board.** Para testar uma versão do adaptador sem o instalado em `~/.omp/agent/hooks/pre/`:
+
+```bash
+omp --no-extensions --hook /caminho/absoluto/omp-agent-board.ts
+```
+
+Sem a flag `--no-extensions`, o OMP carrega o instalado **e** o do `--hook`. O adaptador lê `AGENT_BOARD_CORE` (caminho do `hook_core.py`) e `AGENT_BOARD_HOME` (estado); aponte os dois para a cópia que quer testar, pois o arquivo da skill traz o marcador `__AGENT_BOARD_CORE__` no lugar do caminho (o `install.sh` troca). `ORCA_TERMINAL_HANDLE` vem do terminal e chega intacto. `--no-extensions` também desliga as outras extensões (por exemplo as do Orca em `~/.omp/agent/extensions/`).
 
 Confira com `/extensions` numa sessão **aberta depois** da instalação.
 
@@ -98,7 +123,7 @@ O motivo vem na própria mensagem de erro, com a correção sugerida. Coluna **O
 ## Limites conhecidos
 
 - O hook só vê o que passa pelas ferramentas de shell, de edição, pelo `SendMessage` e pelo `board_send` (neste, só para barrar subagent). Um script que chama o `orca` por dentro escapa da checagem, e o contrato proíbe isso.
-- No OMP, o hook só vê o shell (comandos `orca`, `maestri ask`) e o que cita o log ou o cadastro. A trava de subagent no `board.py` não vale lá.
+- No OMP, o hook vê `bash`, `edit`, `write`, `ast_edit`, `eval` e o `board_send` do MCP; o resto passa. Um `eval` que monta o caminho do log por partes escapa da checagem de texto.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.
 - O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e `painel.py reenviar` manda de novo.
 - A cadeia de hash acusa linha editada ou apagada no meio do log, mas não a remoção da **última** linha. Torna a adulteração visível, não impossível.
