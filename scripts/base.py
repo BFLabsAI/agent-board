@@ -96,9 +96,17 @@ def eh_maestri(handle):
 
 
 def achar_orca():
-    """O hook roda com PATH reduzido: procura o orca nos lugares conhecidos."""
-    for c in (os.environ.get("ORCA_BIN", ""),
-              os.path.join(os.environ.get("ORCA_REMOTE_CLI_BIN_DIR", ""), "orca"),
+    """O hook roda com PATH reduzido: procura o orca nos lugares conhecidos.
+
+    Ordem: ORCA_BIN explícito; o shim do terminal aberto por um Orca server
+    ($ORCA_CLI_BIN_DIR); o shim do terminal aberto por SSH ($ORCA_REMOTE_CLI_BIN_DIR);
+    o PATH; e por último o relay SSH (~/.orca-relay). Um terminal do servidor nunca
+    cai no relay, que fala com outro runtime e não conhece os painéis do servidor.
+    """
+    def em(var):
+        d = os.environ.get(var, "")
+        return os.path.join(d, "orca") if d else ""
+    for c in (os.environ.get("ORCA_BIN", ""), em("ORCA_CLI_BIN_DIR"), em("ORCA_REMOTE_CLI_BIN_DIR"),
               shutil.which("orca") or "", os.path.expanduser("~/.orca-relay/bin/orca")):
         if c and os.access(c, os.X_OK):
             return c

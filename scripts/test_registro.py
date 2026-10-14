@@ -253,6 +253,53 @@ class Comandos(Base):
         self.assertIn("não está mais guardado", r.stderr)
 
 
+class AcharOrca(unittest.TestCase):
+    """Terminal aberto por um Orca server nunca usa o relay SSH (outro runtime)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="agent-board-orca-")
+        self.antes = {k: os.environ.get(k) for k in ("ORCA_BIN", "ORCA_CLI_BIN_DIR", "ORCA_REMOTE_CLI_BIN_DIR")}
+        for k in self.antes:
+            os.environ.pop(k, None)
+
+    def tearDown(self):
+        for k, v in self.antes.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def orca_em(self, nome):
+        d = os.path.join(self.tmp, nome)
+        os.makedirs(d)
+        f = os.path.join(d, "orca")
+        with open(f, "w") as fh:
+            fh.write("#!/bin/sh\n")
+        os.chmod(f, 0o755)
+        return d
+
+    def test_servidor_antes_do_ssh(self):
+        import base
+        servidor, ssh = self.orca_em("servidor"), self.orca_em("ssh")
+        os.environ["ORCA_CLI_BIN_DIR"] = servidor
+        os.environ["ORCA_REMOTE_CLI_BIN_DIR"] = ssh
+        self.assertEqual(base.achar_orca(), os.path.join(servidor, "orca"))
+
+    def test_orca_bin_vence(self):
+        import base
+        os.environ["ORCA_CLI_BIN_DIR"] = self.orca_em("servidor")
+        os.environ["ORCA_BIN"] = os.path.join(self.orca_em("explicito"), "orca")
+        self.assertEqual(base.achar_orca(), os.environ["ORCA_BIN"])
+
+    def test_variavel_vazia_e_ignorada(self):
+        import base
+        os.environ["ORCA_CLI_BIN_DIR"] = ""
+        ssh = self.orca_em("ssh")
+        os.environ["ORCA_REMOTE_CLI_BIN_DIR"] = ssh
+        self.assertEqual(base.achar_orca(), os.path.join(ssh, "orca"))
+
+
 if __name__ == "__main__":
     try:
         unittest.main(verbosity=1)

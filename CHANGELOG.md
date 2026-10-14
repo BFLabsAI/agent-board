@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.2 — 2026-10-14
+
+### Corrigido
+- `achar_orca()` procura primeiro o shim do terminal aberto por um Orca server (`$ORCA_CLI_BIN_DIR`), antes do shim SSH e do relay `~/.orca-relay`. Num servidor que ainda tinha o relay SSH, o hook podia escolher o relay, que fala com outro runtime e não conhece os painéis do servidor ("no live pane bound to a Run"). Variável vazia é ignorada.
+
 ## 1.10.1 — 2026-10-14
 
 Corrige o ciclo de vida do pedido quando o trabalho é entregue. Ver [ADR-0009](docs/adr/0009-entrega-fecha-o-pedido.md).
