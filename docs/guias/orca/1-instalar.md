@@ -64,7 +64,7 @@ O agent-board não tem correio próprio. Ele usa duas coisas do Orca.
 
 - Variável vazia: o terminal não foi aberto pelo Orca e não entra no time.
 - O ID **muda quando o painel é fechado e reaberto**. Aí é preciso recadastrar (veja [4. Problemas](4-problemas.md)).
-- Os hooks rodam com `PATH` reduzido. O `orca` é procurado nesta ordem: `$ORCA_BIN`, `$ORCA_REMOTE_CLI_BIN_DIR/orca`, o `orca` do `PATH`, `~/.orca-relay/bin/orca`.
+- Os hooks rodam com `PATH` reduzido. O `orca` é procurado nesta ordem: `$ORCA_BIN`, `$ORCA_CLI_BIN_DIR/orca` (terminal aberto por um Orca server), `$ORCA_REMOTE_CLI_BIN_DIR/orca` (terminal aberto por SSH), o `orca` do `PATH`, `~/.orca-relay/bin/orca`.
 
 Teste rápido, dentro de um painel do Orca:
 
@@ -81,8 +81,9 @@ python3 $S/painel.py listar
 É o caso mais comum: o Orca roda no seu computador e os agentes num servidor.
 
 - Instale o agent-board **no servidor**.
-- A CLI `orca` do servidor vem do relay (`~/.orca-relay/bin/orca`) e fala com o app no seu computador.
-- O app do Orca precisa estar aberto e conectado. Se a conexão cair, o envio pode dar timeout: espere reconectar e reenvie.
+- **Recomendado: Orca server** (`orca serve` no servidor, pareado com o app). O runtime, o correio e os terminais ficam no servidor, e os agentes não dependem do seu computador estar ligado. A CLI é o shim do servidor (`$ORCA_CLI_BIN_DIR/orca`, já no `PATH` dos painéis).
+- **Modo SSH:** a CLI `orca` vem do relay (`~/.orca-relay/bin/orca`) e fala com o app no seu computador. O app precisa estar aberto e conectado; se a conexão cair, o envio pode dar timeout: espere reconectar e reenvie.
+- Não misture os dois: um painel aberto pelo servidor que chama o relay SSH fala com outro runtime e recebe "no live pane bound to a Run". Ao migrar para o Orca server, remova o host SSH do app.
 
 ## Se der errado
 

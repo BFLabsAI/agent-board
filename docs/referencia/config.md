@@ -79,7 +79,7 @@ Os hooks rodam com um `PATH` reduzido. Por isso a busca segue uma ordem fixa; va
 
 | CLI | Ordem de busca |
 |---|---|
-| `orca` | `$ORCA_BIN` → `$ORCA_REMOTE_CLI_BIN_DIR/orca` → `orca` no `PATH` → `~/.orca-relay/bin/orca` |
+| `orca` | `$ORCA_BIN` → `$ORCA_CLI_BIN_DIR/orca` (Orca server) → `$ORCA_REMOTE_CLI_BIN_DIR/orca` (SSH) → `orca` no `PATH` → `~/.orca-relay/bin/orca` |
 | `maestri` | `$MAESTRI_CLI` → `maestri` no `PATH` → `~/.maestri/bin/maestri` |
 
 ## Notificações
