@@ -51,7 +51,7 @@ Rode esse `check` **com `--format`**. Sem ele, você vê só o assunto.
 
 | Você recebeu | Responda com |
 |---|---|
-| `pedido` | `--type resposta --responde-a <id>` com o resultado ou o bloqueio. Nunca "Recebido" |
+| `pedido` | trabalho feito (manager): `--type entrega --responde-a <id>`; pergunta ou bloqueio: `--type resposta --responde-a <id>`. Nunca "Recebido" |
 | `pedido` longo | `--type andamento --responde-a <id>` agora; a `resposta` quando terminar |
 | `aviso` | `--type resposta --responde-a <id>` curta. Pode ser "recebido, nada a fazer" |
 | `entrega` (master) | `--type resposta --responde-a <id> --veredito aprovado` ou `rejeitado` |

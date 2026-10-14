@@ -205,7 +205,7 @@ class Envio(Base):
         texto = self.texto_das_chamadas()
         self.assertIn("Não responda a esta mensagem: é o progresso", texto)
         self.assertIn("Não responda a esta mensagem: ela fecha a conversa", texto)
-        self.assertEqual(texto.count("Para responder:"), 1)  # só o do pedido
+        self.assertEqual(texto.count("Para responder"), 1)  # só o do pedido
 
     def test_destino_desconectado_marca_falhou_e_nao_cobra(self):
         r = self.rodar(BOARD, "send", "--to", "researcher01-cc", "--type", "aviso", "--subject", "x")

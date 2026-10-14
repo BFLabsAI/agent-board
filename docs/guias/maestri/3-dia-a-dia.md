@@ -32,7 +32,7 @@ Detalhes na Issue 12.
 Pedido longo: mande antes --type andamento --responde-a c-20261013-101256-ab68 com o progresso
 ```
 - **Responda sempre pelo `board.py`**, como mostra o rodapé. Resposta só no chat não entra no log nem fecha a pendência.
-- `pedido`: responda com o resultado ou o bloqueio, nunca "Recebido". `aviso`: uma resposta curta. `resposta` não se responde.
+- `pedido`: trabalho feito (manager) vai em `--type entrega --responde-a <id>`; pergunta ou bloqueio, em `--type resposta`. Nunca "Recebido". `aviso`: uma resposta curta. `resposta` não se responde.
 - No Claude Code, o hook segura o fim do turno até 3 vezes enquanto houver mensagem sem resposta.
 
 ✅ **Deu certo se:** `python3 $S/painel.py tarefas --raiz <projeto> --agente <você>` mostra o pedido como `concluido`.

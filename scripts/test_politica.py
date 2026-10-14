@@ -358,6 +358,76 @@ class Tarefas(Base):
         self.assertIn("só do master", r.stderr)
 
 
+class EntregaFechaPedido(Base):
+    """Bug 1.10.1: entrega com --responde-a fecha o pedido que cumpre, e mantém o ciclo próprio."""
+
+    def log_do_teste(self, veredito="aprovado"):
+        fim = (AGORA + datetime.timedelta(minutes=-5)).isoformat(timespec="seconds")  # prazo de 20m já vencido
+        for l in (msg("c-1", M, G1, "pedido", 40, modo="orquestrar", prazo=fim, assunto="Inventário de páginas"),
+                  msg("c-and", G1, M, "andamento", 30, responde_a="c-1"),
+                  msg("c-ent", G1, M, "entrega", 20, responde_a="c-1"),
+                  msg("c-2", M, G2, "pedido", 40, modo="executar", prazo=fim),
+                  msg("c-ent2", G2, M, "entrega", 20, responde_a="c-2"),
+                  msg("c-v", M, G1, "resposta", 10, responde_a="c-ent", veredito=veredito)):
+            registro.gravar_log(self.raiz, l)
+
+    def estados(self):
+        js = json.loads(self.painel("tarefas", "--raiz", self.raiz, "--formato", "json").stdout)
+        return {l["id"]: l["estado"] for l in js}
+
+    def test_quadro_pedido_fechado_pela_entrega_e_entrega_com_ciclo_proprio(self):
+        self.log_do_teste()
+        self.assertEqual(self.estados(), {"c-1": "concluido", "c-ent": "aprovado", "c-2": "concluido",
+                                          "c-ent2": "aguardando_revisao"})
+
+    def test_entrega_rejeitada_nao_reabre_o_pedido(self):
+        self.log_do_teste("rejeitado")
+        e = self.estados()
+        self.assertEqual((e["c-1"], e["c-ent"]), ("concluido", "rejeitado"))
+
+    def test_vigiar_nao_escala_pedido_entregue(self):
+        self.log_do_teste()
+        self.assertIn("nenhum pedido atrasado", self.painel("vigiar", "--raiz", self.raiz).stdout)
+        self.assertEqual(registro.status(self.raiz), {})
+
+    def test_pedidos_abertos_e_cobranca_do_stop(self):
+        self.log_do_teste()
+        msgs = registro.ler_log(self.raiz)
+        self.assertEqual(politica.pedidos_abertos(G1["agente"], msgs), [])
+        self.assertEqual(politica.pedidos_abertos(G2["agente"], msgs), [])
+        self.assertEqual(politica.pendentes(G1["agente"], msgs), [])
+        self.assertEqual([l["id"] for l in politica.pendentes(M["agente"], msgs)], ["c-ent2"])  # a entrega é do master
+
+    def test_andamento_depois_da_entrega_e_barrado(self):
+        msgs = [msg("c-1", M, G1, "pedido", 5, modo="executar"), msg("c-e", G1, M, "entrega", 3, responde_a="c-1")]
+        with self.assertRaises(Barrado):
+            validar(config(), G1, M, "andamento", msgs, responde_a="c-1")
+
+    def test_responde_a_da_entrega_e_validado_e_continua_opcional(self):
+        msgs = [msg("c-1", M, G1, "pedido", 5, modo="executar"), msg("c-x", M, G2, "pedido", 5, modo="executar")]
+        validar(config(), G1, M, "entrega", msgs)  # sem --responde-a, como antes
+        validar(config(), G1, M, "entrega", msgs, responde_a="c-1")
+        for ruim in ("c-nao-existe", "c-x"):  # inexistente; pedido que outro recebeu
+            with self.assertRaises(Barrado):
+                validar(config(), G1, M, "entrega", msgs, responde_a=ruim)
+
+    def test_hook_grava_responde_a_da_entrega_e_fecha_o_pedido(self):
+        h = self.hook("term_m", "orca orchestration send --to alpha-manager01-cc --type pedido --modo executar "
+                                "--prazo 20m --subject x")
+        self.assertIn("--type entrega --responde-a", h["updatedInput"]["command"])  # rodapé: os dois caminhos
+        self.assertIn("--type resposta --responde-a", h["updatedInput"]["command"])
+        cid = registro.ler_log(self.raiz)[-1]["id"]
+        self.hook("term_g1", f"orca orchestration send --to alpha-master --type entrega --responde-a {cid} --subject y")
+        self.assertEqual(registro.ler_log(self.raiz)[-1]["responde_a"], cid)
+        self.assertEqual(self.estados()[cid], "concluido")
+
+    def test_rodape_de_pedido_para_researcher_continua_so_resposta(self):
+        h = self.hook("term_g1", "orca orchestration send --to alpha-researcher01-cc --type pedido --subject x")
+        cmd = h["updatedInput"]["command"]
+        self.assertIn("--type resposta --responde-a", cmd)
+        self.assertNotIn("--type entrega", cmd)
+
+
 class Simular(Base):
     def setUp(self):
         super().setUp()

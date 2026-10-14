@@ -84,6 +84,13 @@ class TemplateReal(unittest.TestCase):
         self.assertIn("solicitar", t)
         self.assertNotIn("<!--", t)
 
+    def test_manager_aprende_entrega_para_trabalho_e_resposta_para_pergunta(self):
+        for t in ("orca", "maestri"):
+            texto = contrato.renderizar(self.texto, t)
+            self.assertIn("`--type entrega --responde-a <id do pedido>`", texto)
+            self.assertIn("a entrega fecha o pedido", texto)
+            self.assertIn("pergunta, bloqueio", texto)
+
     def test_as_duas_versoes_mantem_o_que_e_comum(self):
         for tr in ("orca", "maestri"):
             t = contrato.renderizar(self.texto, tr)

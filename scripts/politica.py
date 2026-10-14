@@ -43,11 +43,12 @@ def data(texto):
 
 
 def respostas(mensagens):
-    """{id do original: resposta}: só a `resposta` de quem recebeu o original fecha a conversa."""
+    """{id do original: mensagem que o fecha}: a `resposta` de quem recebeu o original, ou a `entrega`
+    com --responde-a (o trabalho pedido foi entregue). A entrega mantém o ciclo próprio (revisão do master)."""
     por_id = {l["id"]: l for l in mensagens}
     out = {}
     for l in mensagens:
-        if l.get("tipo") != "resposta":
+        if l.get("tipo") not in ("resposta", "entrega"):
             continue
         for cid in ids_de(l.get("responde_a")):
             orig = por_id.get(cid)
@@ -142,6 +143,7 @@ def checar_responde_a(agente, valor, mensagens, tipo="resposta"):
 
     Resposta fecha a conversa: não se responde resposta nem andamento.
     Andamento só vale para um pedido ainda aberto, e vai para quem pediu.
+    Entrega (opcional) com --responde-a fecha o pedido que ela cumpre; mesmas checagens da resposta.
     """
     if not isinstance(valor, str) or not valor.strip():
         raise Barrado(f"{tipo} precisa de --responde-a <id da mensagem original>")
@@ -258,7 +260,7 @@ def validar_envio(cfg, eu, para, tipo, modo, responde_a, veredito, prazo, mensag
     agora = agora or datetime.datetime.now().astimezone()
     checar_permissao(cfg, eu, para, tipo, modo)
     checar_ligacoes(cfg, eu, para, tipo)
-    if tipo in ("resposta", "andamento"):
+    if tipo in ("resposta", "andamento") or (tipo == "entrega" and responde_a):  # na entrega é opcional
         checar_responde_a(eu["agente"], responde_a, mensagens, tipo)
     if tipo == "andamento":
         checar_destino_andamento(para, responde_a, mensagens)
