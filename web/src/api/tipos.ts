@@ -56,6 +56,8 @@ export interface SubAgente {
   ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null;
   n_atividades: number;
   tarefa: { id: string; assunto: string } | null;
+  /** issues em que o sub-agent trabalhou: #NNN da descrição + issues da tarefa ligada (1.13.1) */
+  issues?: number[];
 }
 
 export interface SubAgenteResumo {
@@ -268,6 +270,8 @@ export interface Workflows {
     fluxo_mais_comum: string | null;
     msgs_por_conversa: number | null;
     subagentes: number;
+    /** fração 0–1 dos sub-agents ligados a alguma issue (1.13.1) */
+    subagentes_com_issue?: number | null;
   };
 }
 

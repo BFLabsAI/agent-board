@@ -201,6 +201,10 @@ export function subagentesFixture(agora = Date.now()): SubAgente[] {
       ultima_atividade: x.ferramenta ? { ts: iso(ult), ferramenta: x.ferramenta, resumo: x.resumo ?? "" } : null,
       n_atividades: 3 + ((i * 7) % 19),
       tarefa: x.tarefa ? { id: x.tarefa, assunto: tarefas.get(x.tarefa) ?? x.tarefa } : null,
+      issues: Array.from(new Set([
+        ...Array.from((x.descricao ?? "").matchAll(/#(\d{1,6})\b/g), (m) => Number(m[1])),
+        ...(THREADS.find((t) => t.id === x.tarefa)?.issues ?? []),
+      ])).sort((a, b) => a - b),
     };
   }).sort((a, b) => b.inicio.localeCompare(a.inicio));
 }
@@ -360,9 +364,10 @@ export function workflowsFixture(): Workflows {
       { id: MASTER, coluna: "master", rotulo: "master", n: 8 },
       ...ms.map((m, i) => ({ id: m, coluna: "manager" as const, rotulo: m.replace("r7one-", ""), n: 3 - (i === 2 ? 1 : 0) })),
       { id: RESEARCHER, coluna: "researcher", rotulo: "researcher01-cc", n: 2 },
-      { id: "sub:general-purpose", coluna: "subagente", rotulo: "general-purpose", n: 31 },
-      { id: "sub:Explore", coluna: "subagente", rotulo: "Explore", n: 22 },
-      { id: "sub:task", coluna: "subagente", rotulo: "task", n: 9 },
+      { id: `sub:${MASTER}`, coluna: "subagente", rotulo: MASTER, n: 10 },
+      { id: `sub:${ms[0]}`, coluna: "subagente", rotulo: ms[0], n: 19 },
+      { id: `sub:${ms[1]}`, coluna: "subagente", rotulo: ms[1], n: 9 },
+      { id: `sub:${RESEARCHER}`, coluna: "subagente", rotulo: RESEARCHER, n: 11 },
       { id: "#412", coluna: "issue", rotulo: "#412", n: 1 }, { id: "#418", coluna: "issue", rotulo: "#418", n: 1 },
       { id: "#421", coluna: "issue", rotulo: "#421", n: 1 }, { id: "#425", coluna: "issue", rotulo: "#425", n: 1 },
       { id: "revisao", coluna: "revisao", rotulo: "Revisão", n: 4 },
@@ -373,12 +378,12 @@ export function workflowsFixture(): Workflows {
     arestas: [
       { de: MASTER, para: ms[0], n: 2 }, { de: MASTER, para: ms[1], n: 2 }, { de: MASTER, para: ms[2], n: 2 },
       { de: MASTER, para: RESEARCHER, n: 2 },
-      { de: MASTER, para: "sub:general-purpose", n: 6 }, { de: MASTER, para: "sub:Explore", n: 4 },
-      { de: ms[0], para: "sub:general-purpose", n: 12 }, { de: ms[0], para: "sub:Explore", n: 7 },
-      { de: ms[1], para: "sub:task", n: 9 }, { de: ms[2], para: "sub:general-purpose", n: 13 },
-      { de: RESEARCHER, para: "sub:Explore", n: 11 },
-      { de: ms[0], para: "#412", n: 1 }, { de: ms[1], para: "#418", n: 1 }, { de: ms[2], para: "#421", n: 1 },
-      { de: ms[0], para: "#425", n: 1 },
+      { de: MASTER, para: `sub:${MASTER}`, n: 10 }, { de: ms[0], para: `sub:${ms[0]}`, n: 19 },
+      { de: ms[1], para: `sub:${ms[1]}`, n: 9 }, { de: RESEARCHER, para: `sub:${RESEARCHER}`, n: 11 },
+      { de: `sub:${MASTER}`, para: "#421", n: 2 },
+      { de: `sub:${ms[0]}`, para: "#412", n: 8 }, { de: `sub:${ms[0]}`, para: "#425", n: 6 },
+      { de: `sub:${ms[1]}`, para: "#418", n: 7 },
+      { de: ms[2], para: "#421", n: 1 },
       { de: "#412", para: "revisao", n: 1 }, { de: "#418", para: "revisao", n: 1 }, { de: "#421", para: "revisao", n: 1 },
       { de: "revisao", para: "aprovado", n: 2 }, { de: "revisao", para: "rejeitado", n: 1 },
       { de: "#425", para: "em_aberto", n: 1 },
@@ -390,7 +395,7 @@ export function workflowsFixture(): Workflows {
       { sequencia: ["pedido", "andamento", "andamento", "entrega", "resposta:rejeitado"], n: 3 },
       { sequencia: ["pedido", "andamento"], n: 2 },
     ],
-    kpis: { conversas: 14, taxa_aprovacao: 0.82, tempo_ate_entrega_p50_min: 58, fluxo_mais_comum: "pedido > andamento > entrega > resposta:aprovado", msgs_por_conversa: 4.1, subagentes: 62 },
+    kpis: { conversas: 14, taxa_aprovacao: 0.82, tempo_ate_entrega_p50_min: 58, fluxo_mais_comum: "pedido > andamento > entrega > resposta:aprovado", msgs_por_conversa: 4.1, subagentes: 49, subagentes_com_issue: 0.71 },
   };
 }
 
