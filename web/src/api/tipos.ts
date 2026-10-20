@@ -33,6 +33,34 @@ export interface Mensagem {
   veredito?: "aprovado" | "rejeitado";
 }
 
+/** Sub-agents (1.12): rodam abaixo de um agente do cadastro (o "pai"). */
+export type StatusSub = "rodando" | "concluido" | "erro" | "perdido";
+
+export interface SubAgente {
+  id: string;
+  /** nome do agente pai no cadastro */
+  agente: string;
+  tipo: string | null;
+  /** texto não confiável (descrição que o pai passou) */
+  descricao: string | null;
+  status: StatusSub;
+  fundo: boolean;
+  inicio: string;
+  fim: string | null;
+  duracao_s: number | null;
+  /** resumo é texto não confiável, já mascarado no servidor */
+  ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null;
+  n_atividades: number;
+  tarefa: { id: string; assunto: string } | null;
+}
+
+export interface SubAgenteResumo {
+  id: string;
+  tipo: string | null;
+  descricao: string | null;
+  status: StatusSub;
+}
+
 export interface TarefaAtual {
   id: string;
   assunto: string;
@@ -47,6 +75,7 @@ export interface StatsAgente {
   aprovadas_7d: number;
   rejeitadas_7d: number;
   tempo_resposta_p50_min: number | null;
+  subagentes_7d: number;
 }
 
 export interface Agente {
@@ -63,6 +92,8 @@ export interface Agente {
   pendentes: number;
   tarefa_atual: TarefaAtual | null;
   stats: StatsAgente;
+  /** rodando + os 5 terminados mais recentes (24 h) */
+  subagentes: SubAgente[];
 }
 
 export interface Tarefa {
@@ -79,6 +110,7 @@ export interface Tarefa {
   andamento: string | null;
   andamento_ts: string | null;
   fechada_em: string | null;
+  subagentes: SubAgenteResumo[];
 }
 
 export interface Conversa {
@@ -131,6 +163,7 @@ export interface Indicadores {
   offline: number;
   abertos: number;
   entregas_periodo: number;
+  subagentes_rodando: number;
 }
 
 export interface Resumo {
@@ -163,9 +196,15 @@ export interface Analytics {
   }[];
   tipos: { tipo: string; n: number }[];
   alertas: { de: string; para: string; n: number; janela_min: number; ate: string }[];
+  subagentes: {
+    por_agente: { agente: string; n: number; rodando: number; erro: number; duracao_media_s: number | null }[];
+    por_tipo: { tipo: string; n: number; duracao_media_s: number | null }[];
+    /** 30 dias, crescente */
+    por_dia_30: { dia: string; n: number }[];
+  };
 }
 
-export type ColunaWorkflow = "master" | "manager" | "researcher" | "issue" | "revisao" | "resultado";
+export type ColunaWorkflow = "master" | "manager" | "researcher" | "subagente" | "issue" | "revisao" | "resultado";
 
 export interface Workflows {
   nos: { id: string; coluna: ColunaWorkflow; rotulo: string; n: number }[];
@@ -178,6 +217,7 @@ export interface Workflows {
     tempo_ate_entrega_p50_min: number | null;
     fluxo_mais_comum: string | null;
     msgs_por_conversa: number | null;
+    subagentes: number;
   };
 }
 
@@ -194,6 +234,7 @@ export interface EventosStream {
   mensagem: Mensagem;
   agente: Agente;
   tarefa: Tarefa;
+  subagente: SubAgente;
   ping: EventoPing;
 }
 export type NomeEvento = keyof EventosStream;
@@ -208,6 +249,11 @@ export interface FiltroConversas extends Contexto {
   agente?: string;
   estado?: EstadoTarefa;
   q?: string;
+}
+export interface FiltroSubagentes extends Contexto {
+  agente?: string;
+  status?: StatusSub;
+  limite?: number;
 }
 export interface FiltroMensagens extends Contexto {
   antes?: string;

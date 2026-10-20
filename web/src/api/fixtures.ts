@@ -16,6 +16,7 @@ import type {
   Periodo,
   Projeto,
   Resumo,
+  SubAgente,
   Tarefa,
   TipoMsg,
   Workflows,
@@ -157,6 +158,40 @@ function ultimaDoThread(t: Thread, agora: number): number {
   return agora - t.atras * MIN + ult * MIN;
 }
 
+interface SubSemente {
+  pai: string; tipo: string; descricao: string; status: SubAgente["status"]; inicioMin: number; durS?: number;
+  ferramenta?: string; resumo?: string; tarefa?: string; fundo?: boolean;
+}
+
+const SUBS: SubSemente[] = [
+  { pai: MASTER, tipo: "Explore", descricao: "Mapear rotas do stream", status: "rodando", inicioMin: 3, ferramenta: "Bash", resumo: "grep -rn \"EventSource\" web/src", tarefa: "p-0145" },
+  { pai: MASTER, tipo: "general-purpose", descricao: "Revisar diff do rodapé", status: "concluido", inicioMin: 40, durS: 312, ferramenta: "Bash", resumo: "git diff main...feat/rodape-modelo --stat" },
+  { pai: "r7one-manager01-cc", tipo: "general-purpose", descricao: "Testes de reconexão SSE", status: "rodando", inicioMin: 6, ferramenta: "Edit", resumo: "web/src/api/stream.test.ts", tarefa: "p-0145" },
+  { pai: "r7one-manager01-cc", tipo: "general-purpose", descricao: "Backoff exponencial no cliente", status: "rodando", inicioMin: 4, ferramenta: "Bash", resumo: "npx vitest run src/api", tarefa: "p-0145", fundo: true },
+  { pai: "r7one-manager01-cc", tipo: "Explore", descricao: "Achar usos de polling", status: "concluido", inicioMin: 22, durS: 95, ferramenta: "Bash", resumo: "rg setInterval web/src" },
+  { pai: "r7one-manager02-omp", tipo: "task", descricao: "Parser de CSV com BOM", status: "erro", inicioMin: 18, durS: 41, ferramenta: "Bash", resumo: "go test ./internal/importer/... -run BOM", tarefa: "p-0146" },
+  { pai: "r7one-manager02-omp", tipo: "task", descricao: "Deduplicar por telefone", status: "rodando", inicioMin: 2, ferramenta: "Edit", resumo: "internal/importer/dedup.go", tarefa: "p-0146" },
+  { pai: "r7one-manager03-cc", tipo: "general-purpose", descricao: "Migração dos modelos", status: "perdido", inicioMin: 190, ferramenta: "Bash", resumo: "psql -c \"\\d modelos_mensagem\"" },
+  { pai: RESEARCHER, tipo: "Explore", descricao: "Comparar libs de Sankey", status: "concluido", inicioMin: 55, durS: 640, ferramenta: "Bash", resumo: "curl -s https://registry.npmjs.org/d3-sankey" },
+];
+
+export function subagentesFixture(agora = Date.now()): SubAgente[] {
+  const tarefas = new Map(THREADS.map((t) => [t.id, t.assunto]));
+  return SUBS.map((x, i) => {
+    const inicio = agora - x.inicioMin * MIN;
+    const fim = x.durS !== undefined ? inicio + x.durS * 1000 : null;
+    const ult = fim ?? Math.min(agora - 20_000, inicio + 60_000);
+    return {
+      id: `a${(0x51ab + i * 977).toString(16)}${i}`, agente: x.pai, tipo: x.tipo, descricao: x.descricao,
+      status: x.status, fundo: !!x.fundo, inicio: iso(inicio), fim: fim ? iso(fim) : null,
+      duracao_s: x.durS ?? null,
+      ultima_atividade: x.ferramenta ? { ts: iso(ult), ferramenta: x.ferramenta, resumo: x.resumo ?? "" } : null,
+      n_atividades: 3 + ((i * 7) % 19),
+      tarefa: x.tarefa ? { id: x.tarefa, assunto: tarefas.get(x.tarefa) ?? x.tarefa } : null,
+    };
+  }).sort((a, b) => b.inicio.localeCompare(a.inicio));
+}
+
 export function tarefasFixture(agora = Date.now()): Tarefa[] {
   return THREADS.map((t) => {
     const inicio = agora - t.atras * MIN;
@@ -168,6 +203,9 @@ export function tarefasFixture(agora = Date.now()): Tarefa[] {
       issues: t.issues, branch: t.branch,
       andamento: and ? and.assunto : null, andamento_ts: and ? iso(inicio + and.dt * MIN) : null,
       fechada_em: fechada ? iso(ultimaDoThread(t, agora)) : null,
+      subagentes: subagentesFixture(agora)
+        .filter((x) => x.tarefa?.id === t.id)
+        .map((x) => ({ id: x.id, tipo: x.tipo, descricao: x.descricao, status: x.status })),
     };
   }).reverse();
 }
@@ -216,7 +254,9 @@ function agenteBase(
       mensagens_7d: atividade.slice(-7).reduce((a, b) => a + b, 0),
       entregas_7d: entregas, aprovadas_7d: entregas - rej, rejeitadas_7d: rej,
       tempo_resposta_p50_min: status === "offline" ? null : 3 + Math.round(rnd() * 12),
+      subagentes_7d: 4 + Math.floor(rnd() * 20),
     },
+    subagentes: subagentesFixture(agora).filter((x) => x.agente === agente),
   };
 }
 
@@ -255,6 +295,7 @@ export function resumoFixture(periodo: Periodo = "hoje", projeto = PROJETO_FIXTU
       offline: ag.filter((a) => a.status === "offline").length,
       abertos: tar.filter((t) => ["aberto", "em_andamento", "atrasado"].includes(t.estado)).length,
       entregas_periodo: 5,
+      subagentes_rodando: subagentesFixture(agora).filter((x) => x.status === "rodando").length,
     },
   };
 }
@@ -284,6 +325,18 @@ export function analyticsFixture(agora = Date.now()): Analytics {
       { tipo: "resposta", n: 66 }, { tipo: "nota", n: 9 },
     ],
     alertas: [{ de: MASTER, para: "r7one-manager02-omp", n: 14, janela_min: 10, ate: iso(agora - 26 * 3600_000) }],
+    subagentes: {
+      por_agente: agentesFixture(agora).map((a, i) => ({
+        agente: a.agente, n: 8 + i * 5, rodando: a.subagentes.filter((x) => x.status === "rodando").length,
+        erro: i === 2 ? 2 : 0, duracao_media_s: 120 + i * 45,
+      })),
+      por_tipo: [
+        { tipo: "general-purpose", n: 31, duracao_media_s: 284 },
+        { tipo: "Explore", n: 22, duracao_media_s: 97 },
+        { tipo: "task", n: 9, duracao_media_s: 160 },
+      ],
+      por_dia_30: heatmap.slice(-30).map((h) => ({ dia: h.dia, n: Math.floor(h.n / 3) })),
+    },
   };
 }
 
@@ -294,6 +347,9 @@ export function workflowsFixture(): Workflows {
       { id: MASTER, coluna: "master", rotulo: "master", n: 8 },
       ...ms.map((m, i) => ({ id: m, coluna: "manager" as const, rotulo: m.replace("r7one-", ""), n: 3 - (i === 2 ? 1 : 0) })),
       { id: RESEARCHER, coluna: "researcher", rotulo: "researcher01-cc", n: 2 },
+      { id: "sub:general-purpose", coluna: "subagente", rotulo: "general-purpose", n: 31 },
+      { id: "sub:Explore", coluna: "subagente", rotulo: "Explore", n: 22 },
+      { id: "sub:task", coluna: "subagente", rotulo: "task", n: 9 },
       { id: "#412", coluna: "issue", rotulo: "#412", n: 1 }, { id: "#418", coluna: "issue", rotulo: "#418", n: 1 },
       { id: "#421", coluna: "issue", rotulo: "#421", n: 1 }, { id: "#425", coluna: "issue", rotulo: "#425", n: 1 },
       { id: "revisao", coluna: "revisao", rotulo: "Revisão", n: 4 },
@@ -304,6 +360,10 @@ export function workflowsFixture(): Workflows {
     arestas: [
       { de: MASTER, para: ms[0], n: 2 }, { de: MASTER, para: ms[1], n: 2 }, { de: MASTER, para: ms[2], n: 2 },
       { de: MASTER, para: RESEARCHER, n: 2 },
+      { de: MASTER, para: "sub:general-purpose", n: 6 }, { de: MASTER, para: "sub:Explore", n: 4 },
+      { de: ms[0], para: "sub:general-purpose", n: 12 }, { de: ms[0], para: "sub:Explore", n: 7 },
+      { de: ms[1], para: "sub:task", n: 9 }, { de: ms[2], para: "sub:general-purpose", n: 13 },
+      { de: RESEARCHER, para: "sub:Explore", n: 11 },
       { de: ms[0], para: "#412", n: 1 }, { de: ms[1], para: "#418", n: 1 }, { de: ms[2], para: "#421", n: 1 },
       { de: ms[0], para: "#425", n: 1 },
       { de: "#412", para: "revisao", n: 1 }, { de: "#418", para: "revisao", n: 1 }, { de: "#421", para: "revisao", n: 1 },
@@ -317,7 +377,7 @@ export function workflowsFixture(): Workflows {
       { sequencia: ["pedido", "andamento", "andamento", "entrega", "resposta:rejeitado"], n: 3 },
       { sequencia: ["pedido", "andamento"], n: 2 },
     ],
-    kpis: { conversas: 14, taxa_aprovacao: 0.82, tempo_ate_entrega_p50_min: 58, fluxo_mais_comum: "pedido > andamento > entrega > resposta:aprovado", msgs_por_conversa: 4.1 },
+    kpis: { conversas: 14, taxa_aprovacao: 0.82, tempo_ate_entrega_p50_min: 58, fluxo_mais_comum: "pedido > andamento > entrega > resposta:aprovado", msgs_por_conversa: 4.1, subagentes: 62 },
   };
 }
 
@@ -373,6 +433,12 @@ export function responderFixture(caminho: string, params: Params = {}): unknown 
     }
     case caminho === "/api/analytics":
       return analyticsFixture(agora);
+    case caminho === "/api/subagentes": {
+      let subs = subagentesFixture();
+      if (params.agente) subs = subs.filter((x) => x.agente === params.agente);
+      if (params.status) subs = subs.filter((x) => x.status === params.status);
+      return subs;
+    }
     case caminho === "/api/workflows":
       return workflowsFixture();
     default:
@@ -409,6 +475,15 @@ export function fabricaFixtures(): FonteEventos {
         id: `live-${n}`, ts: iso(agora), de: alvo, para: MASTER, tipo: "andamento",
         assunto: "Atualização simulada (fixtures)", responde_a: "p-0145",
       } satisfies Mensagem);
+    }
+    if (n % 2 === 0) {
+      const subs = subagentesFixture(agora);
+      const s = subs[n % subs.length];
+      emitir("subagente", {
+        ...s,
+        ultima_atividade: { ts: iso(agora), ferramenta: n % 4 === 0 ? "Edit" : "Bash", resumo: `passo simulado ${n}` },
+        n_atividades: s.n_atividades + n,
+      } satisfies SubAgente);
     }
   }, 5000);
   setTimeout(() => {

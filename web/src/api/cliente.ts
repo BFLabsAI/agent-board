@@ -6,9 +6,11 @@ import type {
   ConversaDetalhe,
   FiltroConversas,
   FiltroMensagens,
+  FiltroSubagentes,
   PaginaMensagens,
   Projeto,
   Resumo,
+  SubAgente,
   Tarefa,
   Workflows,
 } from "./tipos";
@@ -72,6 +74,12 @@ export const cliente = {
     ),
   analytics: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Analytics>("/api/analytics", { projeto: c.projeto }, sinal),
   workflows: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Workflows>("/api/workflows", ctx(c), sinal),
+  subagentes: (f: FiltroSubagentes = {}, sinal?: AbortSignal) =>
+    buscar<SubAgente[]>(
+      "/api/subagentes",
+      { ...ctx(f), agente: f.agente, status: f.status, limite: f.limite },
+      sinal,
+    ),
 };
 
 export type Cliente = typeof cliente;

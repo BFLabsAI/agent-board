@@ -25,7 +25,7 @@ const vazio: TWorkflows = {
   arestas: [],
   comunicacao: [],
   fluxos: [],
-  kpis: { conversas: 0, taxa_aprovacao: null, tempo_ate_entrega_p50_min: null, fluxo_mais_comum: null, msgs_por_conversa: null },
+  kpis: { conversas: 0, taxa_aprovacao: null, tempo_ate_entrega_p50_min: null, fluxo_mais_comum: null, msgs_por_conversa: null, subagentes: 0 },
 };
 
 let espiao: ReturnType<typeof vi.spyOn>;

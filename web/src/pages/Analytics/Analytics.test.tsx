@@ -13,7 +13,8 @@ import Analytics, { DEBOUNCE_MS } from "./index";
 const AGORA = Date.parse("2026-10-20T15:00:00Z");
 
 function vazio(): Dados {
-  return { heatmap: [], ultimos_30d: [], horas: Array(24).fill(0), por_agente: [], tipos: [], alertas: [] };
+  return { heatmap: [], ultimos_30d: [], horas: Array(24).fill(0), por_agente: [], tipos: [], alertas: [],
+    subagentes: { por_agente: [], por_tipo: [], por_dia_30: [] } };
 }
 
 function montar() {
