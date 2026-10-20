@@ -1,6 +1,6 @@
 # 0005. Painel web local, somente leitura, sem build
 
-- **Status:** aceita (mockup [`design-system/mockups/painel-mockup.svg`](../../design-system/mockups/painel-mockup.svg) aprovado em 2026-10-12)
+- **Status:** aceita (mockup [`design-system/mockups/painel-mockup.svg`](../../design-system/mockups/painel-mockup.svg) aprovado em 2026-10-12); "sem build" e "atualiza a cada 5 s" substituídos pela [ADR-0010](0010-painel-v2-spa-com-build-e-sse.md)
 - **Data:** 2026-10-12
 
 ## Contexto

@@ -1,5 +1,5 @@
 interface:
   display_name: "Agent Board"
-  short_description: "Comunicação entre agentes via Orca com hooks: valida, registra, avisa e cobra resposta"
+  short_description: "Comunicação entre agentes via Orca ou Maestri com hooks: valida, registra, avisa e cobra resposta"
 policy:
   allow_implicit_invocation: false

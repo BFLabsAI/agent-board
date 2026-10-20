@@ -56,9 +56,11 @@ Estados do quadro: `aberto`, `em_andamento`, `concluido`, `atrasado`, `aguardand
 
 | Comando | O que faz | Flags | Quem roda |
 |---|---|---|---|
-| `servir` | Página local só leitura com mapa do time, tarefas, linha do tempo e notas, em `http://127.0.0.1:8765` | `--raiz`, `--porta 8765` | qualquer um |
+| `servir` | Painel local só leitura com 7 telas ao vivo (Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e Office), em `http://127.0.0.1:8765` | `--raiz` (opcional), `--porta 8765` | qualquer um |
 
-Servidor remoto: `ssh -L 8765:127.0.0.1:8765 <servidor>`. Detalhes: [painel web](../userguide/painel.md) e [ADR-0005](../adr/0005-painel-web-local-somente-leitura.md).
+**Multi-projeto:** um servidor atende todos os projetos do cadastro (`paineis.json`) cuja raiz tem `docs/agent-board/agent-board.json`. `--raiz` é opcional: o projeto dela aparece primeiro e vale quando a URL não pede outro. Sem `--raiz` e sem projeto cadastrado, o comando sai com erro; com `--raiz` sem `agent-board.json`, também. Se a porta estiver ocupada, use `--porta`.
+
+Servidor remoto: `ssh -L 8765:127.0.0.1:8765 <servidor>`. Detalhes: [painel web](../userguide/painel.md), [API](painel-api.md), [ADR-0005](../adr/0005-painel-web-local-somente-leitura.md) e [ADR-0010](../adr/0010-painel-v2-spa-com-build-e-sse.md).
 
 ## painel.py: Maestri
 

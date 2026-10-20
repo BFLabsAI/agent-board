@@ -97,8 +97,8 @@ As ferramentas aplicam as mesmas regras do hook, gravam no mesmo log e entregam 
 - Ninguém fica esperando comando travado (teste, build, lock, servidor). Comando longo leva `timeout`. Passou de ~5 min sem progresso: interrompa (nunca com `pkill` ou `killall`) e mande `escalacao` ao master dizendo o que estava esperando.
 - Mande mensagem só quando for necessário: pedido, pergunta que bloqueia o trabalho, escalação, fim de fase ou entrega. Nada de mensagem de cortesia.
 - Você só fala com os agentes cadastrados do seu projeto. Qualquer outro destino é barrado, com a lista dos nomes válidos. O nome curto também funciona: `manager01-omp` vira `<project-prefix>-manager01-omp`. Mensagem entre projetos diferentes é barrada.
-<!-- orca --> - Subagent não fala com outro agente, só a sessão principal. No Claude Code, o hook garante isso no `orca` e no `board_send`. No OMP, o hook só vê o shell; o resto é regra deste contrato.
-<!-- maestri --> - Subagent não fala com outro agente, só a sessão principal. No Claude Code, o hook garante isso no `board.py` e no `board_send`. No OMP, o hook só vê o shell; o resto é regra deste contrato.
+<!-- orca --> - Subagent não fala com outro agente, só a sessão principal. O hook garante isso no `orca` e no `board_send`. Vale no Claude Code e no OMP.
+<!-- maestri --> - Subagent não fala com outro agente, só a sessão principal. O hook garante isso no `board.py` e no `board_send`. Vale no Claude Code e no OMP.
 <!-- orca --> - O `SendMessage` nativo do Claude entre sessões é barrado entre agentes do time: ele fica sem registro e pode travar esperando aprovação. Use o agent-board (`orca`). Digitar no painel de outro agente (`orca terminal send`) também é barrado. Só o master pode, e só nos painéis do próprio time (por exemplo, para um `/clear`).
 <!-- maestri --> - O `SendMessage` nativo do Claude entre sessões é barrado entre agentes do time: ele fica sem registro e pode travar esperando aprovação. Use o agent-board (`board.py`). Digitar no terminal de outro agente (`maestri ask --raw`) também é barrado. Só o master pode, e só nos terminais do próprio time (por exemplo, para um `/clear`).
 

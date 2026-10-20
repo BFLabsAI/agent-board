@@ -100,7 +100,7 @@ O motivo vem na própria mensagem de erro, com a correção sugerida. Coluna **O
 | `maestri ask` ilegível (aspas, JSON do `--batch`), vindo de um painel cadastrado | Maestri | Confira e rode sozinho |
 | `maestri ask --raw` no terminal de outro agente | Maestri | Só o master pode, e só nos terminais do próprio time |
 | `SendMessage` nativo do Claude Code para agente do time | ambos | Fica sem registro e pode travar esperando aprovação |
-| Subagent mandando mensagem (`orca`, `board.py` ou `board_send`) | ambos | Só a sessão principal fala com outros agentes. `board.py` e `board_send`: só no Claude Code |
+| Subagent mandando mensagem (`orca`, `board.py` ou `board_send`) | ambos | Só a sessão principal fala com outros agentes. Vale no Claude Code e no OMP (o adaptador manda o `agent_id` do subagent) |
 | Escrita direta no log ou no cadastro (`>>`, `sed -i`, `rm`, `mv`, `cp`, `tee`, `python -c open(…,'w')`, Edit/Write…), inclusive `rm -r docs/agent-board` | ambos | Vale para agente cadastrado. O log é escrito só pelo agent-board, e o cadastro só pelo `painel.py`. Ler é livre |
 | Encerrar o turno com mensagem sem resposta | ambos | O hook segura até 3 vezes, com o comando pronto. Depois libera e registra no `avisos.log` |
 

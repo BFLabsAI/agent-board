@@ -19,7 +19,10 @@ os.environ["AGENT_BOARD_HOME"] = HOME_TESTE  # antes de importar base
 sys.path.insert(0, AQUI)
 
 import cmd_web  # noqa: E402
+import painel_dados  # noqa: E402
 import painel_estado  # noqa: E402
+import painel_orca  # noqa: E402
+import painel_stream  # noqa: E402
 import registro  # noqa: E402
 
 CONFIG = os.path.join(AQUI, "..", "templates", "agent-board.json")
@@ -107,7 +110,7 @@ class Estado(Base):
         self.assertEqual([a["agente"] for a in e["agentes"]], [M, G, R])  # beta-master fica fora
         self.assertNotIn("raiz", e["agentes"][0])
         self.assertEqual(e["linha_do_tempo"][0]["id"], "h3")
-        self.assertEqual(e["indicadores"]["tempo_resposta"], {"media": 60.0, "p90": 60.0})
+        self.assertEqual(e["indicadores"]["tempo_resposta"], {"media": 60.0, "p50": 60.0, "p90": 60.0})
         e7 = painel_estado.montar(self.raiz, "alpha", PAINEIS, "7d", agora=AGORA)
         self.assertEqual(e7["indicadores"]["mensagens"], 4)
 
@@ -169,8 +172,7 @@ class Servidor(Base):
                       assunto='<img src=x onerror="alert(1)">'))
         self.srv = cmd_web.servidor(self.raiz, 0, perguntar_orca=False)
         self.porta = self.srv.server_address[1]
-        self.srv.RequestHandlerClass = cmd_web.criar_handler(self.raiz, {"projeto": "alpha"}, self.porta, False)
-        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        threading.Thread(target=self.srv.serve_forever, args=(0.02,), daemon=True).start()
 
     def tearDown(self):
         self.srv.shutdown()
@@ -193,7 +195,7 @@ class Servidor(Base):
         self.assertEqual(r.status, 200)
         self.assertIn("default-src 'self'", r.getheader("Content-Security-Policy"))
         self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
-        self.assertIn("<title>agent-board · painel</title>", corpo)
+        self.assertIn("<title>agent-board", corpo)  # v1 ou build da SPA
         self.assertNotIn("innerHTML", corpo)
 
     def test_api_estado_entrega_texto_do_log_como_dado(self):
@@ -209,10 +211,890 @@ class Servidor(Base):
         self.assertEqual(self.pedir("GET", "/api/estado", host=f"localhost:{self.porta}")[0].status, 200)
 
     def test_so_leitura_e_rotas_desconhecidas(self):
-        for metodo in ("POST", "PUT", "DELETE", "PATCH"):
-            self.assertEqual(self.pedir(metodo, "/api/estado")[0].status, 405, metodo)
+        for metodo in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+            r = self.pedir(metodo, "/api/estado")[0]
+            self.assertEqual(r.status, 405, metodo)
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff", metodo)
         self.assertEqual(self.pedir("GET", "/../../etc/passwd")[0].status, 404)
         self.assertEqual(self.pedir("GET", "/painel_web.html")[0].status, 404)
+
+
+# ---------------------------------------------------------------------------
+# Painel v2: status do agente, dados derivados, API e SSE
+# ---------------------------------------------------------------------------
+class StatusAgente(unittest.TestCase):
+    AGORA_MS = 1_800_000_000_000
+
+    def st(self, titulo="", preview="", saida=None, pend=0, **kw):
+        t = {"title": titulo, "preview": preview, "lastOutputAt": saida}
+        return painel_estado.status_agente(t, pend, self.AGORA_MS, **kw)
+
+    def test_titulos_reais(self):
+        self.assertEqual(self.st("✳ r7one-manager01-cc"), "parado")
+        self.assertEqual(self.st("⠋ π - r7one-manager01-omp - tmp"), "trabalhando")
+        self.assertEqual(self.st("◑ Atualização do dashboard"), "trabalhando")
+        self.assertEqual(self.st("root@vmi3520955: ~"), "parado")
+
+    def test_prioridades(self):
+        self.assertEqual(painel_estado.status_agente(None, 3, self.AGORA_MS), "offline")
+        self.assertEqual(painel_estado.status_agente({"title": "⠋ x"}, 0, self.AGORA_MS, orca_ok=False), "desconhecido")
+        self.assertEqual(painel_estado.status_agente({"title": "x"}, 0, self.AGORA_MS, maestri=True), "desconhecido")
+        # esperando vence trabalhando
+        self.assertEqual(self.st("⠋ x", "Do you want to proceed?\n❯ 1. Yes\n  2. No"), "esperando")
+        for tela in ("Continue? [y/n]", "Allow this tool?", "Needs permission to run"):
+            self.assertEqual(self.st("✳ x", tela), "esperando", tela)
+        # trabalhando vence pendente
+        self.assertEqual(self.st("✳ x", pend=2, saida=self.AGORA_MS - 3000), "trabalhando")
+        self.assertEqual(self.st("✳ x", pend=2, saida=self.AGORA_MS - 11000), "pendente")
+        self.assertEqual(self.st("✳ x", pend=0, saida=self.AGORA_MS - 11000), "parado")
+        self.assertEqual(self.st("✳ x", saida=None), "parado")
+
+    def test_tela_antiga_longe_do_fim_nao_pede_acao(self):
+        preview = "Do you want a summary?\n" + "\n".join(f"linha {i}" for i in range(30)) + "\n❯ "
+        self.assertEqual(self.st("✳ x", preview), "parado")
+
+
+class OrcaTerminais(unittest.TestCase):
+    def test_normaliza_a_lista_do_orca(self):
+        bruta = [{"handle": "term_a", "title": "✳ a", "preview": "oi", "lastOutputAt": 5, "agentIdentity": "claude",
+                  "branch": "x", "worktreePath": "/root"}, {"id": "term_b"}, {"title": "sem handle"}]
+        n = painel_orca.normalizar(bruta)
+        self.assertEqual(sorted(n), ["term_a", "term_b"])
+        self.assertEqual(n["term_a"], {"handle": "term_a", "title": "✳ a", "preview": "oi", "lastOutputAt": 5,
+                                       "agentIdentity": "claude"})
+
+    def test_cache_de_2s(self):
+        chamadas = []
+        painel_orca._cache.update(t=0.0, v=None)
+
+        def consulta():
+            chamadas.append(1)
+            return {"term_a": {}}
+        try:
+            self.assertEqual(painel_orca.terminais(consulta), {"term_a": {}})
+            painel_orca.terminais(consulta)
+            self.assertEqual(len(chamadas), 1)
+            painel_orca._cache["t"] -= 3
+            painel_orca.terminais(consulta)
+            self.assertEqual(len(chamadas), 2)
+        finally:
+            painel_orca._cache.update(t=0.0, v=None)
+
+
+def carregar():
+    from base import carregar_paineis
+    return carregar_paineis()
+
+
+def urllib_quote(texto):
+    import urllib.parse
+    return urllib.parse.quote(texto, safe="")
+
+
+def agora_local():
+    return datetime.datetime.now().astimezone()
+
+
+def antes(minutos=0, dias=0):
+    return (agora_local() - datetime.timedelta(minutes=minutos, days=dias)).isoformat(timespec="seconds")
+
+
+def cenario_msgs():
+    """p1 (com issue 7, andamento, entrega e aprovação), p2 aberto para o researcher, p3 antigo, nota e aviso."""
+    return [
+        m("p1", antes(60), M, G, "pedido", issues=[7]),
+        m("a1", antes(50), G, M, "andamento", responde_a="p1"),
+        m("e1", antes(40), G, M, "entrega", responde_a="p1", issues=[7], branch="ab/alpha-manager01-cc"),
+        m("r1", antes(30), M, G, "resposta", responde_a="e1", veredito="aprovado"),
+        m("p2", antes(20), M, R, "pedido"),
+        m("av1", antes(15), M, R, "aviso"),
+        dict(m("n1", antes(10), M, None, "nota"), tema="auth", decisao=True),
+        m("p3", antes(dias=3), M, G, "pedido"),
+        m("rp3", antes(dias=3, minutos=-5), G, M, "resposta", responde_a="p3"),
+    ]
+
+
+def paineis_do(raiz, raiz_beta=None):
+    ps = {h: dict(p, raiz=raiz) for h, p in PAINEIS.items() if p["projeto"] == "alpha"}
+    ps["term_x"] = {"projeto": "beta", "agente": "beta-master", "papel": "master"}
+    if raiz_beta:
+        ps["term_x"]["raiz"] = raiz_beta
+    return ps
+
+
+class Cenario(Base):
+    def setUp(self):
+        super().setUp()
+        self.raiz_beta = os.path.join(self.tmp, "beta")
+        os.makedirs(os.path.join(self.raiz_beta, "docs/agent-board"))
+        with open(CONFIG) as f:
+            cfg = json.load(f)
+        cfg["projeto"], cfg["prefixo"] = "beta", "beta"
+        with open(os.path.join(self.raiz_beta, "docs/agent-board/agent-board.json"), "w") as f:
+            json.dump(cfg, f)
+        registro.gravar_log(self.raiz_beta, m("b1", antes(5), "beta-master", "beta-master", "aviso"))
+        with open(os.path.join(HOME_TESTE, "paineis.json"), "w") as f:
+            json.dump({"versao": 1, "paineis": paineis_do(self.raiz, self.raiz_beta)}, f)
+        self.gravar(*cenario_msgs())
+        agora_ms = int(agora_local().timestamp() * 1000)
+        self.terminais = {
+            "term_m": {"handle": "term_m", "title": "✳ alpha-master", "preview": "tudo certo\n❯ ",
+                       "lastOutputAt": agora_ms - 600000, "agentIdentity": "claude"},
+            "term_g": {"handle": "term_g", "title": "⠋ π - alpha-manager01-cc - tmp", "preview": "rodando testes",
+                       "lastOutputAt": agora_ms - 1000, "agentIdentity": None},
+        }
+
+    def tearDown(self):
+        with open(os.path.join(HOME_TESTE, "paineis.json"), "w") as f:
+            json.dump({"versao": 1, "paineis": {}}, f)
+        super().tearDown()
+
+
+class Dados(Cenario):
+    def msgs(self):
+        return registro.ler_log(self.raiz)
+
+    def agentes(self, terminais="padrao"):
+        t = self.terminais if terminais == "padrao" else terminais
+        return painel_dados.agentes("alpha", carregar(), self.msgs(), t, agora_local())
+
+    def test_agentes_status_ordem_e_stats(self):
+        ags = {a["agente"]: a for a in self.agentes()}
+        self.assertEqual(list(ags), [M, G, R])
+        self.assertEqual((ags[M]["status"], ags[G]["status"], ags[R]["status"]), ("parado", "trabalhando", "offline"))
+        self.assertEqual((ags[M]["harness"], ags[R]["harness"], ags[G]["harness"]), ("cc", "cc", "cc"))  # o do master vem do agentIdentity do Orca
+        self.assertEqual(ags[R]["pendentes"], 2)  # p2 e o aviso
+        self.assertEqual(ags[R]["tarefa_atual"], {"id": "p2", "assunto": "p2", "estado": "aberto"})
+        self.assertIsNone(ags[G]["tarefa_atual"])
+        self.assertEqual(ags[M]["tela"], "tudo certo\n❯")
+        self.assertTrue(ags[G]["ultima_saida"].startswith(str(agora_local().year)))
+        self.assertIsNone(ags[R]["tela"])
+        s = ags[G]["stats"]
+        self.assertEqual(len(s["atividade_14d"]), 14)
+        self.assertEqual((s["mensagens_7d"], s["entregas_7d"], s["aprovadas_7d"], s["rejeitadas_7d"]), (3, 1, 1, 0))
+        self.assertEqual(s["tempo_resposta_p50_min"], 7.5)  # p1 -> a1 (10 min) e p3 -> rp3 (5 min)
+        self.assertIsNone(ags[R]["stats"]["tempo_resposta_p50_min"])
+        self.assertEqual(sum(s["atividade_14d"]), 3)
+
+    def test_orca_mudo_e_maestri(self):
+        self.assertEqual({a["status"] for a in self.agentes(None)}, {"desconhecido"})
+        ps = {"maestri:1": {"projeto": "alpha", "agente": "alpha-master", "papel": "master"}}
+        a = painel_dados.agentes("alpha", ps, [], {}, agora_local())[0]
+        self.assertEqual((a["status"], a["harness"]), ("desconhecido", "maestri"))
+
+    def test_mensagens_paginadas(self):
+        pg = painel_dados.mensagens(self.msgs(), limite=4)
+        self.assertEqual([x["id"] for x in pg["mensagens"]], ["n1", "av1", "p2", "r1"])
+        self.assertTrue(pg["mais"])
+        self.assertNotIn("prev", pg["mensagens"][0])
+        pg2 = painel_dados.mensagens(self.msgs(), antes=pg["mensagens"][-1]["ts"], limite=4)
+        self.assertEqual([x["id"] for x in pg2["mensagens"]], ["e1", "a1", "p1", "rp3"])
+        self.assertTrue(pg2["mais"])
+        ult = painel_dados.mensagens(self.msgs(), antes=pg2["mensagens"][-1]["ts"], limite=10)
+        self.assertEqual([x["id"] for x in ult["mensagens"]], ["p3"])
+        self.assertFalse(ult["mais"])
+        self.assertEqual([x["id"] for x in painel_dados.mensagens(self.msgs(), agente=R)["mensagens"]], ["av1", "p2"])
+        self.assertEqual([x["id"] for x in painel_dados.mensagens(self.msgs(), tipo="nota")["mensagens"]], ["n1"])
+        self.assertEqual([x["id"] for x in painel_dados.mensagens(self.msgs(), q="P1")["mensagens"]], ["p1"])
+
+    def test_thread_transitiva(self):
+        # r2 responde ao andamento, que responde ao pedido: entra na thread mesmo sem apontar para a raiz
+        self.gravar(m("r2", antes(45), M, G, "aviso", responde_a="a1"), m("r3", antes(44), G, M, "aviso", responde_a="r2"))
+        conv = painel_dados.conversa_por_id(painel_dados.conversas(self.msgs(), agora_local()), "p1")
+        self.assertEqual([x["id"] for x in conv["mensagens"]], ["p1", "a1", "r2", "r3", "e1", "r1"])
+        self.assertEqual(conv["conversa"]["n_mensagens"], 6)
+
+    def test_raizes_so_pedido_e_entrega_sem_pai(self):
+        ids = [c["id"] for c, _ in painel_dados.conversas(self.msgs(), agora_local())]
+        self.assertEqual(ids, ["p2", "p1", "p3"])  # e1 tem pai, aviso e nota não são raiz
+        c = painel_dados.conversa_por_id(painel_dados.conversas(self.msgs(), agora_local()), "p1")["conversa"]
+        self.assertEqual((c["tipo"], c["estado"], c["issues"], c["branch"]), ("pedido", "aprovado", [7], "ab/alpha-manager01-cc"))
+        self.assertEqual((c["participantes"], c["duracao_min"], c["de"], c["para"]), ([M, G], 30.0, M, G))
+        self.assertIsNone(painel_dados.conversa_por_id(painel_dados.conversas(self.msgs(), agora_local()), "e1"))
+
+    def test_entrega_orfa_vira_raiz(self):
+        self.gravar(m("eo", antes(5), G, M, "entrega", responde_a="inexistente"))
+        ids = [c["id"] for c, _ in painel_dados.conversas(self.msgs(), agora_local())]
+        self.assertIn("eo", ids)
+
+    def test_conversas_muitas_threads_nao_explode(self):
+        msgs = []
+        for i in range(1500):
+            msgs += [m(f"p{i}", antes(2000 - i), M, G, "pedido"), m(f"a{i}", antes(1999 - i), G, M, "andamento", responde_a=f"p{i}")]
+        t0 = datetime.datetime.now()
+        self.assertEqual(len(painel_dados.conversas(msgs, agora_local())), 1500)
+        self.assertLess((datetime.datetime.now() - t0).total_seconds(), 5)
+
+    def test_analytics(self):
+        a = painel_dados.analytics(registro.ler_tudo(self.raiz), agora_local())
+        self.assertEqual(len(a["heatmap"]), 371)
+        self.assertEqual(a["heatmap"][-1]["dia"], agora_local().date().isoformat())
+        self.assertEqual(a["heatmap"][0]["dia"], (agora_local().date() - datetime.timedelta(days=370)).isoformat())
+        self.assertEqual(sum(x["n"] for x in a["heatmap"]), 8)  # sem a nota
+        self.assertEqual(len(a["ultimos_30d"]), 30)
+        self.assertEqual(sum(x["mensagens"] for x in a["ultimos_30d"]), 8)
+        self.assertEqual(sum(x["entregas"] for x in a["ultimos_30d"]), 1)
+        self.assertEqual(sum(x["aprovadas"] for x in a["ultimos_30d"]), 1)
+        self.assertEqual(len(a["horas"]), 24)
+        self.assertEqual(sum(a["horas"]), 8)
+        self.assertEqual(a["tipos"][0], {"tipo": "pedido", "n": 3})
+        por = {x["agente"]: x for x in a["por_agente"]}
+        self.assertEqual((por[M]["enviadas"], por[G]["enviadas"], por[G]["entregas"], por[G]["aprovadas"]), (5, 3, 1, 1))
+        self.assertEqual((por[G]["p50_min"], por[G]["p90_min"]), (7.5, 9.5))
+        self.assertEqual(a["alertas"], [])
+
+    def test_analytics_inclui_arquivo(self):
+        antigo = antes(dias=40)
+        pasta = os.path.join(self.raiz, "docs/agent-board/arquivo")
+        os.makedirs(pasta)
+        with open(os.path.join(pasta, "2020-01.jsonl"), "w") as f:
+            f.write(json.dumps(m("old", antigo, M, G, "aviso")) + "\n")
+        a = painel_dados.analytics(registro.ler_tudo(self.raiz), agora_local())
+        self.assertEqual(sum(x["n"] for x in a["heatmap"]), 9)
+        self.assertEqual(sum(x["mensagens"] for x in a["ultimos_30d"]), 8)  # 30 dias não pega
+
+    def test_workflows(self):
+        agora = agora_local()
+        msgs = self.msgs()
+        tars = painel_estado.tarefas(msgs, agora)
+        w = painel_dados.workflows(msgs, painel_dados.conversas(msgs, agora, tars), "7d", agora,
+                                   {M: "master", G: "manager", R: "researcher"}, {t["id"]: t for t in tars})
+        arestas = {(a["de"], a["para"]): a["n"] for a in w["arestas"]}
+        self.assertEqual(arestas, {(M, G): 2, (M, R): 1, (G, "#7"): 1, ("#7", "revisao"): 1, ("revisao", "aprovado"): 1,
+                                   (G, "concluido"): 1, (R, "em_aberto"): 1})
+        nos = {n["id"]: n for n in w["nos"]}
+        self.assertEqual((nos[M]["coluna"], nos[G]["coluna"], nos[R]["coluna"]), ("master", "manager", "researcher"))
+        self.assertEqual((nos["#7"]["coluna"], nos["revisao"]["coluna"], nos["aprovado"]["coluna"]), ("issue", "revisao", "resultado"))
+        self.assertEqual(nos["aprovado"]["rotulo"], "Aprovado")
+        self.assertEqual(nos[M]["n"], 3)
+        cols = [n["coluna"] for n in w["nos"]]
+        self.assertEqual(cols, sorted(cols, key=("master", "manager", "researcher", "issue", "revisao", "resultado").index))
+        seqs = {tuple(f["sequencia"]): f["n"] for f in w["fluxos"]}
+        self.assertEqual(seqs[("pedido", "andamento", "entrega", "resposta:aprovado")], 1)
+        self.assertEqual(seqs[("pedido",)], 1)
+        k = w["kpis"]
+        self.assertEqual((k["conversas"], k["taxa_aprovacao"], k["tempo_ate_entrega_p50_min"]), (3, 1.0, 20.0))
+        self.assertEqual(k["msgs_por_conversa"], 2.3)
+        pares = {(c["de"], c["para"]): c["n"] for c in w["comunicacao"]}
+        self.assertEqual((pares[(M, G)], pares[(M, R)], pares[(G, M)]), (3, 2, 3))
+
+    def test_workflows_vazio(self):
+        w = painel_dados.workflows([], [], "hoje", agora_local(), {}, {})
+        self.assertEqual((w["nos"], w["arestas"], w["fluxos"]), ([], [], []))
+        self.assertEqual(w["kpis"], {"conversas": 0, "taxa_aprovacao": None, "tempo_ate_entrega_p50_min": None,
+                                     "fluxo_mais_comum": None, "msgs_por_conversa": None})
+
+
+
+class VigiaDoStream(Cenario):
+    def setUp(self):
+        super().setUp()
+        self.t = [100.0]
+        self.vigia = painel_stream.Vigia(self.raiz, "alpha", carregar, lambda: self.terminais,
+                                         {"orca": 2.0, "ping": 15.0}, relogio=lambda: self.t[0])
+
+    def passo(self, avanca=0.0):
+        self.t[0] += avanca
+        return [(e, d) for e, d in self.vigia.passo()]
+
+    def test_linha_base_nao_gera_evento(self):
+        self.assertEqual(self.passo(), [])
+        self.assertEqual(self.vigia.ola()[0], "ola")
+        self.assertEqual(self.vigia.ola()[1]["projeto"], "alpha")
+
+    def test_mensagem_tarefa_e_agente(self):
+        self.gravar(m("p9", antes(0), M, R, "pedido"))
+        evs = self.passo()
+        self.assertEqual([e for e, _ in evs if e == "mensagem"], ["mensagem"])
+        self.assertEqual(next(d for e, d in evs if e == "mensagem")["id"], "p9")
+        self.assertNotIn("prev", next(d for e, d in evs if e == "mensagem"))
+        self.assertEqual(next(d for e, d in evs if e == "tarefa")["id"], "p9")
+        ag = next(d for e, d in evs if e == "agente")
+        self.assertEqual((ag["agente"], ag["pendentes"], ag["tarefa_atual"]["id"]), (R, 3, "p9"))
+        self.assertEqual(self.passo(), [])
+
+    def test_tarefa_muda_de_estado(self):
+        self.gravar(m("a9", antes(0), R, M, "andamento", responde_a="p2"))
+        evs = self.passo()
+        t = next(d for e, d in evs if e == "tarefa")
+        self.assertEqual((t["id"], t["estado"]), ("p2", "em_andamento"))
+
+    def test_agente_so_quando_mudou(self):
+        self.terminais["term_m"] = dict(self.terminais["term_m"], title="⠙ alpha-master")
+        self.assertEqual(self.passo(), [])  # ainda não passou o intervalo do orca
+        evs = self.passo(2.5)
+        self.assertEqual([(e, d["agente"], d["status"]) for e, d in evs], [("agente", M, "trabalhando")])
+        self.assertEqual(self.passo(2.5), [])
+        # só a ultima_saida mudar não conta
+        self.terminais["term_m"] = dict(self.terminais["term_m"], lastOutputAt=1)
+        self.assertEqual(self.passo(2.5), [])
+
+    def test_ping_a_cada_15s(self):
+        self.assertEqual(self.passo(10), [])
+        evs = self.passo(6)
+        self.assertEqual([e for e, _ in evs], ["ping"])
+        self.assertIn("agora", evs[0][1])
+        self.assertEqual(self.passo(1), [])
+
+    def test_linha_incompleta_espera_o_fim(self):
+        caminho = os.path.join(self.raiz, "docs/agent-board/comunicacoes.jsonl")
+        linha = json.dumps(m("p8", antes(0), M, G, "aviso"))
+        with open(caminho, "a") as f:
+            f.write(linha[:20])
+        self.assertEqual([e for e, _ in self.passo() if e == "mensagem"], [])
+        with open(caminho, "a") as f:
+            f.write(linha[20:] + "\n")
+        self.assertEqual([d["id"] for e, d in self.passo() if e == "mensagem"], ["p8"])
+
+    def test_arquivar_encolhe_o_log_sem_replay(self):
+        caminho = os.path.join(self.raiz, "docs/agent-board/comunicacoes.jsonl")
+        with open(caminho, "w") as f:
+            f.write(json.dumps(m("s1", antes(0), M, G, "aviso")) + "\n")
+        self.assertEqual([e for e, _ in self.passo() if e == "mensagem"], [])
+
+
+class ApiV2(Cenario):
+    INTERVALOS = {"log": 0.05, "orca": 0.1, "ping": 0.4}
+
+    def setUp(self):
+        super().setUp()
+        self.conexoes = []
+        self.srv = self.subir()
+        self.porta = self.srv.server_address[1]
+
+    def subir(self, **kw):
+        srv = cmd_web.servidor(self.raiz, 0, terminais=lambda: self.terminais, intervalos=self.INTERVALOS, **kw)
+        threading.Thread(target=srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(self._parar, srv)
+        return srv
+
+    def _parar(self, srv):
+        for c in self.conexoes:
+            c.close()
+            c.sock = None
+        srv.shutdown()
+        srv.server_close()
+
+    def get(self, caminho, host=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+        c.request("GET", caminho, headers={"Host": host or f"127.0.0.1:{self.porta}"})
+        r = c.getresponse()
+        corpo = r.read()
+        c.close()
+        return r, corpo
+
+    def api(self, caminho):
+        r, corpo = self.get(caminho)
+        self.assertEqual(r.status, 200, corpo)
+        self.assertEqual(r.getheader("Content-Type"), "application/json; charset=utf-8")
+        return json.loads(corpo)
+
+    # --- projetos
+    def test_projetos(self):
+        ps = self.api("/api/projetos")
+        self.assertEqual(ps, [{"projeto": "alpha", "raiz": self.raiz, "agentes": 3, "atual": True},
+                              {"projeto": "beta", "raiz": self.raiz_beta, "agentes": 1, "atual": False}])
+
+    def test_projeto_desconhecido_e_selecao(self):
+        r, corpo = self.get("/api/agentes?projeto=zzz")
+        self.assertEqual((r.status, json.loads(corpo)), (404, {"erro": "projeto desconhecido"}))
+        self.assertEqual(self.get("/api/stream?projeto=zzz")[0].status, 404)
+        self.assertEqual([a["agente"] for a in self.api("/api/agentes?projeto=beta")], ["beta-master"])
+        self.assertEqual([a["agente"] for a in self.api("/api/agentes")], [M, G, R])
+        self.assertEqual([x["id"] for x in self.api("/api/mensagens?projeto=beta")["mensagens"]], ["b1"])
+
+    def test_sem_raiz_vale_o_primeiro_do_cadastro(self):
+        srv = cmd_web.servidor(None, 0, False)
+        self.addCleanup(srv.server_close)
+        porta = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
+        c.request("GET", "/api/projetos", headers={"Host": f"127.0.0.1:{porta}"})
+        ps = json.loads(c.getresponse().read())
+        c.close()
+        self.assertEqual([(p["projeto"], p["atual"]) for p in ps], [("alpha", True), ("beta", False)])
+
+    # --- rotas
+    def test_estado_v1_e_resumo(self):
+        e = self.api("/api/estado?periodo=7d")
+        self.assertEqual((e["projeto"], e["periodo"]), ("alpha", "7d"))
+        self.assertIn("linha_do_tempo", e)
+        r = self.api("/api/resumo?periodo=7d")
+        self.assertEqual(set(r), {"projeto", "versao", "agora", "periodo", "cadeia", "indicadores"})
+        self.assertEqual(r["cadeia"]["integra"], True)
+        ind = r["indicadores"]
+        for k in ("mensagens", "pendentes", "atrasados", "revisao", "tempo_resposta"):
+            self.assertIn(k, ind)
+        self.assertEqual((ind["trabalhando"], ind["esperando"], ind["offline"], ind["abertos"], ind["entregas_periodo"]),
+                         (1, 0, 1, 1, 1))
+        self.assertEqual(self.api("/api/resumo?periodo=lixo")["periodo"], "hoje")
+
+    def test_agentes(self):
+        ags = self.api("/api/agentes")
+        self.assertEqual([(a["agente"], a["status"]) for a in ags], [(M, "parado"), (G, "trabalhando"), (R, "offline")])
+        self.assertEqual(set(ags[0]), {"agente", "papel", "handle", "harness", "worktree", "branch", "status", "tela",
+                                       "ultima_saida", "pendentes", "tarefa_atual", "stats"})
+        self.assertEqual(ags[2]["handle"], "term_r")
+
+    def test_agentes_com_orca_mudo(self):
+        self.terminais = None
+        self.assertEqual({a["status"] for a in self.api("/api/agentes")}, {"desconhecido"})
+
+    def test_tarefas(self):
+        ts_ = self.api("/api/tarefas?periodo=hoje")
+        estados = {t["id"]: t["estado"] for t in ts_}
+        self.assertEqual(estados["p2"], "aberto")  # aberta sempre entra
+        self.assertNotIn("p3", estados)  # fechada há 3 dias
+        self.assertEqual(self.api("/api/tarefas?periodo=7d")[-1]["id"], "p3")
+        self.assertEqual(set(ts_[0]), {"id", "ts", "tipo", "de", "para", "assunto", "estado", "prazo", "issues", "branch",
+                                       "andamento", "andamento_ts", "fechada_em"})
+
+    def test_conversas_e_filtros(self):
+        cs = self.api("/api/conversas?periodo=7d")
+        self.assertEqual([c["id"] for c in cs], ["p2", "p1", "p3"])
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=hoje&agente=" + R)], ["p2"])
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=7d&estado=aberto")], ["p2"])
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=7d&q=7")], ["p1"])
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=7d&q=%237")], ["p1"])
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=7d&limite=1")], ["p2"])
+        self.assertEqual(len(self.api("/api/conversas?periodo=7d&limite=abc")), 3)
+
+    def test_conversa_detalhe(self):
+        d = self.api("/api/conversas/p1")
+        self.assertEqual([x["id"] for x in d["mensagens"]], ["p1", "a1", "e1", "r1"])
+        self.assertEqual(d["conversa"]["id"], "p1")
+        self.assertEqual(d["conversa"]["estado"], "aprovado")  # a entrega aprovada manda, não o pedido "concluido"
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=7d&estado=aprovado")], ["p1"])
+        self.assertTrue(all("prev" not in x for x in d["mensagens"]))
+        r, corpo = self.get("/api/conversas/nao-existe")
+        self.assertEqual((r.status, "erro" in json.loads(corpo)), (404, True))
+
+    def test_mensagens_pagina(self):
+        p1 = self.api("/api/mensagens?limite=3")
+        self.assertEqual([x["id"] for x in p1["mensagens"]], ["n1", "av1", "p2"])
+        self.assertTrue(p1["mais"])
+        ate = urllib_quote(p1["mensagens"][-1]["ts"])
+        p2 = self.api(f"/api/mensagens?limite=3&antes={ate}")
+        self.assertEqual([x["id"] for x in p2["mensagens"]], ["r1", "e1", "a1"])
+        self.assertEqual([x["id"] for x in self.api("/api/mensagens?agente=" + G + "&tipo=entrega")["mensagens"]], ["e1"])
+        self.assertEqual([x["id"] for x in self.api("/api/mensagens?q=av1")["mensagens"]], ["av1"])
+        self.assertFalse(self.api("/api/mensagens")["mais"])
+
+    def test_analytics_e_workflows(self):
+        a = self.api("/api/analytics")
+        self.assertEqual((len(a["heatmap"]), len(a["horas"]), len(a["ultimos_30d"])), (371, 24, 30))
+        w = self.api("/api/workflows?periodo=7d")
+        self.assertEqual(w["kpis"]["conversas"], 3)
+        self.assertEqual(self.api("/api/workflows?periodo=hoje")["kpis"]["conversas"] <= 3, True)
+
+    def test_rota_desconhecida_e_so_leitura(self):
+        r, corpo = self.get("/api/nada")
+        self.assertEqual((r.status, json.loads(corpo)), (404, {"erro": "não encontrado"}))
+        c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+        c.request("POST", "/api/agentes", headers={"Host": f"127.0.0.1:{self.porta}"})
+        self.assertEqual(c.getresponse().status, 405)
+        c.close()
+        self.assertEqual(self.get("/api/agentes", host="evil.example")[0].status, 403)
+
+    # --- SPA e assets
+    def web(self, com_index=True):
+        d = os.path.join(self.tmp, "web")
+        os.makedirs(os.path.join(d, "assets"))
+        if com_index:
+            with open(os.path.join(d, "index.html"), "w") as f:
+                f.write("<!doctype html><title>spa</title>")
+        for nome, conteudo in (("app.js", "x"), ("app.css", "x"), ("i.svg", "<svg/>"), ("f.woff2", "x"), ("p.png", "x")):
+            with open(os.path.join(d, "assets", nome), "w") as f:
+                f.write(conteudo)
+        with open(os.path.join(d, "segredo.txt"), "w") as f:
+            f.write("segredo")
+        with open(os.path.join(d, "favicon.svg"), "w") as f:
+            f.write("<svg/>")
+        velho = cmd_web.DIR_WEB
+        cmd_web.DIR_WEB = d
+        self.addCleanup(setattr, cmd_web, "DIR_WEB", velho)
+
+    def test_spa_fallback_e_assets(self):
+        self.web()
+        for caminho in ("/", "/conversas/p1", "/office"):
+            r, corpo = self.get(caminho)
+            self.assertEqual((r.status, corpo), (200, b"<!doctype html><title>spa</title>"), caminho)
+            self.assertIn("text/html", r.getheader("Content-Type"))
+            self.assertIn("default-src 'self'", r.getheader("Content-Security-Policy"))
+        for nome, tipo in (("app.js", "text/javascript"), ("app.css", "text/css"), ("i.svg", "image/svg+xml"),
+                           ("f.woff2", "font/woff2"), ("p.png", "image/png")):
+            r, _ = self.get("/assets/" + nome)
+            self.assertEqual(r.status, 200, nome)
+            self.assertTrue(r.getheader("Content-Type").startswith(tipo), nome)
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(self.get("/assets/nao.js")[0].status, 404)
+        self.assertEqual(self.get("/foo.js")[0].status, 404)
+        self.assertEqual(self.get("/favicon.svg")[0].status, 200)  # ícones da raiz do build
+        self.assertEqual(self.get("/segredo.txt")[0].status, 404)
+        self.assertEqual(self.get("/index.html")[0].status, 404)
+        self.assertEqual(self.get("/api/nada")[0].status, 404)  # /api nunca cai na SPA
+
+    def test_assets_sem_path_traversal(self):
+        self.web()
+        for caminho in ("/assets/../segredo.txt", "/assets/..%2fsegredo.txt", "/assets/%2e%2e/segredo.txt",
+                        "/assets/../../../../etc/passwd", "/assets//etc/passwd", "/assets/..\\segredo.txt",
+                        "/assets/", "/assets", "/assets/%00.js"):
+            r, corpo = self.get(caminho)
+            self.assertNotIn(b"segredo", corpo, caminho)
+            self.assertIn(r.status, (404,) if caminho != "/assets" else (200, 404), caminho)
+
+    def test_sem_build_cai_no_html_antigo(self):
+        self.web(com_index=False)
+        # DIR_WEB sem index.html: usa painel_web.html
+        r, corpo = self.get("/")
+        self.assertEqual(r.status, 200)
+        self.assertIn(b"agent-board", corpo)
+        self.assertIn("script-src 'self' 'unsafe-inline'", r.getheader("Content-Security-Policy"))  # v1 tem script embutido
+
+    def test_spa_sem_script_inline(self):
+        self.web()
+        for caminho in ("/", "/assets/app.js", "/api/projetos"):
+            csp = self.get(caminho)[0].getheader("Content-Security-Policy")
+            self.assertIn("script-src 'self';", csp, caminho)
+            self.assertIn("frame-ancestors 'none'", csp, caminho)
+
+    # --- SSE
+    def stream(self, projeto="alpha", srv_porta=None):
+        c = http.client.HTTPConnection("127.0.0.1", srv_porta or self.porta, timeout=5)
+        c.request("GET", f"/api/stream?projeto={projeto}", headers={"Host": f"127.0.0.1:{srv_porta or self.porta}"})
+        self.conexoes.append(c)
+        return c, c.getresponse()
+
+    @staticmethod
+    def evento(r):
+        """Lê um evento SSE: (nome, dados)."""
+        nome = dados = None
+        while True:
+            linha = r.fp.readline().decode().rstrip("\n")
+            if linha == "":
+                if nome:
+                    return nome, json.loads(dados)
+                continue
+            campo, _, valor = linha.partition(": ")
+            if campo == "event":
+                nome = valor
+            elif campo == "data":
+                dados = valor
+
+    def ate(self, r, nome):
+        while True:
+            e, d = self.evento(r)
+            if e == nome:
+                return d
+
+    def test_stream_ola_e_mensagem(self):
+        _, r = self.stream()
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.getheader("Content-Type"), "text/event-stream")
+        self.assertEqual(r.getheader("Cache-Control"), "no-store")
+        ola = self.evento(r)
+        self.assertEqual(ola[0], "ola")
+        self.assertEqual(ola[1]["projeto"], "alpha")
+        self.gravar(m("novo1", antes(0), M, R, "pedido", assunto="ao vivo"))
+        msg = self.ate(r, "mensagem")
+        self.assertEqual((msg["id"], msg["assunto"]), ("novo1", "ao vivo"))
+        self.assertNotIn("prev", msg)
+        self.assertEqual(self.ate(r, "tarefa")["id"], "novo1")
+        self.assertEqual(self.ate(r, "agente")["agente"], R)
+        self.assertIn("agora", self.ate(r, "ping"))
+
+    def test_stream_agente_quando_o_terminal_muda(self):
+        _, r = self.stream()
+        self.evento(r)
+        self.terminais["term_m"] = dict(self.terminais["term_m"], title="⠹ alpha-master")
+        a = self.ate(r, "agente")
+        self.assertEqual((a["agente"], a["status"]), (M, "trabalhando"))
+
+    def test_limite_de_conexoes_e_liberacao_do_slot(self):
+        srv = self.subir(limite_sse=2)
+        porta = srv.server_address[1]
+        abertas = [self.stream(srv_porta=porta) for _ in range(2)]
+        for _, r in abertas:
+            self.assertEqual(r.status, 200)
+            self.evento(r)
+        c3, r3 = self.stream(srv_porta=porta)
+        self.assertEqual(r3.status, 503)
+        r3.read()
+        abertas[0][1].close()
+        abertas[0][0].close()  # o cliente vai embora: a vaga volta
+        fim = datetime.datetime.now() + datetime.timedelta(seconds=5)
+        status = 503
+        while status == 503 and datetime.datetime.now() < fim:
+            c4, r4 = self.stream(srv_porta=porta)
+            status = r4.status
+            if status == 503:
+                r4.read()
+                c4.close()
+        self.assertEqual(status, 200)
+
+
+# ---------------------------------------------------------------------------
+# Segurança (issue #12): log, terminal e rede são entrada não confiável
+# ---------------------------------------------------------------------------
+ENDPOINTS = ("estado", "resumo", "agentes", "tarefas", "conversas", "mensagens", "analytics", "workflows",
+             "conversas/p1", "conversas/torto")
+LINHAS_TORTAS = ['"id"', "[1, 2]", "42", "null", "{", '{"id": 5, "ts": "x"}', '{"id": ["a"], "tipo": "pedido"}',
+                 '{"id": "t1", "tipo": "pedido"}',
+                 '{"id": "t2", "ts": "2026-10-20T10:00:00", "tipo": "pedido", "de": "alpha-master", "para": "alpha-manager01-cc",'
+                 ' "assunto": null, "prazo": "0001-01-01T00:00:00", "issues": "abc", "responde_a": {"x": 1}}',
+                 '{"id": "t3", "ts": 12345, "tipo": ["pedido"], "de": {"a": 1}, "para": ["x"], "veredito": ["x"]}',
+                 '{"id": "t4", "ts": "9999-12-31T23:59:59+14:00", "tipo": "pedido", "de": "a", "para": "b", "issues": [null, 1.5, true, 7]}',
+                 '{"id": "t5", "ts": "2026-10-20T10:00:00Z", "tipo": "entrega", "de": "alpha-manager01-cc", "para": null, "x": NaN, "y": Infinity}',
+                 "[" * 5000]
+
+
+class Seguranca(Cenario):
+    """Regressão da auditoria de segurança do painel (docs: ADR 0005). O painel é só leitura em 127.0.0.1."""
+
+    def setUp(self):
+        super().setUp()
+        self.srv = self.subir()
+        self.porta = self.srv.server_address[1]
+
+    def subir(self, **kw):
+        srv = cmd_web.servidor(self.raiz, 0, terminais=lambda: self.terminais, intervalos={"log": 0.05, "orca": 0.1, "ping": 0.4}, **kw)
+        threading.Thread(target=srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        return srv
+
+    def get(self, caminho, host=None, cab=None, porta=None):
+        porta = porta or self.porta
+        c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
+        c.request("GET", caminho, headers=dict({"Host": host or f"127.0.0.1:{porta}"}, **(cab or {})))
+        r = c.getresponse()
+        corpo = r.read()
+        c.close()
+        return r, corpo
+
+    def gravar_cru(self, *linhas):
+        with open(os.path.join(self.raiz, "docs/agent-board/comunicacoes.jsonl"), "a") as f:
+            for l in linhas:
+                f.write(l + "\n")
+
+    # --- linha torta no log não derruba a API, nem o SSE, nem escreve em avisos.log
+    def test_linhas_tortas_nao_derrubam_nenhum_endpoint(self):
+        self.gravar_cru(*LINHAS_TORTAS)
+        for ep in ENDPOINTS:
+            for q in ("", "?periodo=7d", "?periodo=24h"):
+                r, corpo = self.get(f"/api/{ep}{q}")
+                self.assertIn(r.status, (200, 404), (ep, q, corpo[:200]))
+                if r.status == 200:  # JSON estrito: NaN/Infinity quebram o JSON.parse do navegador
+                    json.loads(corpo, parse_constant=lambda c: self.fail(f"{c} em {ep}"))
+
+    def test_ler_o_log_nao_escreve_avisos(self):
+        avisos = os.path.join(HOME_TESTE, "avisos.log")
+        antes_ = os.path.getsize(avisos) if os.path.exists(avisos) else 0
+        self.gravar_cru("{", "lixo")
+        for _ in range(3):
+            self.get("/api/estado")
+            self.get("/api/analytics")
+        self.assertEqual(os.path.getsize(avisos) if os.path.exists(avisos) else 0, antes_)
+
+    def test_vigia_sobrevive_a_linha_torta(self):
+        v = painel_stream.Vigia(self.raiz, "alpha", carregar, lambda: self.terminais, {"log": 0, "orca": 0, "ping": 99})
+        self.gravar_cru(*LINHAS_TORTAS)
+        self.gravar(m("ok1", antes(1), M, G, "pedido"))
+        evs = v.passo()
+        self.assertEqual([e[1]["id"] for e in evs if e[0] == "mensagem"], ["t1", "t2", "t3", "t4", "t5", "ok1"])
+
+    def test_ts_sem_fuso_e_datas_absurdas_nao_estouram(self):
+        self.gravar_cru('{"id": "n1", "ts": "2026-10-20T10:00:00", "tipo": "pedido", "de": "alpha-master", "para": "alpha-manager01-cc"}')
+        self.assertEqual(self.get("/api/mensagens?antes=2026-01-01T00:00:00")[0].status, 200)
+        self.assertEqual(self.get("/api/mensagens?antes=0001-01-01T00:00:00")[0].status, 200)
+        self.assertEqual(self.get("/api/mensagens?antes=9999-12-31T23:59:59%2B14:00")[0].status, 200)
+
+    def test_texto_do_log_e_limitado_e_so_texto(self):
+        self.gravar(m("gigante", antes(1), M, G, "pedido", assunto="A" * 1_000_000, branch="B" * 1_000_000, issues=list(range(500))),
+                    m("aninhado", antes(1), M, G, "pedido", extra={"a": [1]}, lista=[1]))
+        r, corpo = self.get("/api/mensagens?limite=1000")
+        self.assertLess(len(corpo), 200_000)
+        ms = {x["id"]: x for x in json.loads(corpo)["mensagens"]}
+        self.assertLessEqual(len(ms["gigante"]["assunto"]), 2000)
+        self.assertLessEqual(len(ms["gigante"]["issues"]), 50)
+        self.assertNotIn("extra", ms["aninhado"])
+        self.assertLess(len(self.get("/api/estado")[1]), 400_000)
+
+    def test_de_para_assunto_sempre_texto(self):
+        self.gravar_cru('{"id": "sem-campos", "ts": "%s", "tipo": "pedido"}' % antes(1))
+        ms = {x["id"]: x for x in json.loads(self.get("/api/mensagens")[1])["mensagens"]}
+        self.assertEqual((ms["sem-campos"]["de"], ms["sem-campos"]["para"], ms["sem-campos"]["assunto"]), ("", "", ""))
+
+    # --- parâmetros
+    def test_parametros_invalidos_ou_enormes(self):
+        for q in ("limite=-1", "limite=0", "limite=1000000000", "limite=abc", "limite=1e9", "limite=" + "9" * 400, "antes=lixo",
+                  "periodo=%00", "agente[]=x", "q=" + "a" * 5000, "estado=%00", "tipo=" + "x" * 5000):
+            for ep in ("mensagens", "conversas", "estado", "workflows"):
+                r, corpo = self.get(f"/api/{ep}?{q}")
+                self.assertEqual(r.status, 200, (ep, q))
+        self.assertLessEqual(len(json.loads(self.get("/api/mensagens?limite=1000000")[1])["mensagens"]), 1000)
+        self.assertEqual(len(json.loads(self.get("/api/mensagens?limite=-5")[1])["mensagens"]), 1)
+
+    def test_projeto_malicioso_e_id_malicioso(self):
+        for p in ("../../etc", "..", "a/b", "%2e%2e%2f", "alpha%00", "x" * 400, "<script>", "beta/../alpha", self.raiz_beta + "/../alpha",
+                  "/etc"):
+            r, corpo = self.get(f"/api/agentes?projeto={urllib_quote(p)}")
+            self.assertEqual((r.status, json.loads(corpo)), (404, {"erro": "projeto desconhecido"}), p)
+        for cid in ("..%2f..%2fetc", "%00", "../x", "p1/../p1", "x" * 300, "%3Cscript%3E", ""):
+            self.assertEqual(self.get(f"/api/conversas/{cid}")[0].status, 404, cid)
+
+    # --- caminhos
+    def test_path_traversal_e_codificacoes(self):
+        for c in ("/../../etc/passwd", "/%2e%2e/%2e%2e/etc/passwd", "/assets/../index.html", "/assets/%2e%2e/index.html",
+                  "/assets/%252e%252e/x", "/assets/..%5cindex.html", "/assets/..%2findex.html", "/assets//etc/passwd",
+                  "/assets/%00", "/assets/", "/sub/favicon.svg", "/x.py", "/cmd_web.py", "/painel_web.html",
+                  "/api/stream/../estado", "/api/%2e%2e/%2e%2e/etc/passwd", "/%5c..%5c..%5cetc%5cpasswd"):
+            r, corpo = self.get(c)
+            self.assertIn(r.status, (404, 400), c)
+            self.assertNotIn(b"root:", corpo, c)
+
+    def test_link_simbolico_nao_sai_do_build(self):
+        build = os.path.join(self.tmp, "build")
+        os.makedirs(os.path.join(build, "assets"))
+        segredo = os.path.join(self.tmp, "segredo.txt")
+        with open(segredo, "w") as f:
+            f.write("SEGREDO")
+        with open(os.path.join(build, "assets", "ok.js"), "w") as f:
+            f.write("1")
+        os.symlink(segredo, os.path.join(build, "assets", "link.js"))
+        os.symlink(segredo, os.path.join(build, "link.svg"))
+        antigo, cmd_web.DIR_WEB = cmd_web.DIR_WEB, build
+        self.addCleanup(setattr, cmd_web, "DIR_WEB", antigo)
+        self.assertEqual(self.get("/assets/ok.js")[1], b"1")
+        for c in ("/assets/link.js", "/link.svg"):
+            r, corpo = self.get(c)
+            self.assertEqual(r.status, 404, c)
+            self.assertNotIn(b"SEGREDO", corpo)
+
+    def test_metodos_e_requisicao_sem_host(self):
+        for metodo in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+            self.assertEqual(self.pedir_cru(f"{metodo} /api/estado HTTP/1.0\r\nHost: 127.0.0.1:{self.porta}\r\n\r\n")[0], 405, metodo)
+        self.assertEqual(self.pedir_cru("GET /api/estado HTTP/1.0\r\n\r\n")[0], 403)  # sem Host
+        self.assertEqual(self.pedir_cru("GET /api/estado HTTP/1.0\r\nHost:\r\n\r\n")[0], 403)
+
+    def pedir_cru(self, texto):
+        import socket
+        s = socket.create_connection(("127.0.0.1", self.porta), timeout=5)
+        s.sendall(texto.encode())
+        dado = b""
+        while True:
+            parte = s.recv(65536)
+            if not parte:
+                break
+            dado += parte
+        s.close()
+        return int(dado.split(b" ", 2)[1]), dado
+
+    # --- DNS rebinding, CORS, CSRF/SSE de outra origem, cabeçalhos
+    def test_host_e_origem(self):
+        for h in ("evil.example", "evil.example:80", "127.0.0.1", f"127.0.0.1:{self.porta}.evil.com", f"evil.com:{self.porta}",
+                  f"127.0.0.1:{self.porta},evil.com", f"[::1]:{self.porta}", f"0.0.0.0:{self.porta}"):
+            self.assertEqual(self.get("/api/estado", host=h)[0].status, 403, h)
+        for cab in ({"Origin": "http://evil.example"}, {"Origin": "null"}, {"Origin": f"http://127.0.0.1:{self.porta + 1}"},
+                    {"Origin": f"http://localhost:{self.porta + 1}"}, {"Sec-Fetch-Site": "cross-site"},
+                    {"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors"}):
+            for caminho in ("/api/estado", "/api/stream"):
+                self.assertEqual(self.get(caminho, cab=cab)[0].status, 403, (caminho, cab))
+        self.assertEqual(self.get("/api/estado", cab={"Origin": f"http://127.0.0.1:{self.porta}", "Sec-Fetch-Site": "same-origin"})[0].status, 200)
+        # navegar direto (digitar a URL, clicar num link de outro site) continua abrindo a página
+        self.assertEqual(self.get("/", cab={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"})[0].status, 200)
+
+    def test_cabecalhos_em_todas_as_respostas(self):
+        for c in ("/", "/api/estado", "/api/projetos", "/nada.js", "/api/x", "/assets/nada.js"):
+            r, _ = self.get(c, cab={"Origin": f"http://127.0.0.1:{self.porta}"})
+            csp = r.getheader("Content-Security-Policy") or ""
+            for parte in ("default-src 'self'", "script-src 'self'", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'",
+                          "form-action 'none'"):
+                self.assertIn(parte, csp, (c, parte))
+            if c == "/":
+                self.assertNotIn("unsafe-inline", csp.split("style-src")[0])  # script sem 'unsafe-inline'
+                self.assertNotRegex(csp, r"script-src[^;]*unsafe")
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff", c)
+            self.assertEqual(r.getheader("Referrer-Policy"), "no-referrer", c)
+            self.assertEqual(r.getheader("X-Frame-Options"), "DENY", c)
+            self.assertEqual(r.getheader("Cross-Origin-Resource-Policy"), "same-origin", c)
+            self.assertEqual(r.getheader("Cache-Control"), "no-store", c)
+            self.assertIsNone(r.getheader("Access-Control-Allow-Origin"), c)  # sem CORS
+
+    # --- DoS
+    def test_slowloris_e_leitor_parado_perdem_a_conexao(self):
+        import socket
+        import time
+        antigo, cmd_web.TIMEOUT_SOCKET = cmd_web.TIMEOUT_SOCKET, 0.4
+        self.addCleanup(setattr, cmd_web, "TIMEOUT_SOCKET", antigo)
+        srv = self.subir()
+        s = socket.create_connection(("127.0.0.1", srv.server_address[1]), timeout=5)
+        s.sendall(b"GET /api/estado HTTP/1.1\r\nHost: 127.0.0.1:1\r\nX-Lento: ")  # cabeçalho nunca termina
+        t0 = time.time()
+        self.assertEqual(s.recv(100), b"")  # o servidor fechou
+        self.assertLess(time.time() - t0, 4)
+        s.close()
+
+    def test_teto_de_conexoes_simultaneas(self):
+        import socket
+        antigo, cmd_web.ServidorLimitado.limite_conexoes = cmd_web.ServidorLimitado.limite_conexoes, 3
+        self.addCleanup(setattr, cmd_web.ServidorLimitado, "limite_conexoes", antigo)
+        srv = self.subir()
+        porta = srv.server_address[1]
+        ociosas = [socket.create_connection(("127.0.0.1", porta), timeout=5) for _ in range(3)]
+        try:
+            fim = datetime.datetime.now() + datetime.timedelta(seconds=3)
+            status = 200
+            while status != 503 and datetime.datetime.now() < fim:  # as ociosas ainda podem não ter chegado ao accept
+                status = self.get("/api/projetos", porta=porta)[0].status
+            self.assertEqual(status, 503)
+        finally:
+            for s in ociosas:
+                s.close()
+        fim = datetime.datetime.now() + datetime.timedelta(seconds=5)  # fechou: as vagas voltam
+        while status != 200 and datetime.datetime.now() < fim:
+            status = self.get("/api/projetos", porta=porta)[0].status
+        self.assertEqual(status, 200)
+
+    def test_erro_inesperado_vira_500_com_resposta(self):
+        original = painel_dados.agentes
+        painel_dados.agentes = lambda *a, **k: 1 / 0
+        self.addCleanup(setattr, painel_dados, "agentes", original)
+        r, corpo = self.get("/api/agentes")
+        self.assertEqual((r.status, json.loads(corpo)), (500, {"erro": "erro interno"}))
+        self.assertEqual(self.get("/api/projetos")[0].status, 200)  # o servidor segue de pé
+
+    # --- XSS: o servidor devolve o texto do log como dado (JSON), nunca como HTML
+    def test_payloads_voltam_como_json_inertes(self):
+        xs = ['<script>alert(1)</script>', '<img src=x onerror=alert(1)>', "javascript:alert(1)", '<svg onload=alert(1)>',
+              "\u202eevil\u202c", '"><script>', "{{7*7}}"]
+        for i, x in enumerate(xs):
+            self.gravar(m(f"x{i}", antes(1), M, G, "pedido", assunto=x, branch=x, prazo=x, modo=x, veredito=x, tema=x))
+        for ep in ("mensagens", "estado", "tarefas", "conversas/x0"):
+            r, corpo = self.get(f"/api/{ep}")
+            self.assertEqual(r.getheader("Content-Type"), "application/json; charset=utf-8")
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
+        self.assertIn("<script>", json.loads(self.get("/api/mensagens")[1])["mensagens"][0]["assunto"])
+
+    # --- vazamento pela tela do terminal
+    def test_tela_mascara_segredos(self):
+        saida = painel_dados.tela_de("\n".join([
+            "export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx", 'curl -H "Authorization: Bearer abc.def-1234567890" x',
+            "ghp_abcdefghijklmnopqrstuvwxyz0123456789", "AKIAIOSFODNN7EXAMPLE", "password=hunter2", "senha: x1y2",
+            "token: abc123", "-----BEGIN RSA PRIVATE KEY-----", "MIIEvQIBADANBg", "-----END RSA PRIVATE KEY-----",
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijk", "npm test passou, 3 tokens usados"]))
+        for segredo in ("abcdefghijklmnopqrstuvwx", "abc.def-1234567890", "ghp_", "AKIA", "hunter2", "x1y2", "abc123", "MIIEvQ",
+                        "eyJhbGci"):
+            self.assertNotIn(segredo, saida, segredo)
+        self.assertIn("npm test passou", saida)
+        t = json.loads(self.get("/api/agentes")[1])
+        self.assertTrue(all("sk-" not in (a["tela"] or "") for a in t))
+
+    def test_api_entrega_tela_mascarada(self):
+        self.terminais["term_m"]["preview"] = "rodando\nAPI_KEY=sk-abcdefghijklmnopqrstuvwxyz\n"
+        m_ = next(a for a in json.loads(self.get("/api/agentes")[1]) if a["agente"] == M)
+        self.assertNotIn("sk-abc", m_["tela"])
+        self.assertIn("rodando", m_["tela"])
 
 
 if __name__ == "__main__":

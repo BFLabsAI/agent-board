@@ -12,7 +12,7 @@ docs/
 ├── guias/maestri/        fazer, só Maestri: 1-instalar, 2-montar-o-time, 3-dia-a-dia, 4-problemas
 ├── referencia/           consultar: comandos, config, arquivos-e-estado, hooks-e-limites
 ├── MELHORIAS.md          o que mudou desde o fork
-├── userguide/painel.md   painel web
+├── userguide/painel*.md  painel web (4 páginas: painel, painel-telas, painel-analise, painel-office)
 └── adr/                  decisões
 ```
 

@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-surface-0 font-sans text-texto antialiased;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a3d #0c0c14;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #0c0c14;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2a2a3d;
+    border-radius: 3px;
+  }
+  ::selection {
+    background: rgba(99, 102, 241, 0.3);
+    color: #e4e4ed;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/60;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer components {
+  /* rolagem horizontal visível e estilizada (Kanban, tabelas, grafos) */
+  .barra-x {
+    scrollbar-width: auto;
+    scrollbar-color: #4a4a6a #12121c;
+  }
+  .barra-x::-webkit-scrollbar {
+    height: 12px;
+  }
+  .barra-x::-webkit-scrollbar-track {
+    background: #12121c;
+    border-radius: 6px;
+  }
+  .barra-x::-webkit-scrollbar-thumb {
+    background: #4a4a6a;
+    border-radius: 6px;
+    border: 2px solid #12121c;
+  }
+  .barra-x::-webkit-scrollbar-thumb:hover {
+    background: #6366f1;
+  }
+}

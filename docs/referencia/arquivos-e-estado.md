@@ -22,16 +22,23 @@
 | `scripts/cmd_tarefas.py` | `tarefas`, `vigiar`, `simular` |
 | `scripts/cmd_time.py` | `nota`, `notas`, `resumo` e o worktree do `cadastrar --worktree` |
 | `scripts/cmd_maestri.py` | `eu`, `solicitar`, `solicitacoes`, `maestri conectar`, `maestri rotina` |
-| `scripts/cmd_web.py`, `painel_estado.py`, `painel_web.html` | Painel web (`servir`): servidor, JSON de `/api/estado` e a página |
+| `scripts/cmd_web.py` | Painel web (`servir`): servidor HTTP só leitura, rotas `/api/*`, SSE e servir a SPA |
+| `scripts/painel_estado.py` | Estado de um projeto (JSON de `/api/estado`), tarefas e a heurística do status do agente |
+| `scripts/painel_dados.py` | Dados derivados do log para a API v2: agentes, conversas, analytics e workflows (funções puras) |
+| `scripts/painel_orca.py` | Lista de terminais abertos no Orca (`orca terminal list`), com cache de 2 s |
+| `scripts/painel_stream.py` | O que o `/api/stream` (SSE) empurra: vigia o log e o Orca e devolve só o que mudou |
+| `scripts/painel_web/` | Build da SPA (`index.html` e `assets/`), **commitado**: quem instala não precisa de Node |
+| `scripts/painel_web.html` | Página antiga do painel, usada só se não houver `painel_web/` |
+| `web/` | Código-fonte da SPA (React, Vite, TypeScript, Tailwind) e os testes Vitest. Só para quem desenvolve o painel: [README](../../web/README.md) |
 | `scripts/mcp_server.py`, `mcp_ferramentas.py` | Servidor MCP (JSON-RPC 2.0 sobre stdio) e as ferramentas `board_*` |
 | `scripts/omp-agent-board.ts` | Adaptador do OMP para o mesmo core |
 | `scripts/install.sh` | Liga os hooks e registra o servidor MCP (idempotente, com backup) |
 | `scripts/VERSION` | Versão do agent-board |
-| `scripts/test_*.py` | Testes a seco: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web`, `maestri` |
+| `scripts/test_*.py` | Testes a seco, 10 suítes: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web`, `maestri`, `contrato`, `docs` e `omp` (esta pula sozinha sem o `bun`). O front tem os próprios testes: `cd web && npx vitest run` |
 | `templates/CONTRATO.md` | Vira `docs/agent-board/CONTRATO.md` no projeto |
 | `templates/agent-board.json` | Vira `docs/agent-board/agent-board.json` no projeto |
 | `SKILL.md` | Procedimento do master, lido pelo agente ao usar a skill |
-| `docs/adr/`, `docs/userguide/painel.md` | Decisões e guia do painel web |
+| `docs/adr/`, `docs/userguide/painel.md` | Decisões e [guia do painel web](../userguide/painel.md) (com `painel-telas.md`, `painel-analise.md` e `painel-office.md`) |
 
 ## Estado na máquina
 
