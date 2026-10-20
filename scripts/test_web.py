@@ -664,6 +664,8 @@ class ApiV2(Cenario):
         d = self.api("/api/conversas/p1")
         self.assertEqual([x["id"] for x in d["mensagens"]], ["p1", "a1", "e1", "r1"])
         self.assertEqual(d["conversa"]["id"], "p1")
+        self.assertEqual(d["conversa"]["estado"], "aprovado")  # a entrega aprovada manda, não o pedido "concluido"
+        self.assertEqual([c["id"] for c in self.api("/api/conversas?periodo=7d&estado=aprovado")], ["p1"])
         self.assertTrue(all("prev" not in x for x in d["mensagens"]))
         r, corpo = self.get("/api/conversas/nao-existe")
         self.assertEqual((r.status, "erro" in json.loads(corpo)), (404, True))

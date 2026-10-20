@@ -245,8 +245,13 @@ def _conversa(raiz, thread, tars_por_id):
             if p and p not in part:
                 part.append(p)
     branches = [m["branch"] for m in thread if m.get("branch")]
+    # a entrega mais recente da thread manda no estado (aprovada/rejeitada/aguardando revisão);
+    # sem entrega, vale o estado do pedido raiz
+    entregas = [tars_por_id[m["id"]] for m in thread if m["id"] != raiz["id"] and m["id"] in tars_por_id
+                and m.get("tipo") == "entrega"]
+    estado = (entregas[-1] if entregas else tars_por_id.get(raiz["id"]) or {}).get("estado")
     return {"id": raiz["id"], "assunto": raiz.get("assunto") or "", "tipo": raiz["tipo"], "de": raiz.get("de"),
-            "para": raiz.get("para"), "estado": (tars_por_id.get(raiz["id"]) or {}).get("estado"),
+            "para": raiz.get("para"), "estado": estado,
             "inicio": thread[0].get("ts"), "fim": thread[-1].get("ts"),
             "duracao_min": round(max(0.0, (fim - ini).total_seconds() / 60), 1) if ini and fim else 0.0,
             "n_mensagens": len(thread), "participantes": part, "issues": issues,
