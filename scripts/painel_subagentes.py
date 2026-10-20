@@ -62,7 +62,7 @@ def sanear(linha):
 
 
 def _reiniciar():
-    return {"ino": None, "head": b"", "pos": 0, "mtime": None, "gen": 0, "eventos": []}
+    return {"ino": None, "head": b"", "cauda": b"", "pos": 0, "mtime": None, "gen": 0, "eventos": []}
 
 
 def _atualizar(caminho):
@@ -83,8 +83,14 @@ def _atualizar(caminho):
         return c
     try:
         with open(caminho, "rb") as f:
+            # mesmo inode e maior não basta (o inode é reaproveitado quando o arquivo é recriado):
+            # o começo e o trecho logo antes de onde parei têm que ser os mesmos
             if not novo and c["head"] and f.read(len(c["head"])) != c["head"]:
                 c, novo = _reiniciar(), True
+            if not novo and c["cauda"]:
+                f.seek(c["pos"] - len(c["cauda"]))
+                if f.read(len(c["cauda"])) != c["cauda"]:
+                    c, novo = _reiniciar(), True
             inicio = c["pos"]
             if novo:
                 c["head"] = f.read(64) if f.seek(0) == 0 else b""
@@ -107,7 +113,8 @@ def _atualizar(caminho):
             continue
         if e:
             eventos.append(e)
-    c.update(ino=st.st_ino, pos=inicio + fim, mtime=st.st_mtime_ns, gen=next(_geracao))
+    cauda = (c["cauda"] + bloco[:fim])[-64:]
+    c.update(ino=st.st_ino, pos=inicio + fim, cauda=cauda, mtime=st.st_mtime_ns, gen=next(_geracao))
     _arquivos[caminho] = c
     return c
 

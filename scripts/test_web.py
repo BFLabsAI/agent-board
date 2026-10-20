@@ -1397,7 +1397,9 @@ class Seguranca(Cenario):
             r, corpo = self.get(f"/api/{ep}")
             self.assertEqual(r.getheader("Content-Type"), "application/json; charset=utf-8")
             self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
-        self.assertIn("<script>", json.loads(self.get("/api/mensagens")[1])["mensagens"][0]["assunto"])
+        # mesmo ts para todas: a ordem entre elas não é garantida, o conteúdo sim
+        assuntos = {x["assunto"] for x in json.loads(self.get("/api/mensagens")[1])["mensagens"]}
+        self.assertIn("<script>alert(1)</script>", assuntos)
 
     # --- vazamento pela tela do terminal
     def test_tela_mascara_segredos(self):
@@ -1436,6 +1438,7 @@ def ev(ev_, minutos, agente=G, **extra):
 class SubBase(Cenario):
     def setUp(self):
         super().setUp()
+        painel_subagentes._arquivos.clear()  # cache do leitor é por processo
         self.pasta_sub = os.path.join(HOME_TESTE, "subagentes", "alpha")
         shutil.rmtree(os.path.join(HOME_TESTE, "subagentes"), ignore_errors=True)
         self.addCleanup(shutil.rmtree, os.path.join(HOME_TESTE, "subagentes"), True)
@@ -1469,6 +1472,16 @@ class LeitorDeSubagentes(SubBase):
     def test_spawn_sem_inicio_nao_vira_subagent(self):
         self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="x"))
         self.assertEqual(self.listar(), [])
+
+    def test_arquivo_recriado_no_mesmo_caminho_nao_mistura_eventos(self):
+        # o inode é reaproveitado ao recriar o arquivo; mesmo começo e tamanho maior não é "cresceu"
+        self.sub_gravar(ev("inicio", 5, id="a1", tipo="Explore"), ev("retorno", 4, tipo="Explore", ok=False))
+        self.assertEqual(self.um()["status"], "erro")
+        os.remove(self.arquivo())
+        self.sub_gravar(ev("inicio", 5, id="a1", tipo="Explore"), ev("atividade", 4, id="a1", ferramenta="Bash", resumo="ls"),
+                        ev("fim", 3, id="a1"))
+        s = self.um()
+        self.assertEqual((s["status"], s["n_atividades"]), ("concluido", 1))
 
     def test_sem_inicio_nasce_no_primeiro_evento(self):
         # sessão aberta antes dos hooks novos: só chegam atividade e fim (fim com tipo vazio)
