@@ -122,7 +122,7 @@ Em ordem de prioridade:
 
 1. `offline`: o handle não está aberto no Orca.
 2. `esperando`: a `tela` pede ação humana (`Do you want`, `[y/n]`, `Allow`, `permission`, `❯ 1.`).
-3. `trabalhando`: o título começa com spinner (caracteres braille `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, `◐◓◑◒` ou `✻✽✶·` que não seja o `✳` ocioso do Claude) **ou** houve saída do terminal há menos de 10 s.
+3. `trabalhando`: o título começa com spinner (caracteres braille `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, `◐◓◑◒` ou `✻✽✶·` que não seja o `✳` ocioso do Claude) **ou** houve saída do terminal há menos de 10 s **ou** (1.12) o agente tem sub-agent rodando.
 4. `pendente`: o agente tem `pendentes > 0`.
 5. `parado`: os demais casos.
 6. `desconhecido`: o Orca não respondeu, ou o agente é do Maestri.

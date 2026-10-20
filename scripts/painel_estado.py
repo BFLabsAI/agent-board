@@ -168,11 +168,13 @@ def pede_acao(tela):
     return any(p in fim for p in PEDE_ACAO) or "permission" in fim.lower()
 
 
-def status_agente(terminal, pendentes, agora_ms, orca_ok=True, maestri=False):
+def status_agente(terminal, pendentes, agora_ms, orca_ok=True, maestri=False, subs_rodando=0):
     """Status do agente (heurística do contrato, docs/referencia/painel-api.md).
 
     `terminal`: dict do Orca (title, preview, lastOutputAt) ou None se o handle não está aberto.
     `orca_ok`: False quando o orca não respondeu. Maestri não lista terminais: desconhecido.
+    `subs_rodando`: sub-agents dele em execução; com o terminal aberto, conta como trabalhando
+    (o pai fica parado na tela esperando o sub-agent).
     """
     if maestri or not orca_ok:
         return "desconhecido"
@@ -183,6 +185,8 @@ def status_agente(terminal, pendentes, agora_ms, orca_ok=True, maestri=False):
     titulo = terminal.get("title") or ""
     ultima = terminal.get("lastOutputAt")
     if (titulo[:1] and titulo[0] in SPINNERS) or (isinstance(ultima, (int, float)) and 0 <= agora_ms - ultima < SAIDA_RECENTE_MS):
+        return "trabalhando"
+    if subs_rodando > 0:
         return "trabalhando"
     return "pendente" if pendentes > 0 else "parado"
 

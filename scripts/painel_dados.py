@@ -167,7 +167,8 @@ def agentes(projeto, paineis, msgs, terminais, agora, tars=None, subs=None):
         out.append({
             "agente": nome, "papel": a.get("papel") or papel_do_nome(nome), "handle": h,
             "harness": harness_de(h, nome, term), "worktree": wt, "branch": a.get("branch") or (f"ab/{nome}" if wt else None),
-            "status": painel_estado.status_agente(term, n_pend, agora_ms, terminais is not None, eh_maestri(h)),
+            "status": painel_estado.status_agente(term, n_pend, agora_ms, terminais is not None, eh_maestri(h),
+                                                  sum(1 for s in meus_subs if s["status"] == "rodando")),
             "tela": tela_de(term["preview"]) if term else None,
             "ultima_saida": _iso_ms(term.get("lastOutputAt"), agora.tzinfo) if term else None,
             "pendentes": n_pend, "tarefa_atual": tarefa_atual(nome, tars),

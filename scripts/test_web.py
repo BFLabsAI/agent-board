@@ -241,6 +241,11 @@ class StatusAgente(unittest.TestCase):
         self.assertEqual(painel_estado.status_agente(None, 3, self.AGORA_MS), "offline")
         self.assertEqual(painel_estado.status_agente({"title": "⠋ x"}, 0, self.AGORA_MS, orca_ok=False), "desconhecido")
         self.assertEqual(painel_estado.status_agente({"title": "x"}, 0, self.AGORA_MS, maestri=True), "desconhecido")
+        # pai parado na tela esperando o sub-agent conta como trabalhando; offline continua offline
+        self.assertEqual(painel_estado.status_agente({"title": "✳ x"}, 2, self.AGORA_MS, subs_rodando=1), "trabalhando")
+        self.assertEqual(painel_estado.status_agente(None, 0, self.AGORA_MS, subs_rodando=1), "offline")
+        self.assertEqual(painel_estado.status_agente({"title": "x", "preview": "Do you want to proceed?"}, 0,
+                                                     self.AGORA_MS, subs_rodando=1), "esperando")
         # esperando vence trabalhando
         self.assertEqual(self.st("⠋ x", "Do you want to proceed?\n❯ 1. Yes\n  2. No"), "esperando")
         for tela in ("Continue? [y/n]", "Allow this tool?", "Needs permission to run"):
