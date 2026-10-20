@@ -16,7 +16,9 @@ import type {
   Resumo,
   SubAgente,
   Tarefa,
+  Versao,
   Workflows,
+  Workspaces,
 } from "./tipos";
 import { ErroApi } from "./erro";
 
@@ -36,7 +38,27 @@ export function montarUrl(caminho: string, params: Params = {}): string {
   return s ? `${caminho}?${s}` : caminho;
 }
 
-async function buscar<T>(caminho: string, params: Params = {}, sinal?: AbortSignal): Promise<T> {
+/** Workspace "ativo" do painel (o do contexto): é o padrão das chamadas que não passam `workspace`. */
+let workspaceAtivo: string | null = null;
+export function definirWorkspaceAtivo(id: string | null): void {
+  workspaceAtivo = id || null;
+}
+export function obterWorkspaceAtivo(): string | null {
+  return workspaceAtivo;
+}
+
+/** Prefixo do proxy para um Workspace remoto; vazio para o local/ausente. */
+export function prefixoWorkspace(workspace: string | null | undefined): string {
+  return workspace ? `/api/w/${encodeURIComponent(workspace)}` : "";
+}
+
+/** Caminho final de uma rota `/api/...` no Workspace pedido (`undefined` = o ativo, `null` = o local). */
+export function caminhoWorkspace(caminho: string, workspace?: string | null): string {
+  return prefixoWorkspace(workspace === undefined ? workspaceAtivo : workspace) + caminho;
+}
+
+async function buscar<T>(caminho: string, params: Params = {}, sinal?: AbortSignal, workspace?: string | null): Promise<T> {
+  caminho = caminhoWorkspace(caminho, workspace);
   if (MODO_FIXTURES) {
     const { responderFixture } = await import("./fixtures");
     return responderFixture(caminho, params) as T;
@@ -56,38 +78,39 @@ async function buscar<T>(caminho: string, params: Params = {}, sinal?: AbortSign
 }
 
 const ctx = (c: Contexto) => ({ projeto: c.projeto, periodo: c.periodo });
+const b = <T>(caminho: string, params: Params, sinal: AbortSignal | undefined, c: { workspace?: string | null }) =>
+  buscar<T>(caminho, params, sinal, c.workspace);
 
 export const cliente = {
-  projetos: (sinal?: AbortSignal) => buscar<Projeto[]>("/api/projetos", {}, sinal),
-  resumo: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Resumo>("/api/resumo", ctx(c), sinal),
-  agentes: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Agente[]>("/api/agentes", { projeto: c.projeto }, sinal),
-  tarefas: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Tarefa[]>("/api/tarefas", ctx(c), sinal),
+  projetos: (sinal?: AbortSignal, workspace?: string | null) => buscar<Projeto[]>("/api/projetos", {}, sinal, workspace),
+  resumo: (c: Contexto = {}, sinal?: AbortSignal) => b<Resumo>("/api/resumo", ctx(c), sinal, c),
+  agentes: (c: Contexto = {}, sinal?: AbortSignal) => b<Agente[]>("/api/agentes", { projeto: c.projeto }, sinal, c),
+  tarefas: (c: Contexto = {}, sinal?: AbortSignal) => b<Tarefa[]>("/api/tarefas", ctx(c), sinal, c),
   conversas: (f: FiltroConversas = {}, sinal?: AbortSignal) =>
-    buscar<Conversa[]>(
-      "/api/conversas",
-      { ...ctx(f), limite: f.limite, agente: f.agente, estado: f.estado, q: f.q },
-      sinal,
-    ),
+    b<Conversa[]>("/api/conversas", { ...ctx(f), limite: f.limite, agente: f.agente, estado: f.estado, q: f.q }, sinal, f),
   conversa: (id: string, c: Contexto = {}, sinal?: AbortSignal) =>
-    buscar<ConversaDetalhe>(`/api/conversas/${encodeURIComponent(id)}`, { projeto: c.projeto }, sinal),
+    b<ConversaDetalhe>(`/api/conversas/${encodeURIComponent(id)}`, { projeto: c.projeto }, sinal, c),
   mensagens: (f: FiltroMensagens = {}, sinal?: AbortSignal) =>
-    buscar<PaginaMensagens>(
+    b<PaginaMensagens>(
       "/api/mensagens",
       { projeto: f.projeto, antes: f.antes, limite: f.limite, agente: f.agente, tipo: f.tipo, q: f.q },
       sinal,
+      f,
     ),
-  analytics: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Analytics>("/api/analytics", { projeto: c.projeto }, sinal),
-  workflows: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Workflows>("/api/workflows", ctx(c), sinal),
-  /** Visão geral: todos os squads do servidor (não usa `projeto`). */
-  geral: (c: { periodo?: Periodo } = {}, sinal?: AbortSignal) => buscar<Geral>("/api/geral", { periodo: c.periodo }, sinal),
+  analytics: (c: Contexto = {}, sinal?: AbortSignal) => b<Analytics>("/api/analytics", { projeto: c.projeto }, sinal, c),
+  workflows: (c: Contexto = {}, sinal?: AbortSignal) => b<Workflows>("/api/workflows", ctx(c), sinal, c),
+  /** Visão geral: todos os squads do Workspace (não usa `projeto`). */
+  geral: (c: { periodo?: Periodo; workspace?: string | null } = {}, sinal?: AbortSignal) =>
+    b<Geral>("/api/geral", { periodo: c.periodo }, sinal, c),
   mensagensGeral: (f: FiltroGeralMensagens = {}, sinal?: AbortSignal) =>
-    buscar<PaginaMensagensGeral>("/api/geral/mensagens", { antes: f.antes, limite: f.limite }, sinal),
+    b<PaginaMensagensGeral>("/api/geral/mensagens", { antes: f.antes, limite: f.limite }, sinal, f),
   subagentes: (f: FiltroSubagentes = {}, sinal?: AbortSignal) =>
-    buscar<SubAgente[]>(
-      "/api/subagentes",
-      { ...ctx(f), agente: f.agente, status: f.status, limite: f.limite },
-      sinal,
-    ),
+    b<SubAgente[]>("/api/subagentes", { ...ctx(f), agente: f.agente, status: f.status, limite: f.limite }, sinal, f),
+  /** Todos os Workspaces da tailnet, vistos pelo painel que responde. Nunca passa pelo proxy. */
+  workspaces: (c: { periodo?: Periodo } = {}, sinal?: AbortSignal) =>
+    buscar<Workspaces>("/api/workspaces", { periodo: c.periodo }, sinal, null),
+  /** Versão e identidade do Workspace (o ativo, ou o pedido). */
+  versao: (sinal?: AbortSignal, workspace?: string | null) => buscar<Versao>("/api/versao", {}, sinal, workspace),
 };
 
 export type Cliente = typeof cliente;

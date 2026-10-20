@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ConexaoStream, type FabricaFonte, type StatusStream } from "./stream";
+import { ConexaoStream, NOMES_EVENTO, type FabricaFonte, type StatusStream } from "./stream";
 import type { EventosStream, NomeEvento } from "./tipos";
 
 interface ValorStream {
@@ -18,10 +18,13 @@ const Ctx = createContext<ValorStream>(semStream);
 
 export function StreamProvider({
   projeto,
+  workspace = null,
   fabrica,
   children,
 }: {
   projeto: string | null;
+  /** Workspace remoto (id) ou "*" (todos os Workspaces); null = o local */
+  workspace?: string | null;
   fabrica?: FabricaFonte;
   children: ReactNode;
 }) {
@@ -34,13 +37,13 @@ export function StreamProvider({
   });
 
   useEffect(() => {
-    const c = new ConexaoStream({ projeto, fabrica });
+    const c = new ConexaoStream({ projeto, workspace, fabrica });
     conexao.current = c;
     setStatus("conectando");
     const offs = [
       c.aoMudar(setStatus),
       c.aoVoltar(() => barramento.current.recarregar.forEach((f) => f())),
-      ...(["ola", "mensagem", "agente", "tarefa", "subagente", "ping"] as NomeEvento[]).map((n) =>
+      ...NOMES_EVENTO.map((n) =>
         c.assinar(n, (d) => barramento.current.ouvintes.get(n)?.forEach((f) => (f as (x: unknown) => void)(d))),
       ),
     ];
@@ -49,7 +52,7 @@ export function StreamProvider({
       offs.forEach((f) => f());
       c.parar();
     };
-  }, [projeto, fabrica]);
+  }, [projeto, workspace, fabrica]);
 
   const funcoes = useMemo(
     () => ({
@@ -111,5 +114,26 @@ export function useEventoSquad<K extends NomeEvento>(nome: K, fn: (d: EventosStr
   useEvento(nome, (d) => {
     const projeto = (d as { projeto?: unknown }).projeto;
     if (typeof projeto === "string" && projeto) fn(d, projeto);
+  });
+}
+
+/**
+ * Stream de todos os Workspaces (`/api/stream?workspace=*`). O provider abre
+ * essa conexão (uma só) enquanto a tela Workspaces está aberta; os eventos
+ * `mensagem`/`agente`/... chegam com `workspace` e `projeto`, e `workspace`
+ * traz o resumo do Workspace que mudou.
+ */
+export function useStreamWorkspaces(): ValorStream {
+  return useContext(Ctx);
+}
+
+/** Como `useEvento`, mas só entrega eventos que trazem `workspace` (stream `workspace=*`). */
+export function useEventoWorkspace<K extends Exclude<NomeEvento, "workspace" | "ola" | "ping">>(
+  nome: K,
+  fn: (d: EventosStream[K], workspace: string) => void,
+): void {
+  useEvento(nome, (d) => {
+    const ws = (d as { workspace?: unknown }).workspace;
+    if (typeof ws === "string" && ws) fn(d, ws);
   });
 }

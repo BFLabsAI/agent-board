@@ -277,14 +277,18 @@ export interface Workflows {
 
 /** Eventos do /api/stream */
 export interface EventoOla {
-  /** "*" quando a conexão é a de todos os squads */
-  projeto: string;
+  /** "*" quando a conexão é a de todos os squads (ausente no stream `workspace=*`) */
+  projeto?: string;
+  /** "*" no stream de todos os Workspaces */
+  workspace?: string;
   agora: string;
   /** só no stream "*": os projetos vigiados */
   projetos?: string[];
+  /** só no stream `workspace=*`: ids dos Workspaces vigiados */
+  workspaces?: string[];
 }
 /** No stream "*" cada evento traz o projeto (squad) de origem. */
-export type ComProjeto<T> = T & { projeto?: string };
+export type ComProjeto<T> = T & { projeto?: string; /** só no stream `workspace=*` */ workspace?: string };
 export interface EventoPing {
   agora: string;
 }
@@ -294,6 +298,8 @@ export interface EventosStream {
   agente: ComProjeto<Agente>;
   tarefa: ComProjeto<Tarefa>;
   subagente: ComProjeto<SubAgente>;
+  /** só no stream `workspace=*`: um Workspace entrou, saiu ou mudou de online/saúde */
+  workspace: WorkspaceResumo;
   ping: EventoPing;
 }
 export type NomeEvento = keyof EventosStream;
@@ -302,6 +308,8 @@ export type NomeEvento = keyof EventosStream;
 export interface Contexto {
   projeto?: string;
   periodo?: Periodo;
+  /** Workspace remoto (id): o caminho ganha o prefixo `/api/w/<id>`. Ausente/null = o do próprio painel (ou o ativo no contexto). */
+  workspace?: string | null;
 }
 export interface FiltroConversas extends Contexto {
   limite?: number;
@@ -315,6 +323,7 @@ export interface FiltroSubagentes extends Contexto {
   limite?: number;
 }
 export interface FiltroGeralMensagens {
+  workspace?: string | null;
   antes?: string;
   limite?: number;
 }
@@ -324,4 +333,44 @@ export interface FiltroMensagens extends Contexto {
   agente?: string;
   tipo?: string;
   q?: string;
+}
+
+/** Workspaces federados (1.14): uma máquina com o agent-board. */
+export type SaudeWorkspace = SaudeSquad | "offline";
+
+export interface SquadWorkspace {
+  projeto: string;
+  saude: SaudeSquad;
+  agentes: number;
+  trabalhando: number;
+}
+
+export interface WorkspaceResumo {
+  id: string;
+  nome: string;
+  local: boolean;
+  online: boolean;
+  versao: string | null;
+  /** versão menor que a do painel que responde */
+  desatualizado: boolean;
+  latencia_ms: number | null;
+  /** texto não confiável */
+  erro?: string;
+  /** quando passou a ficar offline (ISO), se o servidor souber; senão a tela usa o momento em que viu a queda */
+  offline_desde?: string | null;
+  saude: SaudeWorkspace;
+  totais: TotaisGeral | null;
+  squads: SquadWorkspace[];
+}
+
+export interface Workspaces {
+  agora: string;
+  workspaces: WorkspaceResumo[];
+}
+
+export interface Versao {
+  versao: string;
+  contrato: number;
+  workspace: { id: string; nome: string };
+  projetos: string[];
 }
