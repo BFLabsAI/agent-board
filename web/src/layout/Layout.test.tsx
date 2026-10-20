@@ -35,6 +35,16 @@ describe("navegação", () => {
     expect(await screen.findByRole("heading", { level: 1, name: titulo })).toBeInTheDocument();
   });
 
+  it("tem um link 'Pular para o conteúdo' como primeiro item da tabulação", async () => {
+    renderPainel("/conversas");
+    await screen.findByRole("heading", { level: 1, name: "Conversas" });
+    const link = screen.getByRole("link", { name: "Pular para o conteúdo" });
+    expect(link).toHaveAttribute("href", "#conteudo");
+    expect(document.querySelector("main#conteudo")).not.toBeNull();
+    await userEvent.tab();
+    expect(link).toHaveFocus();
+  });
+
   it("renderiza o detalhe da conversa", async () => {
     vi.spyOn(cliente, "conversa").mockImplementation(async () => ({
       conversa: conversasFixture()[0],
