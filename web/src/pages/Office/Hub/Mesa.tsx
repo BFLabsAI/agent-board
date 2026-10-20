@@ -1,5 +1,7 @@
 import { memo, useId } from "react";
 import type { Agente } from "../../../api/tipos";
+import { Drones, type PosSub } from "./Drones";
+import { useReduzirMovimento } from "../useReduzirMovimento";
 import { estiloPapel, ESTILO_STATUS_AGENTE } from "../../../lib/cores";
 import { nomeCurto, truncar } from "../../../lib/formato";
 import { caixa, P, pontos } from "./geometria";
@@ -41,9 +43,12 @@ export interface PropsMesa {
   mestre?: boolean;
   aoSelecionar: (nome: string) => void;
   aoHover: (nome: string | null) => void;
+  aoHoverSub: (p: PosSub | null) => void;
+  aoSelecionarSub?: (agente: string, subId: string) => void;
 }
 
-export const Mesa = memo(function Mesa({ agente, x, y, escala, atrasado, selecionado, flash, mestre, aoSelecionar, aoHover }: PropsMesa) {
+export const Mesa = memo(function Mesa({ agente, x, y, escala, atrasado, selecionado, flash, mestre, aoSelecionar, aoHover, aoHoverSub, aoSelecionarSub }: PropsMesa) {
+  const reduzido = useReduzirMovimento();
   const gid = useId().replace(/:/g, "");
   const cor = estiloPapel(agente.papel).hex;
   const st = agente.status;
@@ -214,6 +219,16 @@ export const Mesa = memo(function Mesa({ agente, x, y, escala, atrasado, selecio
           <text x={6} y={4} textAnchor="middle" fontSize={11} fontWeight={600} fill="#e4e4ed">{nomeTxt}</text>
         </g>
       </g>
+      <Drones
+        subs={agente.subagentes ?? []}
+        cor={cor}
+        reduzido={reduzido}
+        escala={escala}
+        mx={x}
+        my={y}
+        aoHoverSub={aoHoverSub}
+        aoAbrirSub={(id) => aoSelecionarSub?.(agente.agente, id)}
+      />
       <title>{rotulo}</title>
     </g>
   );

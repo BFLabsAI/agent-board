@@ -1,13 +1,15 @@
 import clsx from "clsx";
 import { ClipboardCheck, Cpu, Inbox, Send } from "lucide-react";
 import type { CSSProperties } from "react";
-import type { Agente, Tarefa } from "../../../api/tipos";
+import type { Agente, SubAgente, Tarefa } from "../../../api/tipos";
 import { AgentAvatar, StatusDot } from "../../../components/ui";
 import { estiloStatus } from "../../../lib/cores";
 import { nomeCurto } from "../../../lib/formato";
 import { CartaoTarefa } from "./CartaoTarefa";
 import { corDoAgente, resumoDoMaster, rotuloHarness } from "./dados";
-import { L } from "./layout";
+import { caminho, L } from "./layout";
+import { SubCard } from "./SubCard";
+import { useReduzirMovimento } from "../useReduzirMovimento";
 
 function Chip({ icone: Icone, children, titulo, tom }: { icone?: typeof Inbox; children: React.ReactNode; titulo: string; tom?: string }) {
   return (
@@ -36,9 +38,46 @@ interface Props {
   estilo?: CSSProperties;
   w: number;
   h: number;
+  /** sub-agents já recortados (até L.maxSubs) e quantos ficaram de fora */
+  subs?: SubAgente[];
+  subsExtra?: number;
+  /** "lado": coluna à direita das tarefas (organograma); "abaixo": empilhados sob as tarefas (Times) */
+  modoSubs?: "lado" | "abaixo";
+  aoSelecionarSub?: (agente: string, subId: string) => void;
 }
 
-export function CardAgente({ agente, tarefas, abertas, visiveis, selecionado, aoSelecionar, estilo, w, h }: Props) {
+const ChipMais = ({ n, alt }: { n: number; alt: number }) => (
+  <span data-testid="sub-mais" className="inline-flex w-fit items-center rounded-md border border-border bg-surface-2 px-1.5 text-[11px] font-medium text-texto-suave" style={{ height: alt - 4 }}>
+    +{n}
+  </span>
+);
+
+/** Conectores em ângulo reto do pai a cada sub-card (modo "lado"). Rodando = pulso tracejado. */
+function ConectoresSub({ subs, extra, h, w, cor, reduzido }: { subs: SubAgente[]; extra: number; h: number; w: number; cor: string; reduzido: boolean }) {
+  const total = h + 8 + subs.length * (L.subAlt + L.subGap) + (extra > 0 ? L.maisAlt : 0);
+  const y0 = h - 26;
+  return (
+    <svg className="pointer-events-none absolute top-0" style={{ left: w }} width={L.subGapX} height={total} aria-hidden="true">
+      {subs.map((sub, i) => {
+        const yi = h + 8 + i * (L.subAlt + L.subGap) + L.subAlt / 2;
+        const d = caminho([[0, y0], [12, y0], [12, yi], [L.subGapX, yi]], 8);
+        return (
+          <g key={sub.id} data-lig-sub={sub.id}>
+            <path d={d} fill="none" stroke={cor} strokeOpacity={0.4} strokeWidth={1.25} strokeLinecap="round" strokeDasharray={sub.status === "perdido" ? "3 3" : undefined} />
+            {sub.status === "rodando" && !reduzido && (
+              <path d={d} fill="none" stroke="#34d399" strokeWidth={2} strokeLinecap="round" strokeDasharray="3 11" data-pulso-sub={sub.id}>
+                <animate attributeName="stroke-dashoffset" from="28" to="0" dur="1.2s" repeatCount="indefinite" />
+              </path>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+export function CardAgente({ agente, tarefas, abertas, visiveis, selecionado, aoSelecionar, estilo, w, h, subs = [], subsExtra = 0, modoSubs = "lado", aoSelecionarSub }: Props) {
+  const reduzido = useReduzirMovimento();
   const master = agente.papel === "master";
   const cor = corDoAgente(agente);
   const e = estiloStatus(agente.status);
@@ -47,7 +86,7 @@ export function CardAgente({ agente, tarefas, abertas, visiveis, selecionado, ao
   const mostradas = abertas.slice(0, visiveis);
 
   return (
-    <div data-testid="no-mapa" data-agente={agente.agente} style={{ width: w, ...estilo }} className="animate-fade-in">
+    <div data-testid="no-mapa" data-agente={agente.agente} style={{ width: w, ...estilo }} className="relative animate-fade-in">
       <button
         type="button"
         onClick={() => aoSelecionar(agente.agente)}
@@ -122,6 +161,31 @@ export function CardAgente({ agente, tarefas, abertas, visiveis, selecionado, ao
               +{abertas.length - mostradas.length} {abertas.length - mostradas.length === 1 ? "tarefa" : "tarefas"}
             </span>
           )}
+        </div>
+      )}
+
+      {subs.length > 0 && modoSubs === "lado" && (
+        <>
+          <ConectoresSub subs={subs} extra={subsExtra} h={h} w={w} cor={cor} reduzido={reduzido} />
+          <div className="absolute flex flex-col" data-testid="subs-pai" style={{ left: w + L.subGapX, top: h + 8, gap: L.subGap }}>
+            {subs.map((sub) => (
+              <SubCard key={sub.id} sub={sub} corPai={cor} aoAbrir={(id) => aoSelecionarSub?.(agente.agente, id)} />
+            ))}
+            {subsExtra > 0 && <ChipMais n={subsExtra} alt={L.maisAlt} />}
+          </div>
+        </>
+      )}
+      {subs.length > 0 && modoSubs === "abaixo" && (
+        <div className="relative ml-[14px] mt-2 flex flex-col border-l border-border-light pl-[14px] pt-2" data-testid="subs-pai" style={{ gap: L.subGap }}>
+          {subs.map((sub) => (
+            <div key={sub.id} className="relative before:absolute before:-left-[15px] before:top-1/2 before:h-px before:w-[14px] before:bg-border-light">
+              {sub.status === "rodando" && !reduzido && (
+                <span aria-hidden="true" data-pulso-sub={sub.id} className="absolute -left-[15px] top-1/2 h-[2px] w-[14px] -translate-y-1/2 animate-pulse bg-emerald-400/80" />
+              )}
+              <SubCard sub={sub} corPai={cor} aoAbrir={(id) => aoSelecionarSub?.(agente.agente, id)} />
+            </div>
+          ))}
+          {subsExtra > 0 && <ChipMais n={subsExtra} alt={L.maisAlt} />}
         </div>
       )}
     </div>
