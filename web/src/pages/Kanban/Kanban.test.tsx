@@ -142,7 +142,7 @@ describe("Kanban: sub-agents", () => {
     const card = document.querySelector('[data-agente="r7one-manager01-cc"]') as HTMLElement;
     expect(within(card).getAllByRole("listitem")).toHaveLength(3);
     expect(within(card).getByText("Backoff exponencial no cliente")).toBeInTheDocument();
-    expect(within(card).getAllByText(/^(general-purpose|Explore)$/).length).toBeGreaterThan(0);
+    expect(within(card).getAllByText(/^subagent-(cc|omp)$/).length).toBeGreaterThan(0);
     expect(within(card).getAllByText(/^Bash$|^Edit$/).length).toBeGreaterThan(0);
   });
 
