@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .claude/
 web/node_modules
+web/test-results
+web/playwright-report
