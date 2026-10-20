@@ -10,7 +10,6 @@ export const MAX_ISSUES = 8;
 export const COLUNAS_GRAFO = [
   { titulo: "MASTER", colunas: ["master"] },
   { titulo: "MANAGERS / RESEARCHERS", colunas: ["manager", "researcher"] },
-  { titulo: "SUB-AGENTS", colunas: ["subagente"] },
   { titulo: "ISSUES", colunas: ["issue"] },
   { titulo: "REVISÃO", colunas: ["revisao"] },
   { titulo: "RESULTADO", colunas: ["resultado"] },
@@ -20,10 +19,14 @@ export function indiceColuna(c: ColunaWorkflow): number {
   return COLUNAS_GRAFO.findIndex((g) => (g.colunas as ReadonlyArray<string>).includes(c));
 }
 
-/** A coluna SUB-AGENTS só aparece se o servidor mandou nós de sub-agent (JSON antigo não tem). */
-export function colunasDoGrafo(nos: ReadonlyArray<Pick<No, "coluna">>): typeof COLUNAS_GRAFO[number][] {
-  const tem = nos.some((n) => n.coluna === "subagente");
-  return COLUNAS_GRAFO.filter((g) => tem || !(g.colunas as ReadonlyArray<string>).includes("subagente"));
+/** Colunas do fluxo principal. Sub-agents ficam numa faixa própria abaixo do grafo, fora das colunas. */
+export function colunasDoGrafo(): typeof COLUNAS_GRAFO[number][] {
+  return [...COLUNAS_GRAFO];
+}
+
+/** A faixa SUB-AGENTS só aparece se o servidor mandou nós de sub-agent (JSON antigo não tem). */
+export function temSubagentes(nos: ReadonlyArray<Pick<No, "coluna">>): boolean {
+  return nos.some((n) => n.coluna === "subagente");
 }
 
 export const COR_SUBAGENTE = "#f472b6";
@@ -105,12 +108,16 @@ export interface NoPos extends No {
   cor: string;
 }
 
-export const LARGURA = 1120;
-export const LARG_NO = 136;
+export const LARGURA = 1200;
+export const LARG_NO = 156;
 export const ALT_NO = 34;
+export const LARG_SUB = 152;
+export const ALT_SUB = 28;
 const PASSO = 46;
+const PASSO_SUB = 36;
 const ALTURA_MIN = 380;
 export const TOPO = 56;
+export const FOLGA = 28;
 
 function ordemNo(a: No, b: No): number {
   if (a.coluna === "resultado" && b.coluna === "resultado") return ORDEM_RESULTADO.indexOf(a.id) - ORDEM_RESULTADO.indexOf(b.id);
@@ -121,20 +128,84 @@ function ordemNo(a: No, b: No): number {
   return 0;
 }
 
-export function layoutGrafo(nos: No[]): { pos: NoPos[]; altura: number } {
-  const colunas = colunasDoGrafo(nos);
+export interface Faixa {
+  /** topo da faixa SUB-AGENTS */
+  y: number;
+  h: number;
+  /** x onde as pílulas começam (alinhado à coluna dos agentes) */
+  x0: number;
+}
+
+/** Posição de cada coluna principal, a partir de FOLGA. */
+export function xColuna(i: number, total: number = COLUNAS_GRAFO.length): number {
+  return FOLGA + i * ((LARGURA - 2 * FOLGA - LARG_NO) / (total - 1));
+}
+
+/** Pílulas de sub-agent em linhas sob a coluna dos agentes; ordem por contagem. Função pura. */
+export function layoutSubagentes(subs: No[], yTopo: number): { pos: NoPos[]; faixa: Faixa | null; altura: number } {
+  if (!subs.length) return { pos: [], faixa: null, altura: yTopo };
+  const ordenados = [...subs].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
+  const x0 = xColuna(1);
+  const gap = 10;
+  const porLinha = Math.max(1, Math.floor((LARGURA - FOLGA - x0 + gap) / (LARG_SUB + gap)));
+  const linhas = Math.ceil(ordenados.length / porLinha);
+  const cab = 14;
+  const pos = ordenados.map((n, i) => ({
+    ...n,
+    x: x0 + (i % porLinha) * (LARG_SUB + gap),
+    y: yTopo + cab + Math.floor(i / porLinha) * PASSO_SUB + (PASSO_SUB - ALT_SUB) / 2,
+    w: LARG_SUB,
+    h: ALT_SUB,
+    cor: corNo(n),
+  }));
+  const h = cab + linhas * PASSO_SUB + 14;
+  return { pos, faixa: { y: yTopo, h, x0 }, altura: yTopo + h };
+}
+
+export function layoutGrafo(nos: No[]): { pos: NoPos[]; subPos: NoPos[]; faixa: Faixa | null; alturaGrafo: number; altura: number } {
+  const colunas = colunasDoGrafo();
   const cols = colunas.map((g) => nos.filter((n) => (g.colunas as ReadonlyArray<string>).includes(n.coluna)).sort(ordemNo));
   const maior = Math.max(1, ...cols.map((c) => c.length));
-  const altura = Math.max(ALTURA_MIN, maior * PASSO + TOPO + 40);
-  const util = altura - TOPO;
-  const folga = 28;
-  const passoX = (LARGURA - 2 * folga - LARG_NO) / (colunas.length - 1);
+  const alturaGrafo = Math.max(ALTURA_MIN, maior * PASSO + TOPO + 40);
+  const util = alturaGrafo - TOPO;
   const pos: NoPos[] = [];
   cols.forEach((c, i) => {
     const ini = TOPO + (util - c.length * PASSO) / 2 + (PASSO - ALT_NO) / 2;
-    c.forEach((n, j) => pos.push({ ...n, x: folga + i * passoX, y: ini + j * PASSO, w: LARG_NO, h: ALT_NO, cor: corNo(n) }));
+    c.forEach((n, j) => pos.push({ ...n, x: xColuna(i, colunas.length), y: ini + j * PASSO, w: LARG_NO, h: ALT_NO, cor: corNo(n) }));
   });
-  return { pos, altura };
+  const sub = layoutSubagentes(nos.filter((n) => n.coluna === "subagente"), alturaGrafo - 8);
+  return { pos, subPos: sub.pos, faixa: sub.faixa, alturaGrafo, altura: sub.faixa ? sub.altura : alturaGrafo };
+}
+
+/** Total de sub-agents disparados por agente (soma das arestas agente -> sub). */
+export function subsPorAgente(arestas: Aresta[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const a of arestas) if (a.para.startsWith("sub:")) m.set(a.de, (m.get(a.de) ?? 0) + a.n);
+  return m;
+}
+
+/** Tooltip perto do ponteiro, sempre inteiro dentro da caixa (card). Coordenadas relativas à caixa. */
+export function posicionarTooltip(
+  ponteiro: { x: number; y: number },
+  caixa: { w: number; h: number },
+  tip: { w: number; h: number },
+  deslocamento = 14,
+): { left: number; top: number } {
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, Math.max(min, max)));
+  let left = ponteiro.x + deslocamento;
+  if (left + tip.w > caixa.w - 4) left = ponteiro.x - deslocamento - tip.w;
+  let top = ponteiro.y + deslocamento;
+  if (top + tip.h > caixa.h - 4) top = ponteiro.y - deslocamento - tip.h;
+  return { left: clamp(left, 4, caixa.w - tip.w - 4), top: clamp(top, 4, caixa.h - tip.h - 4) };
+}
+
+/** Quantos caracteres cabem no rótulo sem invadir a pílula da contagem. */
+export function maxCharsRotulo(w: number, nTxt: string): number {
+  const pill = larguraPilula(nTxt);
+  return Math.max(4, Math.floor((w - pill - 8 - 12 - 4) / 7.2));
+}
+export function larguraPilula(nTxt: string): number {
+  return Math.max(26, nTxt.length * 7 + 12);
 }
 
 export const chaveAresta = (a: { de: string; para: string }) => `${a.de}>${a.para}`;
