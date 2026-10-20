@@ -1,14 +1,16 @@
 import { Suspense, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Skeleton } from "../components/ui";
 import { useContextoPainel } from "../context/ContextoPainel";
 import { gravarLocal, lerLocal } from "../lib/armazenamento";
+import { LimiteErro } from "./LimiteErro";
 import { Sidebar } from "./Sidebar";
 
 const CHAVE = "agent-board:sidebar-recolhida";
 
 export function Layout() {
   const { tv } = useContextoPainel();
+  const { pathname } = useLocation();
   const [recolhida, setRecolhida] = useState(() => lerLocal(CHAVE) === "1");
 
   const alternar = () => {
@@ -22,9 +24,11 @@ export function Layout() {
     <div className="flex min-h-screen bg-surface-0 text-texto">
       {!tv && <Sidebar recolhida={recolhida} onAlternar={alternar} />}
       <main className="min-w-0 flex-1 overflow-x-hidden px-10 py-8" data-modo-tv={tv || undefined}>
-        <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-          <Outlet />
-        </Suspense>
+        <LimiteErro key={pathname}>
+          <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+            <Outlet />
+          </Suspense>
+        </LimiteErro>
       </main>
     </div>
   );

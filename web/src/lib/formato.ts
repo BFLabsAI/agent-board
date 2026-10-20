@@ -62,12 +62,14 @@ export function formatarDataHora(iso: string): string {
   return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${formatarHora(iso)}`;
 }
 
-export function truncar(texto: string, max: number): string {
+export function truncar(texto: string | null | undefined, max: number): string {
+  texto = texto ?? "";
   return texto.length > max ? `${texto.slice(0, max - 1).trimEnd()}…` : texto;
 }
 
 /** "r7one-manager01-cc" -> "manager01-cc" (tira o prefixo do projeto). */
-export function nomeCurto(agente: string): string {
+export function nomeCurto(agente: string | null | undefined): string {
+  agente = agente ?? "";
   const i = agente.indexOf("-");
   return i > 0 ? agente.slice(i + 1) : agente;
 }
