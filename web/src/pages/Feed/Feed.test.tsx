@@ -66,6 +66,14 @@ describe("Feed", () => {
     expect(screen.getAllByRole("link", { name: "Conversa" })[0]).toHaveAttribute("href", expect.stringContaining("/conversas/"));
   });
 
+  it("os nomes usam nomeCurto, não truncam e têm tooltip com o nome completo", async () => {
+    await abrir();
+    const nomes = screen.getAllByTestId("feed-nomes")[0];
+    expect(nomes.className).toContain("lg:shrink-0");
+    expect(nomes.getAttribute("title")).toMatch(/^r7one-\S+ › r7one-\S+$|^\S+ › \S+$/);
+    expect(nomes.textContent).not.toContain("r7one-master");
+  });
+
   it("alterna para lista e grava o modo na URL", async () => {
     await abrir();
     await userEvent.click(screen.getByRole("radio", { name: "Lista" }));

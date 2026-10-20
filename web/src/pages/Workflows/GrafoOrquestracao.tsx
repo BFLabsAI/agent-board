@@ -1,4 +1,5 @@
 import { linkHorizontal, scaleSqrt } from "d3";
+import { RolagemX } from "../../components/RolagemX";
 import { X } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { formatarNumero, truncar } from "../../lib/formato";
@@ -68,7 +69,7 @@ export function GrafoOrquestracao({
 
   return (
     <div className="flex flex-col">
-      <svg viewBox={`0 0 ${LARGURA} ${altura}`} className="block w-full" role="group" aria-label="Grafo de orquestração" data-testid="grafo-orquestracao">
+      <RolagemX rotulo="Grafo de orquestração (rolagem horizontal)"><svg viewBox={`0 0 ${LARGURA} ${altura}`} className="block w-full min-w-[760px]" role="group" aria-label="Grafo de orquestração" data-testid="grafo-orquestracao">
         <defs>
           {agrupado.arestas.map((a, i) => {
             const s = porId.get(a.de);
@@ -129,7 +130,7 @@ export function GrafoOrquestracao({
             onClique={() => onSelecionar(p.id === selecionado ? null : p.id)}
           />
         ))}
-      </svg>
+      </svg></RolagemX>
 
       {sel && (
         <div className="order-first flex animate-fade-in flex-wrap items-start gap-x-8 gap-y-3 border-b border-border bg-surface-2/60 px-5 py-4" data-testid="detalhe-no">
