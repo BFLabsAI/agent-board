@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Bot, ClipboardList, ExternalLink, ListChecks, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
+import { ArrowRight, Bot, ChevronRight, ClipboardList, ExternalLink, ListChecks, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Agente, Mensagem, SubAgente, Tarefa } from "../../api/tipos";
 import { cliente } from "../../api/cliente";
@@ -10,7 +10,7 @@ import { AgentAvatar, Badge, Skeleton, StatusBadge, TempoRelativo, TipoMsgBadge 
 import { estiloPapel, ESTILO_ESTADO_TAREFA } from "../../lib/cores";
 import { nomeCurto, truncar } from "../../lib/formato";
 import { DuracaoSub } from "./DuracaoSub";
-import { ESTILO_SUB, mesclarSub, ordenarSubs, subsDe, textoAtividade } from "./subagentes";
+import { descricaoSub, emDestaque, ESTILO_SUB, mesclarSub, ordenarSubs, resumoTerminados, nomeSub, subsDe, tipoDetalhe, textoAtividade } from "./subagentes";
 import { useReduzirMovimento } from "./useReduzirMovimento";
 
 const ABERTAS = new Set(["aberto", "em_andamento", "atrasado", "aguardando_revisao"]);
@@ -111,6 +111,7 @@ function UltimasMensagens({ agente }: { agente: string }) {
 
 function ItemSub({ sub, foco }: { sub: SubAgente; foco: boolean }) {
   const e = ESTILO_SUB[sub.status];
+  const atividade = textoAtividade(sub);
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (foco) ref.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
@@ -126,15 +127,16 @@ function ItemSub({ sub, foco }: { sub: SubAgente; foco: boolean }) {
     >
       <div className="flex items-center gap-2 text-[11px]">
         <span className={`h-2 w-2 shrink-0 rounded-full ${sub.status === "rodando" ? "animate-pulse-dot" : ""}`} style={{ background: e.hex }} aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate font-semibold text-texto">{sub.tipo ?? "sub-agent"}</span>
+        <span className="min-w-0 truncate font-semibold text-texto">{nomeSub(sub)}</span>
+        {tipoDetalhe(sub) ? <span className="min-w-0 flex-1 truncate text-[10px] text-texto-fraco" data-testid="sub-tipo">{tipoDetalhe(sub)}</span> : <span className="flex-1" />}
         {sub.fundo && (
           <span data-testid="sub-fundo" className="rounded border border-border-light px-1 py-px text-[9px] uppercase tracking-wider text-texto-fraco">em segundo plano</span>
         )}
         <span className={e.texto}>{e.rotulo}</span>
         <DuracaoSub sub={sub} className="font-mono tabular-nums text-texto-suave" />
       </div>
-      <p className="mt-1 text-[13px] leading-snug text-texto">{truncar(sub.descricao, 140) || "sem descrição"}</p>
-      <p className="mt-1 truncate font-mono text-[10.5px] text-texto-fraco" title={textoAtividade(sub)}>{textoAtividade(sub)}</p>
+      {descricaoSub(sub) && <p className="mt-1 text-[13px] leading-snug text-texto">{truncar(descricaoSub(sub), 140)}</p>}
+      {atividade && <p className="mt-1 truncate font-mono text-[10.5px] text-texto-fraco" title={atividade}>{atividade}</p>}
       {sub.tarefa && (
         <LinkPainel to={`/conversas/${encodeURIComponent(sub.tarefa.id)}`} className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] text-accent-hover hover:underline" title={sub.tarefa.assunto}>
           <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -159,24 +161,61 @@ function SecaoSubs({ agente, foco }: { agente: Agente; foco: string | null }) {
     for (const l of locais) m = mesclarSub(m, l);
     return ordenarSubs(m);
   }, [todos, api.dados, locais]);
-  const focoFora = foco !== null && lista.findIndex((s) => s.id === foco) >= SUBS_VISIVEIS;
-  const visiveis = todos || focoFora ? lista : lista.slice(0, SUBS_VISIVEIS);
+  const destaque = lista.filter(emDestaque);
+  const terminados = lista.filter((s) => !emDestaque(s));
+  const focoNosTerminados = foco !== null && terminados.some((s) => s.id === foco);
+  const [abertos, setAbertos] = useState(false);
+  useEffect(() => {
+    setAbertos(false);
+  }, [agente.agente]);
+  const mostrarTerminados = abertos || focoNosTerminados;
+  const visiveisTerm = todos ? terminados : terminados.slice(0, SUBS_VISIVEIS);
   const rodando = locais.filter((s) => s.status === "rodando").length;
+  const resumo = resumoTerminados(terminados);
   return (
     <Secao icone={Bot} titulo="Sub-agents" extra={<span className="font-semibold text-texto" data-testid="subs-rodando">{rodando} rodando</span>}>
       {lista.length === 0 ? (
         <p className="text-sm text-texto-fraco">Nenhum sub-agent nas últimas 24 h.</p>
       ) : (
-        <ul className="space-y-1.5" data-testid="subs-gaveta">
-          {visiveis.map((s) => (
-            <ItemSub key={s.id} sub={s} foco={foco === s.id} />
-          ))}
-        </ul>
+        <div className="space-y-3" data-testid="subs-gaveta">
+          {destaque.length > 0 && (
+            <div>
+              <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-texto-fraco">Rodando</h4>
+              <ul className="space-y-1.5" data-testid="subs-rodando-lista">
+                {destaque.map((s) => (
+                  <ItemSub key={s.id} sub={s} foco={foco === s.id} />
+                ))}
+              </ul>
+            </div>
+          )}
+          {terminados.length > 0 && (
+            <div>
+              <button
+                type="button"
+                data-testid="subs-terminados-toggle"
+                aria-expanded={mostrarTerminados}
+                onClick={() => setAbertos((v) => !v)}
+                className="flex w-full items-center gap-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-texto-fraco hover:text-texto-suave"
+              >
+                <ChevronRight className={`h-3 w-3 transition-transform ${mostrarTerminados ? "rotate-90" : ""}`} aria-hidden="true" />
+                Terminados
+                {resumo && <span className="font-normal normal-case tracking-normal">{resumo}</span>}
+              </button>
+              {mostrarTerminados && (
+                <ul className="mt-1.5 space-y-1.5" data-testid="subs-terminados-lista">
+                  {visiveisTerm.map((s) => (
+                    <ItemSub key={s.id} sub={s} foco={foco === s.id} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       )}
       {todos && api.carregando && <Skeleton className="mt-2 h-10 w-full" />}
-      {!todos && locais.length > SUBS_VISIVEIS && (
+      {!todos && mostrarTerminados && terminados.length > SUBS_VISIVEIS && (
         <button type="button" onClick={() => setTodos(true)} className="mt-2 text-[12px] text-accent-hover hover:underline">
-          ver todos ({locais.length}+)
+          ver todos ({terminados.length}+)
         </button>
       )}
     </Secao>

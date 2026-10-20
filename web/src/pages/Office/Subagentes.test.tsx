@@ -9,7 +9,7 @@ import Grade from "./Grade";
 import Hub from "./Hub";
 import Mapa from "./Mapa";
 import { recortarSubs } from "./Mapa/layout";
-import { formatarSegundos, mesclarSub, ordenarSubs } from "./subagentes";
+import { formatarSegundos, mesclarSub, nomeSub, ordenarSubs, resumoTerminados, textoAtividade, textoDuracao } from "./subagentes";
 
 const M1 = "r7one-manager01-cc";
 const tarefas = tarefasFixture();
@@ -36,13 +36,63 @@ describe("helpers de sub-agents", () => {
     expect(m.find((s) => s.id === "s1")?.status).toBe("concluido");
     expect(mesclarSub(m, sub(9))[0].id).toBe("s9");
   });
-  it("recorta em 4 com +N e formata duração", () => {
-    const r = recortarSubs([1, 2, 3, 4, 5, 6].map((i) => sub(i)));
-    expect(r.mostradas).toHaveLength(4);
-    expect(r.extra).toBe(2);
+  it("recorta em 3 com +N, e terminados viram resumo; formata duração", () => {
+    const r = recortarSubs([1, 2, 3, 4, 5, 6].map((i) => sub(i)).concat([sub(7, { status: "concluido" })]));
+    expect(r.mostradas).toHaveLength(3);
+    expect(r.extra).toBe(3);
+    expect(r.terminados).toHaveLength(1);
     expect(formatarSegundos(42)).toBe("42s");
     expect(formatarSegundos(312)).toBe("5m 12s");
     expect(formatarSegundos(3780)).toBe("1h 03m");
+  });
+});
+
+describe("rótulos sem placeholder", () => {
+  it("nome do sub-agent: campo nome, senão pelo harness do pai", () => {
+    expect(nomeSub(sub(1, { nome: "subagent-omp" }))).toBe("subagent-omp");
+    expect(nomeSub(sub(1, { agente: "r7one-manager02-omp" }))).toBe("subagent-omp");
+    expect(nomeSub(sub(1, { agente: "r7one-manager02-cc" }))).toBe("subagent-cc");
+    expect(nomeSub(sub(1, { agente: "r7one-master" }))).toBe("subagent-cc");
+  });
+  it("resumo de terminados conta concluídos e erros (perdido/rodando ficam fora)", () => {
+    const l = [...Array.from({ length: 11 }, (_, i) => sub(i, { status: "concluido" })), sub(20, { status: "erro" }), sub(21), sub(22, { status: "perdido" })];
+    expect(resumoTerminados(l)).toBe("✓ 11 concluídos · ✕ 1 erro");
+    expect(resumoTerminados([sub(1)])).toBeNull();
+    expect(resumoTerminados([sub(1, { status: "erro" })])).toBe("✕ 1 erro");
+  });
+  it("duração null não vira 0s; atividade ausente é null; início aproximado", () => {
+    const fim = sub(1, { status: "concluido", duracao_s: null, fim: null, ultima_atividade: null });
+    expect(textoDuracao(fim, Date.now())).toBeNull();
+    expect(textoAtividade(fim)).toBeNull();
+    const agora = Date.now();
+    const ap = sub(2, { inicio_aproximado: true, inicio: new Date(agora - 12 * 60_000).toISOString() });
+    expect(textoDuracao(ap, agora)).toBe("há ≥ 12 min");
+    expect(textoDuracao(sub(3, { inicio_aproximado: true, inicio: new Date(agora - 3 * 3600_000).toISOString() }), agora)).toMatch(/^desde \d\d:\d\d$/);
+  });
+  it("card rodando sem descrição/atividade/duração não mostra placeholder; sem tipo mostra o nome", () => {
+    const vazio = sub(1, { tipo: null, descricao: null, ultima_atividade: null, inicio_aproximado: true, inicio: new Date(Date.now() - 5 * 60_000).toISOString() });
+    render(<Mapa {...base} agentes={comSubs([vazio, sub(2, { status: "concluido", tipo: null, descricao: null, ultima_atividade: null, duracao_s: null })])} />);
+    const card = within(doc(M1)).getByTestId("sub-card");
+    expect(card).toHaveTextContent("subagent-cc");
+    expect(card).toHaveTextContent("há ≥ 5 min");
+    expect(card.textContent).not.toMatch(/sem descrição|sem atividade|sem tipo|0s|desconhecido/);
+    expect(within(card).queryByTestId("sub-atividade")).toBeNull();
+    expect(within(card).queryByTestId("sub-tipo")).toBeNull();
+    expect(doc(M1).textContent).not.toMatch(/sem descrição|sem atividade|0s/);
+  });
+  it("tipo aparece como detalhe secundário quando existe", () => {
+    render(<Mapa {...base} agentes={comSubs([sub(1)])} />);
+    expect(within(doc(M1)).getByTestId("sub-tipo")).toHaveTextContent("general-purpose");
+  });
+  it("terminados viram uma linha de resumo clicável que abre o pai", () => {
+    const aoSelecionarSub = vi.fn();
+    const l = [sub(1), sub(2, { status: "concluido", duracao_s: 3 }), sub(3, { status: "concluido", duracao_s: 3 }), sub(4, { status: "erro", duracao_s: 3 })];
+    render(<Mapa {...base} agentes={comSubs(l)} aoSelecionarSub={aoSelecionarSub} />);
+    expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(1);
+    const r = within(doc(M1)).getByTestId("sub-resumo");
+    expect(r).toHaveTextContent("✓ 2 concluídos · ✕ 1 erro");
+    fireEvent.click(r);
+    expect(aoSelecionarSub).toHaveBeenCalledWith(M1, expect.any(String));
   });
 });
 
@@ -50,8 +100,9 @@ describe("Mapa com sub-agents", () => {
   it("mostra sub-cards sob o pai com tipo, descrição, status e atividade", () => {
     render(<Mapa {...base} agentes={agentesFixture()} />);
     const cards = within(doc(M1)).getAllByTestId("sub-card");
-    expect(cards).toHaveLength(3);
+    expect(cards).toHaveLength(2);
     expect(cards.filter((c) => c.getAttribute("data-status") === "rodando")).toHaveLength(2);
+    expect(cards[0]).toHaveTextContent(/subagent-cc/);
     expect(cards[0]).toHaveTextContent(/general-purpose/);
     expect(within(cards[0]).getByTestId("sub-atividade")).toHaveTextContent(/Bash|Edit/);
     // duas ligações em pulso (rodando) para esse pai
@@ -60,10 +111,10 @@ describe("Mapa com sub-agents", () => {
     expect(document.querySelectorAll("[data-ligacao]")).toHaveLength(4);
   });
 
-  it("no máximo 4 por pai, mais o chip +N", () => {
+  it("no máximo 3 por pai, mais o chip +N", () => {
     render(<Mapa {...base} agentes={comSubs([1, 2, 3, 4, 5, 6].map((i) => sub(i)))} />);
-    expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(4);
-    expect(within(doc(M1)).getByTestId("sub-mais")).toHaveTextContent("+2");
+    expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(3);
+    expect(within(doc(M1)).getByTestId("sub-mais")).toHaveTextContent("+3");
   });
 
   it("tolera subagentes ausente", () => {
@@ -74,7 +125,7 @@ describe("Mapa com sub-agents", () => {
   it("no modo Times os sub-agents ficam junto do pai", () => {
     render(<Mapa {...base} agentes={agentesFixture()} />);
     fireEvent.click(screen.getByRole("radio", { name: /Times/ }));
-    expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(3);
+    expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(2);
   });
 
   it("clicar no sub-card chama aoSelecionarSub com pai e id", () => {
@@ -105,7 +156,7 @@ describe("Hub com sub-agents", () => {
     render(<Hub {...props} agentes={comSubs([sub(1, { tipo: "Explore", descricao: "Achar usos" })])} />);
     fireEvent.mouseEnter(drones()[0]);
     const tip = screen.getByTestId("tooltip-sub");
-    expect(tip).toHaveTextContent("Explore");
+    expect(tip).toHaveTextContent("subagent-cc");
     expect(tip).toHaveTextContent("Achar usos");
     expect(tip).toHaveTextContent("Bash cmd 1");
     fireEvent.mouseLeave(drones()[0]);
@@ -194,19 +245,23 @@ describe("Office: gaveta e tempo real", () => {
     act(() => fonte().abrir());
     const antes = within(doc(M1)).getAllByTestId("sub-card").length;
     act(() => fonte().emitir("subagente", sub(99, { descricao: "Novo vindo do SSE" })));
-    await waitFor(() => expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(Math.min(4, antes + 1)));
+    await waitFor(() => expect(within(doc(M1)).getAllByTestId("sub-card")).toHaveLength(Math.min(3, antes + 1)));
     expect(within(doc(M1)).getByText("Novo vindo do SSE")).toBeInTheDocument();
     act(() => fonte().emitir("subagente", sub(99, { descricao: "Novo vindo do SSE", status: "concluido", duracao_s: 12 })));
-    await waitFor(() => expect(doc(M1).querySelector("[data-sub='s99']")).toHaveAttribute("data-status", "concluido"));
-    expect(doc(M1).querySelectorAll("[data-sub='s99']")).toHaveLength(1);
+    // terminado sai dos cards e entra no resumo
+    await waitFor(() => expect(doc(M1).querySelector("[data-sub='s99']")).toBeNull());
+    expect(within(doc(M1)).getByTestId("sub-resumo")).toHaveTextContent(/✓ \d+ concluído/);
   });
 
   it("'ver todos' aparece com mais de 5 e carrega cliente.subagentes(24h)", async () => {
     const espiao = vi.spyOn(cliente, "subagentes").mockImplementation(async () => [...subagentesFixture().filter((x) => x.agente === M1), sub(50), sub(51), sub(52)]);
-    vi.spyOn(cliente, "agentes").mockImplementation(async () => comSubs([1, 2, 3, 4, 5, 6, 7].map((i) => sub(i))));
+    vi.spyOn(cliente, "agentes").mockImplementation(async () => comSubs([1, 2, 3, 4, 5, 6, 7].map((i) => sub(i, { status: "concluido", duracao_s: 4 }))));
     renderPainel("/office?modo=grade");
     fireEvent.click(await screen.findByRole("button", { name: `Detalhes de ${M1}` }));
     const gaveta = await screen.findByTestId("gaveta");
+    // terminados recolhidos por padrão
+    expect(within(gaveta).queryAllByTestId("sub-item")).toHaveLength(0);
+    fireEvent.click(within(gaveta).getByTestId("subs-terminados-toggle"));
     expect(within(gaveta).getAllByTestId("sub-item")).toHaveLength(5);
     fireEvent.click(within(gaveta).getByRole("button", { name: /ver todos/ }));
     await waitFor(() => expect(espiao).toHaveBeenCalled());

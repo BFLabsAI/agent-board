@@ -5,7 +5,7 @@ import { AgentAvatar, StatusDot, TempoRelativo, Tooltip } from "../../../compone
 import { estiloPapel, estiloStatus } from "../../../lib/cores";
 import { formatarDuracaoMin, formatarPercentual, nomeCurto } from "../../../lib/formato";
 import { rotuloHarness } from "../Mapa/dados";
-import { rodandoDe, subsDe } from "../subagentes";
+import { descricaoSub, nomeSub, rodandoDe, subsDe } from "../subagentes";
 import { Atividade } from "./Atividade";
 import { HEX_STATUS, somaAtividade, taxaAprovacao } from "./dados";
 
@@ -155,7 +155,7 @@ export function CardGrade({ agente, selecionado, aoSelecionar }: { agente: Agent
         {rodando.length > 0 && (
           <span className="ml-auto flex items-center -space-x-1.5" data-testid="subs-avatares">
             {rodando.slice(0, MAX_AVATARES).map((x) => (
-              <Tooltip key={x.id} texto={`${x.tipo ?? "sub-agent"}: ${x.descricao ?? "sem descrição"}`} lado="cima">
+              <Tooltip key={x.id} texto={[nomeSub(x), descricaoSub(x)].filter(Boolean).join(": ")} lado="cima">
                 <span data-sub={x.id} className="relative rounded-lg ring-2 ring-surface-3 animate-pulse-dot">
                   <AgentAvatar nome={x.id} papel={agente.papel} tamanho={22} />
                 </span>
