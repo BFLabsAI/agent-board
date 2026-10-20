@@ -219,3 +219,37 @@ interface SubAgente {
 - `/api/estado` também traz `indicadores.subagentes_rodando` e `tarefas[].subagentes`.
 - `descricao` e `ultima_atividade.resumo` passam por `base.mascarar` na saída, além da máscara do coletor.
 - SSE: o conjunto de arquivos vigiado é o de hoje e o de ontem (a virada do dia troca os nomes sozinha); o evento `agente` sai quando o conjunto (id, status) de sub-agents do agente muda, não a cada atividade. O intervalo mínimo por sub-agent é configurável (`intervalos["sub"]`, 2 s).
+
+## Visão geral e multi-squad (1.13)
+
+Um **squad** é um projeto do cadastro: master, managers, researchers e os sub-agents deles. O servidor já atende todos os projetos. A 1.13 acrescenta a visão de todos os squads de uma vez.
+
+### `GET /api/geral?periodo`
+
+```ts
+interface Squad {
+  projeto: string; raiz: string
+  versao: string; cadeia_integra: boolean
+  indicadores: Indicadores                 // o mesmo objeto de /api/resumo
+  agentes: Agente[]                        // o mesmo de /api/agentes (com subagentes)
+  ultima_mensagem: (Mensagem & { projeto: string }) | null
+  alertas: number                          // ping-pong + atrasados + cadeia quebrada (0 ou 1)
+  saude: "ok" | "atencao" | "critico"     // critico: cadeia quebrada ou atrasado; atencao: esperando você, pendente > 0 ou ping-pong
+}
+interface Geral {
+  agora: string; periodo: Periodo
+  squads: Squad[]                          // ordem: critico, atencao, ok; depois por nome
+  totais: { squads: number; agentes: number; trabalhando: number; esperando: number;
+            subagentes_rodando: number; abertos: number; atrasados: number; revisao: number; mensagens: number }
+}
+```
+
+Um projeto do cadastro com raiz inexistente ou config ilegível **não derruba a rota**: ele entra em `squads` com `saude: "critico"`, `indicadores` zerados, `agentes: []` e um campo `erro: string`.
+
+### `GET /api/geral/mensagens?antes&limite=100`
+
+`{ mensagens: (Mensagem & { projeto: string })[], mais: boolean }`: as mensagens de todos os squads intercaladas por `ts` (mais recente primeiro) e paginadas por `antes`. As `nota` ficam de fora.
+
+### `GET /api/stream?projeto=*`
+
+É o mesmo stream da seção anterior, mas para **todos** os projetos numa conexão só, que conta 1 vaga no limite de 16. Os eventos `mensagem`, `agente`, `tarefa` e `subagente` chegam com o campo extra `projeto` no `data`. O `ola` traz `{projeto: "*", projetos: string[], agora}`. Quando um projeto entra ou sai do cadastro, o servidor percebe em até 5 s e passa a vigiar só os projetos atuais.
