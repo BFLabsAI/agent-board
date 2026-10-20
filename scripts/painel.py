@@ -49,7 +49,7 @@ Recursos do time (cada um aceita --help):
       O que aconteceu no período: contagens, pendências, entregas, escalações e notas.
 
 Painel web (só leitura, 127.0.0.1; ver docs/userguide/painel.md):
-  painel.py servir --raiz <path> [--porta 8765]
+  painel.py servir [--raiz <path>] [--porta 8765]
 
 Maestri (canvas; cada um aceita --help; ver docs/adr/0006-maestri-como-transporte.md):
   painel.py eu [--formato texto|toon]            handle e nome no canvas deste terminal
