@@ -1,3 +1,4 @@
+import { RolagemX } from "../../components/RolagemX";
 import { AlertTriangle, ArrowDown, ArrowRight, ArrowUp, ChevronRight, GitBranch, MessagesSquare, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -59,13 +60,13 @@ function Linha({ c }: { c: Conversa }) {
           {nomeCurto(c.de)} <ArrowRight className="h-3 w-3 text-texto-fraco" aria-hidden="true" /> {nomeCurto(c.para)}
         </span>
       </td>
-      <td className="px-2.5 py-3"><Participantes lista={c.participantes} /></td>
+      <td className="hidden px-2.5 py-3 lg:table-cell"><Participantes lista={c.participantes} /></td>
       <td className="px-2.5 py-3">
         <span className="flex flex-wrap gap-1">
           {c.issues.length ? c.issues.map((i) => <span key={i} className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-texto-suave">#{i}</span>) : <span className="text-texto-fraco">—</span>}
         </span>
       </td>
-      <td className="max-w-[110px] px-2.5 py-3">
+      <td className="hidden max-w-[110px] px-2.5 py-3 lg:table-cell">
         {c.branch ? (
           <span className="flex items-center gap-1 font-mono text-xs text-texto-suave" title={c.branch}>
             <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -75,7 +76,7 @@ function Linha({ c }: { c: Conversa }) {
       </td>
       <td className="px-2.5 py-3 text-right font-mono text-sm tabular-nums text-texto">{c.n_mensagens}</td>
       <td className="whitespace-nowrap px-2.5 py-3 text-xs tabular-nums text-texto-suave">{formatarDuracaoMin(c.duracao_min)}</td>
-      <td className="whitespace-nowrap px-2 py-3 text-xs text-texto-suave"><TempoRelativo iso={c.inicio} /></td>
+      <td className="hidden whitespace-nowrap px-2 py-3 text-xs text-texto-suave lg:table-cell"><TempoRelativo iso={c.inicio} /></td>
       <td className="whitespace-nowrap px-2 py-3 text-xs text-texto-suave"><TempoRelativo iso={c.fim} /></td>
       <td className="py-3 pr-3"><ChevronRight className="h-4 w-4 text-texto-fraco transition-transform group-hover:translate-x-0.5 group-hover:text-texto" aria-hidden="true" /></td>
     </tr>
@@ -195,26 +196,26 @@ export default function Conversas() {
           ) : undefined}
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface-3 shadow-card animate-fade-in">
-          <table className="w-full min-w-[900px] border-collapse">
+        <RolagemX className="rounded-xl border border-border bg-surface-3 shadow-card animate-fade-in" rotulo="Tabela de conversas (rolagem horizontal)">
+          <table className="w-full min-w-[640px] border-collapse lg:min-w-[900px]">
             <thead className="bg-surface-2">
               <tr>
                 <Cabecalho coluna="assunto" rotulo="Assunto" ativa={coluna === "assunto"} dir={dir} onOrdenar={ordenarPor} />
                 <Cabecalho coluna="estado" rotulo="Estado" ativa={coluna === "estado"} dir={dir} onOrdenar={ordenarPor} />
                 <Cabecalho rotulo="De → Para" />
-                <Cabecalho rotulo="Participantes" />
+                <Cabecalho rotulo="Participantes" className="hidden lg:table-cell" />
                 <Cabecalho rotulo="Issues" />
-                <Cabecalho rotulo="Branch" />
+                <Cabecalho rotulo="Branch" className="hidden lg:table-cell" />
                 <Cabecalho coluna="mensagens" rotulo="Msgs" ativa={coluna === "mensagens"} dir={dir} onOrdenar={ordenarPor} className="text-right" />
                 <Cabecalho coluna="duracao" rotulo="Duração" ativa={coluna === "duracao"} dir={dir} onOrdenar={ordenarPor} />
-                <Cabecalho coluna="inicio" rotulo="Início" ativa={coluna === "inicio"} dir={dir} onOrdenar={ordenarPor} />
+                <Cabecalho coluna="inicio" rotulo="Início" ativa={coluna === "inicio"} dir={dir} onOrdenar={ordenarPor} className="hidden lg:table-cell" />
                 <Cabecalho coluna="fim" rotulo="Fim" ativa={coluna === "fim"} dir={dir} onOrdenar={ordenarPor} />
                 <th className="w-8" aria-hidden="true" />
               </tr>
             </thead>
             <tbody>{linhas.map((c) => <Linha key={c.id} c={c} />)}</tbody>
           </table>
-        </div>
+        </RolagemX>
       )}
     </>
   );

@@ -57,6 +57,15 @@ describe("tela Workflows", () => {
     expect(screen.getByRole("radio", { name: "7 dias" })).toBeInTheDocument();
   });
 
+  it("os grafos têm largura mínima e rolagem horizontal em vez de encolher", async () => {
+    montar();
+    for (const id of ["grafo-orquestracao", "grafo-comunicacao"]) {
+      const svg = await screen.findByTestId(id);
+      expect(svg.getAttribute("class")).toContain("min-w-[760px]");
+      expect(svg.closest("[data-rolagem-x]")).not.toBeNull();
+    }
+  });
+
   it("estado vazio", async () => {
     espiao.mockImplementation(async () => vazio);
     montar();

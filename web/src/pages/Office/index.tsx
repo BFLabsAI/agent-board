@@ -162,7 +162,7 @@ export default function Office() {
             {botaoTv}
           </div>
         )}
-        <LiveLogs deslocado={!!agenteAberto} />
+        <LiveLogs deslocado={!!agenteAberto} aoAbrir={() => setSelecionado(null)} />
         <Gaveta agente={agenteAberto} tarefas={tarefas} aoFechar={() => setSelecionado(null)} />
       </div>
     </div>

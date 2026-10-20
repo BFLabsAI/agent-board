@@ -13,7 +13,7 @@ import { useReduzirMovimento } from "./useReduzirMovimento";
 const MAX = 40;
 
 /** Botão flutuante que abre um painel compacto com as mensagens que chegam pelo SSE. */
-export function LiveLogs({ deslocado }: { deslocado?: boolean }) {
+export function LiveLogs({ deslocado, aoAbrir }: { deslocado?: boolean; /** avisa que o painel abriu (a gaveta fecha para não haver sobreposição) */ aoAbrir?: () => void }) {
   const [aberto, setAberto] = useState(false);
   const [msgs, setMsgs] = useState<Mensagem[]>([]);
   const [naoLidas, setNaoLidas] = useState(0);
@@ -22,6 +22,31 @@ export function LiveLogs({ deslocado }: { deslocado?: boolean }) {
   const reduzido = useReduzirMovimento();
   const abertoRef = useRef(aberto);
   abertoRef.current = aberto;
+  const raiz = useRef<HTMLDivElement>(null);
+
+  // a gaveta e o painel nunca ficam abertos juntos: a gaveta tem prioridade
+  useEffect(() => {
+    if (deslocado) setAberto(false);
+  }, [deslocado]);
+
+  // Esc e clique fora fecham
+  useEffect(() => {
+    if (!aberto) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setAberto(false);
+    };
+    const fora = (e: PointerEvent) => {
+      if (raiz.current && !raiz.current.contains(e.target as Node)) setAberto(false);
+    };
+    document.addEventListener("keydown", tecla, true);
+    document.addEventListener("pointerdown", fora, true);
+    return () => {
+      document.removeEventListener("keydown", tecla, true);
+      document.removeEventListener("pointerdown", fora, true);
+    };
+  }, [aberto]);
 
   useEvento("mensagem", (m) => {
     setMsgs((l) => (l.some((x) => x.id === m.id) ? l : [m, ...l].slice(0, MAX)));
@@ -48,7 +73,7 @@ export function LiveLogs({ deslocado }: { deslocado?: boolean }) {
   }, [aberto, projeto]);
 
   return (
-    <div className={clsx("absolute bottom-3 z-10 flex flex-col items-end gap-2 transition-[right]", deslocado ? "right-[412px]" : "right-3")}>
+    <div ref={raiz} className={clsx("absolute bottom-3 z-10 flex flex-col items-end gap-2 transition-[right]", deslocado ? "right-[412px]" : "right-3")}>
       <AnimatePresence>
         {aberto && (
           <motion.section
@@ -92,7 +117,7 @@ export function LiveLogs({ deslocado }: { deslocado?: boolean }) {
       </AnimatePresence>
       <button
         type="button"
-        onClick={() => setAberto((a) => !a)}
+        onClick={() => { if (!aberto) aoAbrir?.(); setAberto((a) => !a); }}
         aria-expanded={aberto}
         aria-label={aberto ? "Fechar Live Logs" : "Abrir Live Logs"}
         className="relative inline-flex items-center gap-2 rounded-full border border-border-light bg-surface-2/95 px-3.5 py-2 text-xs font-medium text-texto shadow-card backdrop-blur transition-colors hover:border-accent/50 hover:bg-surface-4"

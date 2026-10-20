@@ -55,19 +55,25 @@ export const Linha = forwardRef<HTMLDivElement, Props>(function Linha({ m, expan
           <ChevronRight className={clsx("h-4 w-4 shrink-0 text-texto-fraco transition-transform", expandida && "rotate-90")} aria-hidden="true" />
           <span className="w-12 shrink-0 font-mono text-xs text-texto-fraco" title={formatarDataHora(m.ts)}>{formatarHora(m.ts)}</span>
           <TipoMsgBadge mensagem={m} className="min-w-[6.5rem] justify-center" />
-          <span className="min-w-0 flex-1 truncate text-sm">
-            <span className="text-texto-suave">{nomeCurto(m.de)} <span aria-label="para">›</span> {nomeCurto(m.para)}</span>
-            {m.assunto && <span className="text-texto"> · {m.assunto}</span>}
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm lg:flex-row lg:items-baseline lg:gap-1.5">
+            <span className="min-w-0 max-w-full truncate whitespace-nowrap text-texto-suave lg:shrink-0 lg:overflow-visible" title={`${m.de} › ${m.para}`} data-testid="feed-nomes">
+              {nomeCurto(m.de)} <span aria-label="para">›</span> {nomeCurto(m.para)}
+            </span>
+            {m.assunto && (
+              <span className="min-w-0 truncate text-texto" title={m.assunto}>
+                <span aria-hidden="true" className="hidden lg:inline">· </span>{m.assunto}
+              </span>
+            )}
           </span>
           {(m.issues ?? []).length > 0 && (
-            <span className="hidden shrink-0 gap-1 md:flex">
+            <span className="hidden shrink-0 gap-1 lg:flex">
               {(m.issues ?? []).slice(0, 3).map((i) => (
                 <Badge key={i} tom="accent" className="px-2 py-0.5 font-mono">#{i}</Badge>
               ))}
               {(m.issues ?? []).length > 3 && <Badge className="px-2 py-0.5">+{(m.issues ?? []).length - 3}</Badge>}
             </span>
           )}
-          <TempoRelativo iso={m.ts} className="w-20 shrink-0 text-right text-xs text-texto-fraco" />
+          <TempoRelativo iso={m.ts} className="hidden w-20 shrink-0 text-right text-xs text-texto-fraco lg:inline-block" />
         </button>
         <LinkPainel
           to={`/conversas/${encodeURIComponent(raiz)}`}

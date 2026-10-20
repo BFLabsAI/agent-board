@@ -51,6 +51,22 @@ describe("lista de conversas", () => {
     await waitFor(() => expect(cliente.conversas).toHaveBeenLastCalledWith(expect.objectContaining({ estado: "rejeitado" }), expect.anything()));
   });
 
+  it("o filtro de estado oferece aprovado, rejeitado e aguardando revisão", async () => {
+    renderPainel("/conversas");
+    await screen.findByText("Modelo de mensagem de rodapé editável por empresa");
+    const opcoes = within(screen.getByLabelText("Filtrar por estado")).getAllByRole("option").map((o) => (o as HTMLOptionElement).value);
+    expect(opcoes).toEqual(expect.arrayContaining(["aprovado", "rejeitado", "aguardando_revisao"]));
+  });
+
+  it("colunas menos importantes somem abaixo de lg e a tabela rola com barra visível", async () => {
+    renderPainel("/conversas");
+    await screen.findByText("Modelo de mensagem de rodapé editável por empresa");
+    const th = screen.getByRole("columnheader", { name: "Participantes" });
+    expect(th.className).toContain("hidden");
+    expect(th.className).toContain("lg:table-cell");
+    expect(document.querySelector("[data-rolagem-x].barra-x")).not.toBeNull();
+  });
+
   it("ordena clicando no cabeçalho", async () => {
     renderPainel("/conversas");
     await screen.findByText("Modelo de mensagem de rodapé editável por empresa");
@@ -126,5 +142,15 @@ describe("etapasDoCiclo", () => {
     expect(e.map((x) => x.estado)).toEqual(["feito", "feito", "pendente", "pendente"]);
     expect(e[1].delta).toBeGreaterThan(0);
     expect(e[1].rotulo).toBe("Andamento (2)");
+  });
+});
+
+describe("detalhe: estado x resumo do ciclo", () => {
+  it.each([["p-0141", "Aprovado"], ["p-0142", "Rejeitado"]])("%s: o badge do estado bate com a etapa de revisão (%s)", async (id, rotulo) => {
+    renderPainel(`/conversas/${id}`);
+    await screen.findByRole("heading", { level: 1 });
+    const etapa = document.querySelector("[data-etapa='revisao']")!;
+    expect(etapa).toHaveTextContent(rotulo);
+    expect(screen.getByRole("heading", { level: 1 }).parentElement).toHaveTextContent(rotulo);
   });
 });

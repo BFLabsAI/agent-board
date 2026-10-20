@@ -1,4 +1,5 @@
 import { scaleSqrt } from "d3";
+import { RolagemX } from "../../components/RolagemX";
 import { useMemo, useState } from "react";
 import type { Workflows } from "../../api/tipos";
 import { estiloPapel } from "../../lib/cores";
@@ -45,7 +46,7 @@ export function GrafoComunicacao({
   const existe = new Set(comunicacao.map((e) => `${e.de}>${e.para}`));
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="group" aria-label="Grafo de comunicação" data-testid="grafo-comunicacao">
+    <RolagemX rotulo="Grafo de comunicação (rolagem horizontal)"><svg viewBox={`0 0 ${W} ${H}`} className="block w-full min-w-[760px]" role="group" aria-label="Grafo de comunicação" data-testid="grafo-comunicacao">
       {comunicacao.map((e) => {
         const a = pos.get(e.de);
         const b = pos.get(e.para);
@@ -127,6 +128,6 @@ export function GrafoComunicacao({
           </g>
         );
       })}
-    </svg>
+    </svg></RolagemX>
   );
 }

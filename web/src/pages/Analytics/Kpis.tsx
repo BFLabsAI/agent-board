@@ -15,11 +15,11 @@ const TOM = {
 } as const;
 
 function KpiCard({
-  rotulo, valor, sub, icone: Icone, tom, carregando,
-}: { rotulo: string; valor: ReactNode; sub?: ReactNode; icone: LucideIcon; tom: keyof typeof TOM; carregando: boolean }) {
+  rotulo, valor, sub, icone: Icone, tom, carregando, titulo,
+}: { titulo?: string; rotulo: string; valor: ReactNode; sub?: ReactNode; icone: LucideIcon; tom: keyof typeof TOM; carregando: boolean }) {
   const t = TOM[tom];
   return (
-    <Card className={clsx("bg-gradient-to-br to-transparent p-5 transition-colors hover:border-border-light", t.brilho)} data-testid="kpi">
+    <Card className={clsx("bg-gradient-to-br to-transparent p-5 transition-colors hover:border-border-light", t.brilho)} data-testid="kpi" title={titulo}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-texto-suave whitespace-nowrap">{rotulo}</span>
         <Icone className={clsx("h-5 w-5", t.icone)} aria-hidden="true" />
@@ -49,7 +49,7 @@ export function GradeKpis({
       <KpiCard rotulo="Entregas" valor={k ? formatarNumero(k.entregas) : 0} sub={k ? `${formatarNumero(k.aprovadas)} aprovadas` : ""} icone={PackageCheck} tom="verde" carregando={carregando} />
       <KpiCard rotulo="Aprovação" valor={formatarPercentual(k?.taxaAprovacao)} sub={k ? `${formatarNumero(k.rejeitadas)} rejeitadas` : ""} icone={CheckCircle2} tom="roxo" carregando={carregando} />
       <KpiCard rotulo="Tempo de resposta" valor={formatarDuracaoMin(p50)} sub={`p50 · p90 ${formatarDuracaoMin(p90)}`} icone={Timer} tom="amarelo" carregando={carregando} />
-      <KpiCard rotulo="Agentes ativos" valor={k ? k.ativos : 0} sub={k ? `de ${k.totalAgentes}${trabalhando !== null ? ` · ${trabalhando} trabalhando` : ""}` : ""} icone={Bot} tom="rosa" carregando={carregando} />
+      <KpiCard titulo="Agentes cadastrados com mensagens enviadas ou recebidas nos últimos 30 dias (o período global não se aplica a esta tela)" rotulo="Agentes ativos" valor={k ? k.ativos : 0} sub={k ? `de ${k.totalAgentes} cadastrados${trabalhando !== null ? ` · ${trabalhando} trabalhando` : ""}` : ""} icone={Bot} tom="rosa" carregando={carregando} />
     </div>
   );
 }

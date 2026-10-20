@@ -193,9 +193,9 @@ test("mensagem gravada no log chega por SSE em Dashboard, Kanban, Feed, Conversa
   const coluna = paginas.kanban.locator("section", { has: paginas.kanban.getByText("Aguardando revisão", { exact: false }) }).first();
   await expect(coluna.getByText("#802 entregue")).toBeVisible({ timeout: 10_000 });
 
-  // 3) veredito: a entrega muda de coluna (Aprovado), sem reload
+  // 3) veredito: a entrega muda para a coluna Fechadas (aba Aprovado abre sozinha), sem reload
   gravar({ id: "r-live-1", de: MASTER, para: G2, tipo: "resposta", assunto: "#802 aprovado", responde_a: "e-live-1", veredito: "aprovado" });
-  const aprovado = paginas.kanban.locator("section", { has: paginas.kanban.getByText("Aprovado", { exact: true }) }).first();
+  const aprovado = paginas.kanban.getByRole("region", { name: "Fechadas" });
   await expect(aprovado.getByText("#802 entregue")).toBeVisible({ timeout: 10_000 });
 
   // 4) Office: o contador do Live Logs sobe com a mensagem nova (o pulso é desenhado no mesmo evento)
