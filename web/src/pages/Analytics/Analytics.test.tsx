@@ -222,3 +222,37 @@ describe("calculos", () => {
     expect(b.tipos.find((t) => t.tipo === "resposta")?.n).toBe((a.tipos.find((t) => t.tipo === "resposta")?.n ?? 0) + 1);
   });
 });
+
+describe("Analytics: aba Sub-agents", () => {
+  it("mostra KPIs, gráficos e tabelas", async () => {
+    montar();
+    await userEvent.setup().click(await screen.findByRole("radio", { name: "Sub-agents" }));
+    expect(await screen.findByText("Rodando agora")).toBeInTheDocument();
+    for (const t of ["Taxa de erro", "Duração média", "Sub-agents por agente", "Por tipo", "Sub-agents por dia"]) expect(screen.getAllByText(t).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("tabela-tipos")).toHaveTextContent("general-purpose");
+    expect(screen.getByTestId("tabela-agentes").querySelectorAll("tbody tr")).toHaveLength(5);
+    expect(screen.getByTestId("legenda-tipos").querySelectorAll("li")).toHaveLength(3);
+  });
+
+  it("tolera subagentes ausente no JSON real", async () => {
+    vi.spyOn(cliente, "analytics").mockImplementation(async () => {
+      const d = analyticsFixture(AGORA) as Partial<Dados>;
+      delete d.subagentes;
+      return d as Dados;
+    });
+    montar();
+    await userEvent.setup().click(await screen.findByRole("radio", { name: "Sub-agents" }));
+    expect(await screen.findByText("Nenhum sub-agent no período")).toBeInTheDocument();
+  });
+
+  it("calcula KPIs a partir de por_agente e por_tipo", async () => {
+    const { kpisSub, normalizarSub } = await import("./AbaSubagentes");
+    const k = kpisSub({
+      por_agente: [{ agente: "a", n: 10, rodando: 1, erro: 2, duracao_media_s: 5 }],
+      por_tipo: [{ tipo: "x", n: 6, duracao_media_s: 10 }, { tipo: "y", n: 4, duracao_media_s: null }],
+      por_dia_30: [],
+    });
+    expect(k).toMatchObject({ total: 10, rodando: 1, erro: 2, taxaErro: 0.2, duracao: 10 });
+    expect(normalizarSub(undefined)).toEqual({ por_agente: [], por_tipo: [], por_dia_30: [] });
+  });
+});

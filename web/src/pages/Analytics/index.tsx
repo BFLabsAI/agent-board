@@ -9,17 +9,19 @@ import { EmptyState, Segmented, Skeleton } from "../../components/ui";
 import { AbaAgentes } from "./AbaAgentes";
 import { AbaAtividade } from "./AbaAtividade";
 import { AbaQualidade } from "./AbaQualidade";
+import { AbaSubagentes } from "./AbaSubagentes";
 import { Cabecalho } from "./Cabecalho";
 import { aplicarMensagem, calcularKpis, temposDosAgentes } from "./calculos";
 import { Heatmap } from "./Heatmap";
 import { GradeKpis } from "./Kpis";
 import { Ultimos30 } from "./Ultimos30";
 
-type Aba = "atividade" | "agentes" | "qualidade";
+type Aba = "atividade" | "agentes" | "qualidade" | "subagentes";
 const ABAS = [
   { valor: "atividade", rotulo: "Atividade" },
   { valor: "agentes", rotulo: "Agentes" },
   { valor: "qualidade", rotulo: "Qualidade" },
+  { valor: "subagentes", rotulo: "Sub-agents" },
 ] as const;
 
 /** Depois de uma mensagem, o REST é refeito uma vez, 5 s após a última. */
@@ -48,6 +50,12 @@ export default function Analytics() {
 
   useEvento("mensagem", (m) => {
     setLocal((a) => (a ? aplicarMensagem(a, m) : a));
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => recarregarRef.current(), DEBOUNCE_MS);
+  });
+
+  // sub-agent mudou de status: refaz o REST uma vez, agrupando rajadas
+  useEvento("subagente", () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => recarregarRef.current(), DEBOUNCE_MS);
   });
@@ -100,6 +108,7 @@ export default function Analytics() {
                   {aba === "atividade" && <AbaAtividade dados={dados} />}
                   {aba === "agentes" && <AbaAgentes dados={dados} />}
                   {aba === "qualidade" && <AbaQualidade dados={dados} />}
+                  {aba === "subagentes" && <AbaSubagentes dados={dados} />}
                 </div>
               </>
             )

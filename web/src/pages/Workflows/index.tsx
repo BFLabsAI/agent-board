@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRightLeft, GitBranch, MessagesSquare, MessageSquareText, RefreshCw, ShieldCheck, Timer, Users, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, GitBranch, MessagesSquare, MessageSquareText, RefreshCw, ShieldCheck, Workflow, Timer, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cliente } from "../../api/cliente";
 import { useApi } from "../../api/useApi";
@@ -31,6 +31,14 @@ export default function Workflows() {
   // ao vivo: mensagem nova refaz o REST, no máximo uma vez a cada 3 s
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEvento("mensagem", () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      recarregar();
+    }, ATRASO_LIVE_MS);
+  });
+  // sub-agent novo ou que mudou de status também mexe no grafo
+  useEvento("subagente", () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
@@ -81,7 +89,7 @@ export default function Workflows() {
         <EmptyState icone={AlertTriangle} titulo="Não foi possível carregar" descricao={erro.message} />
       ) : (
         <>
-          <div className="mb-8 grid grid-cols-2 gap-4 xl:grid-cols-3 2xl:grid-cols-6">
+          <div className="mb-8 grid grid-cols-2 gap-4 xl:grid-cols-4 2xl:grid-cols-7">
             <Kpi rotulo="Conversas" icone={MessagesSquare} tom="text-sky-400" carregando={!dados} dica="Quantas conversas (pedido e tudo que respondeu a ele) começaram no período.">
               {formatarNumero(k?.conversas ?? 0)}
             </Kpi>
@@ -99,6 +107,9 @@ export default function Workflows() {
             </Kpi>
             <Kpi rotulo="Agentes envolvidos" icone={Users} tom="text-orange-400" carregando={!dados} dica="Agentes (master, managers e researchers) que aparecem em alguma conversa do período.">
               {formatarNumero(agentesEnvolvidos)}
+            </Kpi>
+            <Kpi rotulo="Sub-agents" icone={Workflow} tom="text-pink-400" carregando={!dados} dica="Sub-agents (Agent/Task) disparados pelos agentes no período.">
+              {formatarNumero(k?.subagentes ?? 0)}
             </Kpi>
           </div>
 
