@@ -1,0 +1,219 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowRight, ClipboardList, ExternalLink, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { Agente, Mensagem, Tarefa } from "../../api/tipos";
+import { cliente } from "../../api/cliente";
+import { useApi } from "../../api/useApi";
+import { useEvento } from "../../api/useStream";
+import { LinkPainel } from "../../components/LinkPainel";
+import { AgentAvatar, Badge, Skeleton, StatusBadge, TempoRelativo, TipoMsgBadge } from "../../components/ui";
+import { estiloPapel, ESTILO_ESTADO_TAREFA } from "../../lib/cores";
+import { nomeCurto, truncar } from "../../lib/formato";
+import { useReduzirMovimento } from "./useReduzirMovimento";
+
+const ABERTAS = new Set(["aberto", "em_andamento", "atrasado", "aguardando_revisao"]);
+const LINHAS_TELA = 40;
+
+/** Texto do terminal sem escapes ANSI e só o final (a parte que importa). */
+export function limparTela(tela: string | null | undefined): string {
+  if (!tela) return "";
+  // eslint-disable-next-line no-control-regex
+  const limpa = tela.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+  return limpa.split(/\r?\n/).map((l) => l.replace(/\s+$/, "")).slice(-LINHAS_TELA).join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+}
+
+function Secao({ icone: Icone, titulo, extra, children }: { icone: typeof Inbox; titulo: string; extra?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="border-t border-border px-5 py-4">
+      <h3 className="mb-2.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-texto-fraco">
+        <Icone className="h-3.5 w-3.5" aria-hidden="true" />
+        {titulo}
+        {extra && <span className="ml-auto normal-case tracking-normal">{extra}</span>}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function Terminal({ agente }: { agente: Agente }) {
+  const texto = useMemo(() => limparTela(agente.tela), [agente.tela]);
+  const ref = useRef<HTMLPreElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [texto]);
+  const vivo = agente.status === "trabalhando";
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-[#05050a]" data-testid="terminal">
+      <div className="flex items-center gap-1.5 border-b border-border bg-surface-2 px-3 py-1.5">
+        <span className="h-2 w-2 rounded-full bg-red-400/70" />
+        <span className="h-2 w-2 rounded-full bg-amber-400/70" />
+        <span className="h-2 w-2 rounded-full bg-emerald-400/70" />
+        <span className="ml-2 truncate font-mono text-[10px] text-texto-fraco">{agente.handle}</span>
+        <span className={`ml-auto inline-flex items-center gap-1 text-[10px] ${vivo ? "text-status-trabalhando" : "text-texto-fraco"}`}>
+          <Radio className={`h-3 w-3 ${vivo ? "animate-pulse-dot" : ""}`} aria-hidden="true" />
+          ao vivo
+        </span>
+      </div>
+      {texto ? (
+        <pre ref={ref} className="max-h-64 min-h-[5rem] overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-[1.45] text-emerald-200/90" aria-label="Tela do terminal">
+          {texto}
+          {vivo && <span className="ml-0.5 inline-block h-3 w-1.5 translate-y-0.5 animate-pulse bg-emerald-300/80" aria-hidden="true" />}
+        </pre>
+      ) : (
+        <p className="px-3 py-6 text-center font-mono text-[11px] text-texto-fraco">sem saída de terminal</p>
+      )}
+      <div className="border-t border-border px-3 py-1 text-[10px] text-texto-fraco">
+        última saída <TempoRelativo iso={agente.ultima_saida} />
+      </div>
+    </div>
+  );
+}
+
+function UltimasMensagens({ agente }: { agente: string }) {
+  const { dados, carregando, erro } = useApi((c, s) => cliente.mensagens({ projeto: c.projeto, agente, limite: 10 }, s), [agente]);
+  const [novas, setNovas] = useState<Mensagem[]>([]);
+  useEffect(() => setNovas([]), [agente]);
+  useEvento("mensagem", (m) => {
+    if (m.de === agente || m.para === agente) setNovas((n) => [m, ...n].slice(0, 10));
+  });
+  const lista = useMemo(() => {
+    const vistos = new Set<string>();
+    return [...novas, ...(dados?.mensagens ?? [])]
+      .filter((m) => (vistos.has(m.id) ? false : (vistos.add(m.id), true)))
+      .sort((a, b) => (a.ts < b.ts ? 1 : -1))
+      .slice(0, 10);
+  }, [dados, novas]);
+
+  if (carregando && lista.length === 0) return <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>;
+  if (erro && lista.length === 0) return <p className="text-sm text-texto-fraco">Não foi possível carregar as mensagens.</p>;
+  if (lista.length === 0) return <p className="text-sm text-texto-fraco">Nenhuma mensagem deste agente ainda.</p>;
+  return (
+    <ol className="space-y-1.5" data-testid="mensagens-agente">
+      {lista.map((m) => (
+        <li key={m.id} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+          <div className="flex items-center gap-2 text-[11px] text-texto-fraco">
+            <TipoMsgBadge mensagem={m} className="!px-2 !py-0.5 !text-[10px]" />
+            <span className="inline-flex min-w-0 items-center gap-1 truncate">
+              {nomeCurto(m.de)} <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" /> {nomeCurto(m.para)}
+            </span>
+            <TempoRelativo iso={m.ts} className="ml-auto shrink-0" />
+          </div>
+          <p className="mt-1 truncate text-[13px] text-texto" title={m.assunto}>{m.assunto || "(sem assunto)"}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Gaveta lateral com o trabalho do agente selecionado. */
+export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void }) {
+  const reduzido = useReduzirMovimento();
+  useEffect(() => {
+    if (!agente) return;
+    const fn = (e: KeyboardEvent) => e.key === "Escape" && aoFechar();
+    window.addEventListener("keydown", fn);
+    return () => window.removeEventListener("keydown", fn);
+  }, [agente, aoFechar]);
+
+  const pendentes = useMemo(
+    () => (agente ? tarefas.filter((t) => t.para === agente.agente && ABERTAS.has(t.estado)) : []),
+    [agente, tarefas],
+  );
+
+  return (
+    <AnimatePresence>
+      {agente && (
+        <motion.aside
+          key="gaveta"
+          role="complementary"
+          aria-label={`Trabalho de ${agente.agente}`}
+          data-testid="gaveta"
+          initial={reduzido ? { opacity: 0 } : { x: 420, opacity: 0.4 }}
+          animate={reduzido ? { opacity: 1 } : { x: 0, opacity: 1 }}
+          exit={reduzido ? { opacity: 0 } : { x: 420, opacity: 0 }}
+          transition={reduzido ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 38 }}
+          className="absolute inset-y-0 right-0 z-20 flex w-[400px] max-w-full flex-col overflow-y-auto border-l border-border-light bg-surface-1/95 shadow-[-20px_0_40px_-20px_rgba(0,0,0,0.8)] backdrop-blur-md"
+        >
+          <header className="flex items-start gap-3 px-5 py-4">
+            <AgentAvatar nome={agente.agente} papel={agente.papel} tamanho={52} status={agente.status} />
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-base font-semibold text-texto" title={agente.agente}>{agente.agente}</h2>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <Badge className={`${estiloPapel(agente.papel).texto} ${estiloPapel(agente.papel).fundo} ${estiloPapel(agente.papel).borda} !py-0.5`}>{estiloPapel(agente.papel).rotulo}</Badge>
+                {agente.harness && <Badge tom="neutro" className="!py-0.5 uppercase">{agente.harness}</Badge>}
+                <StatusBadge status={agente.status} className="!py-0.5" />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={aoFechar}
+              aria-label="Fechar gaveta"
+              className="rounded-md p-1.5 text-texto-fraco transition-colors hover:bg-surface-4 hover:text-texto"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </header>
+
+          <div className="space-y-1 px-5 pb-4 font-mono text-[11px] text-texto-suave">
+            <p className="flex items-center gap-2 truncate" title={agente.worktree ?? ""}>
+              <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-texto-fraco" aria-hidden="true" />
+              {agente.worktree ?? "sem worktree"}
+            </p>
+            <p className="flex items-center gap-2 truncate" title={agente.branch ?? ""}>
+              <GitBranch className="h-3.5 w-3.5 shrink-0 text-texto-fraco" aria-hidden="true" />
+              {agente.branch ?? "sem branch"}
+            </p>
+          </div>
+
+          <Secao icone={Radio} titulo="Tela do terminal">
+            <Terminal agente={agente} />
+          </Secao>
+
+          <Secao icone={ClipboardList} titulo="Tarefa atual">
+            {agente.tarefa_atual ? (
+              <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={agente.tarefa_atual.estado} rotulo={ESTILO_ESTADO_TAREFA[agente.tarefa_atual.estado]?.rotulo} className="!py-0.5 !text-[10px]" />
+                  <span className="ml-auto font-mono text-[10px] text-texto-fraco">{agente.tarefa_atual.id}</span>
+                </div>
+                <p className="mt-1.5 text-sm text-texto">{agente.tarefa_atual.assunto}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-texto-fraco">Sem tarefa em andamento.</p>
+            )}
+          </Secao>
+
+          <Secao icone={Inbox} titulo="Pendentes" extra={<span className="text-texto-suave">{agente.pendentes}</span>}>
+            {pendentes.length > 0 ? (
+              <ul className="space-y-1.5" data-testid="pendentes-agente">
+                {pendentes.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${ESTILO_ESTADO_TAREFA[t.estado].ponto}`} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-texto" title={t.assunto}>{truncar(t.assunto, 60)}</span>
+                    <span className="shrink-0 text-[10px] text-texto-fraco">{ESTILO_ESTADO_TAREFA[t.estado].rotulo}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-texto-fraco">{agente.pendentes > 0 ? `${agente.pendentes} sem resposta.` : "Nada pendente."}</p>
+            )}
+          </Secao>
+
+          <Secao icone={MessagesSquare} titulo="Últimas mensagens">
+            <UltimasMensagens agente={agente.agente} />
+          </Secao>
+
+          <div className="mt-auto border-t border-border px-5 py-3">
+            <LinkPainel
+              to={`/conversas?agente=${encodeURIComponent(agente.agente)}`}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-accent-hover transition-colors hover:bg-accent-muted"
+            >
+              Ver conversas de {nomeCurto(agente.agente)} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </LinkPainel>
+          </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
+  );
+}
