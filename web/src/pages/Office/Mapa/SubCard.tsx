@@ -1,5 +1,7 @@
 import clsx from "clsx";
 import type { SubAgente } from "../../../api/tipos";
+import { IssueChips } from "../../../components/SubLinha";
+import { issuesSub } from "../../../lib/subStatus";
 import { DuracaoSub } from "../DuracaoSub";
 import { clarear, descricaoSub, ESTILO_SUB, nomeSub, tipoDetalhe, textoAtividade } from "../subagentes";
 import { truncar } from "../../../lib/formato";
@@ -23,7 +25,7 @@ export function SubCard({ sub, corPai, largura, aoAbrir }: { sub: SubAgente; cor
       data-status={sub.status}
       onClick={() => aoAbrir(sub.id)}
       aria-label={`Sub-agent ${tipo}, ${e.rotulo}${descricao ? `: ${descricao}` : ""}`}
-      title={[tipo, detalhe, descricao, atividade].filter(Boolean).join("\n")}
+      title={[tipo, detalhe, issuesSub(sub).map((n) => `#${n}`).join(" "), descricao, atividade].filter(Boolean).join("\n")}
       style={{
         width: largura,
         height: alturaSub(sub),
@@ -41,6 +43,7 @@ export function SubCard({ sub, corPai, largura, aoAbrir }: { sub: SubAgente; cor
         <span className="min-w-0 truncate font-semibold text-texto">{tipo}</span>
         {detalhe && <span className="min-w-0 flex-1 truncate text-[10px] text-texto-fraco" data-testid="sub-tipo">{detalhe}</span>}
         {!detalhe && <span className="flex-1" />}
+        <IssueChips issues={issuesSub(sub)} max={2} link={false} />
         {sub.status === "perdido" && <span className={clsx("shrink-0", e.texto)}>{e.rotulo}</span>}
         <DuracaoSub sub={sub} className="shrink-0 font-mono tabular-nums text-texto-suave" />
       </span>

@@ -6,8 +6,9 @@ import type { Tarefa } from "../../api/tipos";
 import { LinkPainel } from "../../components/LinkPainel";
 import { AgentAvatar, TempoRelativo, TipoMsgBadge, useAgora } from "../../components/ui";
 import { nomeCurto, tempoRelativo, truncar } from "../../lib/formato";
-import { estiloSub, listaSub, tipoSub } from "../../lib/subStatus";
-import { PontoSub } from "../../components/SubLinha";
+import type { SubAgente } from "../../api/tipos";
+import { descricaoSubTexto, emDestaqueSub, estiloSub, issuesSub, listaSub, ordenarSub, textoDuracaoSub, tipoSub, useRelogio } from "../../lib/subStatus";
+import { IssueChips, PontoSub, ResumoTerminados } from "../../components/SubLinha";
 
 const ABERTAS = ["aberto", "em_andamento", "atrasado"];
 
@@ -16,11 +17,25 @@ export function idCurto(id: string): string {
 }
 
 /** Linha "N sub-agents (M rodando)" com bolinhas por status e lista expansível. */
-export function SubsDaTarefa({ subs, pai }: { subs: Tarefa["subagentes"] | undefined; pai?: string }) {
+/** O resumo da tarefa traz só id/tipo/descrição/status; o resto (issues, início) pode vir ou não do servidor. */
+function completar(r: Tarefa["subagentes"][number], pai: string | undefined, tarefaId: string | undefined, issues: number[]): SubAgente {
+  const x = r as Partial<SubAgente> & Tarefa["subagentes"][number];
+  return {
+    agente: pai ?? "", fundo: false, inicio: "", fim: null, duracao_s: null, ultima_atividade: null, n_atividades: 0,
+    tarefa: tarefaId ? { id: tarefaId, assunto: "" } : null,
+    ...x,
+    issues: x.issues && x.issues.length > 0 ? x.issues : issues,
+  };
+}
+
+export function SubsDaTarefa({ subs, pai, tarefaId, issues = [] }: { subs: Tarefa["subagentes"] | undefined; pai?: string; tarefaId?: string; issues?: number[] }) {
   const [aberto, setAberto] = useState(false);
-  const lista = listaSub(subs);
-  if (lista.length === 0) return null;
+  const lista = ordenarSub(listaSub(subs).map((r) => completar(r, pai, tarefaId, issues)));
+  const destaque = lista.filter(emDestaqueSub);
+  const terminados = lista.filter((x) => !emDestaqueSub(x));
   const rodando = lista.filter((x) => x.status === "rodando").length;
+  const agora = useRelogio(rodando > 0);
+  if (lista.length === 0) return null;
   return (
     <div className="border-t border-border px-3.5 pb-2.5 pt-2" data-subs-tarefa>
       <button
@@ -37,15 +52,26 @@ export function SubsDaTarefa({ subs, pai }: { subs: Tarefa["subagentes"] | undef
         </span>
       </button>
       {aberto && (
-        <ul className="mt-1.5 space-y-1 border-l border-border-light pl-2.5" aria-label="Sub-agents da tarefa">
-          {lista.map((x) => (
-            <li key={x.id} data-status={x.status} className="flex items-center gap-1.5 text-[11px]">
-              <PontoSub status={x.status} />
-              <span className={clsx("shrink-0 font-mono", estiloSub(x.status).texto)}>{tipoSub(x, pai)}</span>
-              <span className="truncate text-texto-suave" title={x.descricao ?? undefined}>{truncar(x.descricao, 80)}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-1.5 space-y-1">
+          {destaque.length > 0 && (
+            <ul className="space-y-1 border-l border-border-light pl-2.5" aria-label="Sub-agents da tarefa">
+              {destaque.map((x) => {
+                const desc = descricaoSubTexto(x);
+                const dur = textoDuracaoSub(x, agora);
+                return (
+                  <li key={x.id} data-status={x.status} className="flex items-center gap-1.5 text-[11px]">
+                    <PontoSub status={x.status} />
+                    <span className={clsx("shrink-0 font-mono", estiloSub(x.status).texto)}>{tipoSub(x, pai)}</span>
+                    {desc && <span className="min-w-0 truncate text-texto-suave" title={desc}>{truncar(desc, 80)}</span>}
+                    <IssueChips issues={issuesSub(x)} tarefaId={x.tarefa?.id} className="ml-auto" />
+                    {dur && <span className="shrink-0 font-mono tabular-nums text-emerald-300">{dur}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <ResumoTerminados subs={terminados} agora={agora} />
+        </div>
       )}
     </div>
   );
@@ -120,7 +146,7 @@ export function CartaoTarefa({ t }: { t: Tarefa }) {
           {t.fechada_em && <span>fechada</span>}
         </div>
       </LinkPainel>
-      <SubsDaTarefa subs={t.subagentes} pai={t.para} />
+      <SubsDaTarefa subs={t.subagentes} pai={t.para} tarefaId={t.id} issues={t.issues} />
     </motion.li>
   );
 }

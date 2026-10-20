@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cliente } from "../../api/cliente";
 import { agentesFixture, mensagensFixture, subagentesFixture, tarefasFixture } from "../../api/fixtures";
 import type { Agente, SubAgente } from "../../api/tipos";
-import { FonteFalsa, mockarCliente, renderPainel } from "../../test/utils";
+import { ProvedorPainel } from "../../context/ContextoPainel";
+import { FonteFalsa, fabricaFalsa, mockarCliente, renderPainel } from "../../test/utils";
 import Grade from "./Grade";
 import Hub from "./Hub";
 import Mapa from "./Mapa";
@@ -267,5 +268,33 @@ describe("Office: gaveta e tempo real", () => {
     await waitFor(() => expect(espiao).toHaveBeenCalled());
     expect(espiao.mock.calls[0][0]).toMatchObject({ agente: M1, periodo: "24h" });
     await waitFor(() => expect(within(gaveta).getAllByTestId("sub-item").length).toBeGreaterThan(5));
+  });
+});
+
+describe("issues dos sub-agents no Office", () => {
+  it("sub-card do Mapa mostra os chips de issue (sem link aninhado no botão)", () => {
+    render(<Mapa {...base} agentes={comSubs([sub(1, { issues: [588, 587] })])} />);
+    const card = within(doc(M1)).getByTestId("sub-card");
+    expect(card).toHaveTextContent("#588");
+    expect(card).toHaveTextContent("#587");
+    expect(card.querySelector("a")).toBeNull();
+  });
+  it("tooltip do drone no Hub mostra as issues", () => {
+    render(<Hub {...base} aoSelecionarSub={() => {}} agentes={comSubs([sub(1, { issues: [588] })])} />);
+    fireEvent.mouseEnter(within(doc(M1)).getAllByTestId("drone")[0]);
+    expect(screen.getByTestId("tooltip-sub")).toHaveTextContent("#588");
+  });
+  it("gaveta agrupa os terminados por issue e linka para a busca", async () => {
+    const { Gaveta } = await import("./Gaveta");
+    const agente = comSubs([
+      sub(1, { issues: [587], status: "concluido", duracao_s: 5 }), sub(2, { issues: [587], status: "concluido", duracao_s: 5 }),
+      sub(3, { issues: [588], status: "concluido", duracao_s: 5 }), sub(4, { issues: [], status: "concluido", duracao_s: 5 }),
+    ]).find((a) => a.agente === M1)!;
+    render(<MemoryRouter><ProvedorPainel fabricaStream={fabricaFalsa}><Gaveta agente={agente} tarefas={[]} aoFechar={() => {}} /></ProvedorPainel></MemoryRouter>);
+    fireEvent.click(await screen.findByTestId("subs-terminados-toggle"));
+    const grupos = Array.from(document.querySelectorAll("[data-grupo]")).map((g) => g.getAttribute("data-grupo"));
+    expect(grupos).toEqual(["587", "588", "sem"]);
+    const a = within(document.querySelector("[data-grupo='587']") as HTMLElement).getAllByText("#587")[0].closest("a");
+    expect(a?.getAttribute("href")).toContain("/conversas?q=%23587");
   });
 });
