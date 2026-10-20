@@ -81,6 +81,14 @@ def _host_url(h):
     return f"[{h}]" if ":" in h else h
 
 
+def _cabecalhos(ws, aceita):
+    """Cabeçalhos de uma chamada a outro Workspace. Host com o nome da tailnet quando o peer tem um."""
+    h = {CABECALHO: "1", "Accept": aceita}
+    if ws.get("host"):
+        h["Host"] = f"{ws['host']}:{ws['porta']}"
+    return h
+
+
 class Federacao:
     """Estado da federação de um painel: identidade, tailnet, Workspaces descobertos.
 
@@ -166,14 +174,16 @@ class Federacao:
             v4 = [i for i in ips if ":" not in i]
             if not (v4 or ips):
                 continue
-            out.append({"ip": (v4 or ips)[0], "porta": p.get("porta") or cfg["porta_federacao"]})
+            # o tailscale serve roteia pelo nome: conecta no IP (nem toda VPS resolve MagicDNS) mas manda o Host com o nome
+            host = str(p.get("DNSName") or "").rstrip(".").lower() or None
+            out.append({"ip": (v4 or ips)[0], "porta": p.get("porta") or cfg["porta_federacao"], "host": host})
         return out[:MAX_PEERS]
 
     def _sonda(self, peer):
         """GET /api/versao de um peer. Devolve a info do Workspace ou levanta se não for um."""
         conn = http.client.HTTPConnection(peer["ip"], peer["porta"], timeout=self.timeout_sonda)
         try:
-            conn.request("GET", "/api/versao", headers={CABECALHO: "1", "Accept": "application/json"})
+            conn.request("GET", "/api/versao", headers=_cabecalhos(peer, "application/json"))
             r = conn.getresponse()
             corpo = r.read(65536)
             if r.status != 200:
@@ -185,6 +195,7 @@ class Federacao:
         if not isinstance(w, dict) or d.get("contrato") not in CONTRATOS_CONHECIDOS or not ID_RE.match(str(w.get("id"))):
             raise ValueError("não é um Workspace")
         return {"id": w["id"], "nome": str(w.get("nome") or w["id"]), "ip": peer["ip"], "porta": peer["porta"],
+                "host": peer.get("host"),
                 "versao": d.get("versao") if isinstance(d.get("versao"), str) else None,
                 "projetos": [p for p in d.get("projetos") or [] if isinstance(p, str)], "online": True}
 
@@ -243,7 +254,7 @@ class Federacao:
         """(conn, resposta) de GET http://<ip do Workspace>:<porta><caminho>. Nunca segue redirect; o chamador fecha."""
         conn = http.client.HTTPConnection(ws["ip"], ws["porta"], timeout=timeout)
         try:
-            conn.request("GET", caminho, headers={CABECALHO: "1", "Accept": "*/*"})
+            conn.request("GET", caminho, headers=_cabecalhos(ws, "*/*"))
             conn.sock_aberto = conn.sock  # a resposta sem Content-Length leva o socket embora de `conn.sock`
             return conn, conn.getresponse()
         except Exception:

@@ -436,8 +436,16 @@ class Proxy(Base):
         self.assertEqual(self.api("/api/w/aura/api/geral?periodo=7d")["totais"], GERAL_OK["totais"])
 
     def test_o_destino_e_o_ip_descoberto(self):
+        # conecta no IP descoberto (o falso escuta só em 127.0.0.1, então chegar aqui prova o destino),
+        # mas o Host leva o nome da tailnet: o tailscale serve roteia pelo nome, e pelo IP dá 404
         d = self.api("/api/w/aura/api/eco")
-        self.assertEqual(d["host"], f"127.0.0.1:{self.aura.server_address[1]}")
+        self.assertEqual(d["host"], f"aura.tailcf59a0.ts.net:{self.aura.server_address[1]}")
+
+    def test_peer_sem_dnsname_usa_host_padrao(self):
+        self.assertEqual(painel_federacao._cabecalhos({"ip": "100.1.1.1", "porta": 8765, "host": None}, "*/*").get("Host"),
+                         None)
+        self.assertEqual(painel_federacao._cabecalhos({"ip": "100.1.1.1", "porta": 8765, "host": "x.ts.net"}, "*/*")["Host"],
+                         "x.ts.net:8765")
 
     def test_status_do_remoto_passa(self):
         r, _ = self.get("/api/w/aura/api/nao-existe")

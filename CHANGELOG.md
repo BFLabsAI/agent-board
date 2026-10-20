@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.1 — 2026-10-20
+
+### Corrigido
+- **Federação pelo IP da tailnet:** o `tailscale serve` roteia pelo nome da máquina, então chamar `http://<ip>:8765` dava 404 e um Workspace não enxergava o outro. Os painéis agora conectam no IP descoberto, porque nem toda VPS resolve MagicDNS (`--accept-dns=false`), e mandam o `Host` com o nome da tailnet do peer. A conexão continua indo só para IPs descobertos.
+
 ## 1.14.0 — 2026-10-20
 
 Workspaces federados. Um **Workspace** é uma máquina (VPS) com o agent-board; a hierarquia fica Workspace › Squad › Agente › Sub-agent. Não há hub: todo painel enxerga todos os Workspaces da tailnet. Tudo continua só leitura. Ver o [guia de Workspaces](docs/userguide/painel-workspaces.md) e a [ADR-0012](docs/adr/0012-workspaces-federados.md). Épico [#29](https://github.com/BFLabsAI/agent-board/issues/29) e issue [#30](https://github.com/BFLabsAI/agent-board/issues/30).
