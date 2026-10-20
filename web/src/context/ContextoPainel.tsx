@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { cliente } from "../api/cliente";
 import { StreamProvider } from "../api/useStream";
-import type { FabricaFonte } from "../api/stream";
+import { PROJETO_TODOS, type FabricaFonte } from "../api/stream";
 import type { Periodo, Projeto } from "../api/tipos";
 import { gravarLocal, lerLocal } from "../lib/armazenamento";
 
@@ -26,7 +26,13 @@ interface Valor {
   setPeriodo: (p: Periodo) => void;
   /** modo TV (?tv=1): sem sidebar */
   tv: boolean;
+  /** true na tela Visão geral (/geral): todos os squads, sem projeto único */
+  geral: boolean;
+  /** true enquanto se decide se a abertura em "/" vai para /geral (esperando o cadastro) */
+  inicioPendente: boolean;
 }
+
+export const CAMINHO_GERAL = "/geral";
 
 const Ctx = createContext<Valor | null>(null);
 
@@ -36,6 +42,11 @@ function periodoValido(v: string | null): Periodo | null {
 
 export function ProvedorPainel({ children, fabricaStream }: { children: ReactNode; fabricaStream?: FabricaFonte }) {
   const [params, setParams] = useSearchParams();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const geral = pathname === CAMINHO_GERAL;
+  // abriu em "/" sem ?projeto=: com mais de 1 projeto no cadastro, cai na Visão geral (uma vez só)
+  const [inicioPendente, setInicioPendente] = useState(() => pathname === "/" && !params.get("projeto"));
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [projetosCarregando, setCarregando] = useState(true);
 
@@ -50,6 +61,20 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
       });
     return () => ac.abort();
   }, []);
+
+  useEffect(() => {
+    if (!inicioPendente || projetosCarregando) return;
+    setInicioPendente(false);
+    if (projetos.length > 1) {
+      const n = new URLSearchParams();
+      for (const k of ["periodo", "tv"]) {
+        const v = params.get(k);
+        if (v) n.set(k, v);
+      }
+      const qs = n.toString();
+      navigate({ pathname: CAMINHO_GERAL, search: qs ? `?${qs}` : "" }, { replace: true });
+    }
+  }, [inicioPendente, projetosCarregando, projetos, params, navigate]);
 
   const escolhido = params.get("projeto") || lerLocal(CHAVE_PROJETO) || null;
   // se a lista já chegou e o projeto escolhido não existe mais, volta ao padrão do servidor
@@ -74,10 +99,31 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
 
   const setProjeto = useCallback(
     (nome: string) => {
+      if (geral) {
+        // da Visão geral para um squad: vai ao Dashboard dele
+        if (nome === PROJETO_TODOS) return;
+        gravarLocal(CHAVE_PROJETO, nome);
+        const n = new URLSearchParams({ projeto: nome });
+        for (const k of ["periodo", "tv"]) {
+          const v = params.get(k);
+          if (v) n.set(k, v);
+        }
+        navigate({ pathname: "/", search: `?${n.toString()}` });
+        return;
+      }
+      if (nome === PROJETO_TODOS) {
+        const n = new URLSearchParams();
+        for (const k of ["periodo", "tv"]) {
+          const v = params.get(k);
+          if (v) n.set(k, v);
+        }
+        navigate({ pathname: CAMINHO_GERAL, search: n.toString() ? `?${n.toString()}` : "" });
+        return;
+      }
       gravarLocal(CHAVE_PROJETO, nome);
       atualizar("projeto", nome);
     },
-    [atualizar],
+    [atualizar, geral, navigate, params],
   );
   const setPeriodo = useCallback(
     (p: Periodo) => {
@@ -89,8 +135,8 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
 
   // deixa o projeto escolhido visível na URL (link compartilhável)
   useEffect(() => {
-    if (projeto && params.get("projeto") !== projeto) atualizar("projeto", projeto);
-  }, [projeto, params, atualizar]);
+    if (!geral && !inicioPendente && projeto && params.get("projeto") !== projeto) atualizar("projeto", projeto);
+  }, [geral, inicioPendente, projeto, params, atualizar]);
 
   const valor = useMemo<Valor>(
     () => ({
@@ -102,13 +148,15 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
       periodo,
       setPeriodo,
       tv,
+      geral,
+      inicioPendente,
     }),
-    [projeto, projetos, projetosCarregando, setProjeto, periodo, setPeriodo, tv],
+    [projeto, projetos, projetosCarregando, setProjeto, periodo, setPeriodo, tv, geral, inicioPendente],
   );
 
   return (
     <Ctx.Provider value={valor}>
-      <StreamProvider projeto={projeto} fabrica={fabricaStream}>
+      <StreamProvider projeto={geral ? PROJETO_TODOS : projeto} fabrica={fabricaStream}>
         {children}
       </StreamProvider>
     </Ctx.Provider>

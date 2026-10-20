@@ -33,7 +33,7 @@ afterEach(() => {
 describe("Dashboard", () => {
   it("renderiza KPIs, cards dos agentes e atividade recente", async () => {
     preparar();
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     expect(await screen.findByText("Pedidos abertos")).toBeInTheDocument();
     for (const a of agentesFixture()) expect(await screen.findByLabelText(`Agente ${a.agente}`)).toBeInTheDocument();
     const lista = await screen.findByRole("list", { name: "Atividade recente" });
@@ -46,7 +46,7 @@ describe("Dashboard", () => {
     const ag = agentesFixture();
     ag[1] = { ...ag[1], tela: `linha antiga\n${ESC}[32mrodando testes${ESC}[0m`, pendentes: 2 };
     preparar({ agentes: ag });
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const card = await screen.findByLabelText(`Agente ${ag[1].agente}`);
     expect(within(card).getByText("rodando testes")).toBeInTheDocument();
     expect(within(card).getByText("2 pendentes")).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("Dashboard", () => {
 
   it("estado vazio: sem agentes e sem mensagens", async () => {
     preparar({ agentes: [], mensagens: [], atrasados: 0 });
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     expect(await screen.findByText("Nenhum agente cadastrado")).toBeInTheDocument();
     expect(await screen.findByText("Nenhuma atividade ainda")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Alertas" })).not.toBeInTheDocument();
@@ -63,7 +63,7 @@ describe("Dashboard", () => {
   it("faixa de alerta: cadeia quebrada, ping-pong e atrasados", async () => {
     const alerta = { de: MASTER, para: "r7one-manager01-cc", n: 15, janela_min: 10, ate: new Date().toISOString() };
     preparar({ atrasados: 2, integra: false, alertas: [alerta] });
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const faixa = await screen.findByRole("region", { name: "Alertas" });
     expect(await within(faixa).findByText(/Cadeia de hash não íntegra/)).toBeInTheDocument();
     expect(await within(faixa).findByText(/Ping-pong/)).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("Dashboard", () => {
 
   it("SSE: mensagem nova entra no topo e agente troca o card", async () => {
     preparar();
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const lista = await screen.findByRole("list", { name: "Atividade recente" });
     await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
     const fonte = FonteFalsa.todas[FonteFalsa.todas.length - 1];
@@ -93,7 +93,7 @@ describe("Dashboard", () => {
 
   it("SSE: evento tarefa refaz o resumo", async () => {
     preparar();
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     await screen.findByText("Pedidos abertos");
     await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
     const antes = vi.mocked(cliente.resumo).mock.calls.length;
@@ -105,7 +105,7 @@ describe("Dashboard", () => {
 describe("Dashboard: sub-agents", () => {
   it("KPI de sub-agents rodando e chips aninhados no card do pai", async () => {
     preparar();
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const kpi = (await screen.findByText("Sub-agents rodando")).closest("div")!.parentElement as HTMLElement;
     const rodando = agentesFixture().flatMap((a) => a.subagentes).filter((x) => x.status === "rodando").length;
     expect(await within(kpi).findByText(String(rodando))).toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("Dashboard: sub-agents", () => {
 
   it("SSE subagente atualiza chips e KPI", async () => {
     preparar();
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     await screen.findByText("Sub-agents rodando");
     await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
     const base = agentesFixture().find((a) => a.agente === MASTER)!.subagentes[0];
@@ -134,7 +134,7 @@ describe("Dashboard: sub-agents", () => {
   it("tolera agentes sem o campo subagentes", async () => {
     const sem = agentesFixture().map((a) => { const x = { ...a } as Partial<typeof a>; delete x.subagentes; return x as typeof a; });
     preparar({ agentes: sem });
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const kpi = (await screen.findByText("Sub-agents rodando")).closest("div")!.parentElement as HTMLElement;
     expect(await within(kpi).findByText("0")).toBeInTheDocument();
     expect(await screen.findByLabelText("Agente r7one-manager01-cc")).toBeInTheDocument();

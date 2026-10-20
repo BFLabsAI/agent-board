@@ -3,6 +3,7 @@ import {
   BarChart3,
   Building2,
   GitBranch,
+  LayoutGrid,
   LayoutDashboard,
   MessagesSquare,
   Columns3,
@@ -17,6 +18,9 @@ export interface ItemNav {
   /** só casa a rota exata (Dashboard) */
   exato?: boolean;
 }
+
+/** Visão geral (todos os squads): fica no topo da sidebar, separada das telas do squad. */
+export const ITEM_GERAL: ItemNav = { caminho: "/geral", rotulo: "Visão geral", icone: LayoutGrid, exato: true };
 
 /**
  * Fonte única da navegação. Cada tela vive na própria pasta em `pages/` e
@@ -35,6 +39,7 @@ export const ITENS_NAV: ItemNav[] = [
 type Tela = LazyExoticComponent<ComponentType>;
 
 export const TELAS: { caminho: string; tela: Tela }[] = [
+  { caminho: "/geral", tela: lazy(() => import("./pages/Geral")) },
   { caminho: "/", tela: lazy(() => import("./pages/Dashboard")) },
   { caminho: "/kanban", tela: lazy(() => import("./pages/Kanban")) },
   { caminho: "/conversas", tela: lazy(() => import("./pages/Conversas")) },

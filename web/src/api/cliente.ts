@@ -5,6 +5,10 @@ import type {
   Conversa,
   ConversaDetalhe,
   FiltroConversas,
+  FiltroGeralMensagens,
+  Geral,
+  PaginaMensagensGeral,
+  Periodo,
   FiltroMensagens,
   FiltroSubagentes,
   PaginaMensagens,
@@ -74,6 +78,10 @@ export const cliente = {
     ),
   analytics: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Analytics>("/api/analytics", { projeto: c.projeto }, sinal),
   workflows: (c: Contexto = {}, sinal?: AbortSignal) => buscar<Workflows>("/api/workflows", ctx(c), sinal),
+  /** Visão geral: todos os squads do servidor (não usa `projeto`). */
+  geral: (c: { periodo?: Periodo } = {}, sinal?: AbortSignal) => buscar<Geral>("/api/geral", { periodo: c.periodo }, sinal),
+  mensagensGeral: (f: FiltroGeralMensagens = {}, sinal?: AbortSignal) =>
+    buscar<PaginaMensagensGeral>("/api/geral/mensagens", { antes: f.antes, limite: f.limite }, sinal),
   subagentes: (f: FiltroSubagentes = {}, sinal?: AbortSignal) =>
     buscar<SubAgente[]>(
       "/api/subagentes",
