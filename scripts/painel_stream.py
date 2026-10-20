@@ -14,7 +14,7 @@ import painel_estado
 import painel_subagentes
 from base import LOG_REL
 
-INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0, "sub": 2.0}  # sub: mínimo entre dois eventos do mesmo sub-agent
+INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0, "sub": 2.0, "projetos": 5.0}  # projetos: de quanto em quanto tempo o stream `*` relê o cadastro; sub: mínimo entre dois eventos do mesmo sub-agent
 
 
 def _assinatura(a):
@@ -140,6 +140,59 @@ class Vigia:
             self.ult_orca = agora
             self._atualizar(eventos)
         self._emitir_subs(eventos)
+        if eventos:
+            self.ult_evento = agora
+        elif agora - self.ult_evento >= self.iv["ping"]:
+            self.ult_evento = agora
+            eventos.append(("ping", {"agora": datetime.datetime.now().astimezone().isoformat(timespec="seconds")}))
+        return eventos
+
+
+class VigiaGeral:
+    """O stream `projeto=*`: um Vigia por projeto do cadastro num laço só (sem thread por projeto).
+
+    `projetos`: função que devolve {projeto: raiz} atual. Reavaliada a cada `projetos` s: quem entrou ganha um
+    Vigia (linha de base, sem replay), quem saiu perde o seu. Os eventos de dados levam o campo `projeto`;
+    o ping é um só para a conexão."""
+
+    def __init__(self, projetos, paineis, terminais, intervalos=None, relogio=time.monotonic):
+        self.projetos, self.paineis, self.terminais = projetos, paineis, terminais
+        self.iv = dict(INTERVALOS, **(intervalos or {}))
+        self.relogio = relogio
+        self.vigias = {}
+        self.ult_lista = self.ult_evento = self.relogio()
+        self._sincronizar()
+
+    def _sincronizar(self):
+        try:
+            atuais = self.projetos()
+        except Exception:
+            return
+        for nome in [n for n, v in self.vigias.items() if atuais.get(n) != v.raiz]:
+            del self.vigias[nome]
+        for nome, raiz in atuais.items():
+            if nome not in self.vigias:
+                try:
+                    self.vigias[nome] = Vigia(raiz, nome, self.paineis, self.terminais, self.iv, self.relogio)
+                except Exception:  # projeto torto não derruba os outros; tenta de novo na próxima releitura
+                    pass
+
+    def ola(self):
+        return ("ola", {"projeto": "*", "projetos": list(self.vigias),
+                        "agora": datetime.datetime.now().astimezone().isoformat(timespec="seconds")})
+
+    def passo(self):
+        agora = self.relogio()
+        if agora - self.ult_lista >= self.iv["projetos"]:
+            self.ult_lista = agora
+            self._sincronizar()
+        eventos = []
+        for nome, v in list(self.vigias.items()):
+            try:
+                evs = v.passo()
+            except Exception:
+                continue
+            eventos += [(e, dict(d, projeto=nome)) for e, d in evs if e != "ping"]
         if eventos:
             self.ult_evento = agora
         elif agora - self.ult_evento >= self.iv["ping"]:

@@ -52,13 +52,128 @@ def handles_abertos():
 def projetos_do_cadastro(raiz, cfg, paineis):
     """{projeto: raiz} em ordem: o do --raiz primeiro, depois os do cadastro cuja raiz tem o agent-board.json."""
     out = {}
-    if raiz and cfg:
+    if raiz and cfg and "*" not in cfg["projeto"]:
         out[cfg["projeto"]] = raiz
     for nome in sorted({p.get("projeto") for p in paineis.values()} - {None}):
+        if not isinstance(nome, str) or "*" in nome:  # `*` é o curinga do stream, nunca um projeto
+            continue
         r = next((p.get("raiz") for p in paineis.values() if p.get("projeto") == nome and p.get("raiz")), None)
         if nome not in out and r and os.path.isfile(os.path.join(r, CONFIG_REL)):
             out[nome] = r
     return out
+
+
+SAUDE_ORDEM = {"critico": 0, "atencao": 1, "ok": 2}
+
+
+def _indicadores_vazios():
+    return {"mensagens": 0, "mensagens_antes": 0, "pendentes": 0, "agentes_com_pendente": 0, "atrasados": 0,
+            "revisao": 0, "revisao_mais_antiga": None, "tempo_resposta": None, "subagentes_rodando": 0,
+            "trabalhando": 0, "esperando": 0, "offline": 0, "abertos": 0, "entregas_periodo": 0}
+
+
+def squad_quebrado(nome, raiz, erro):
+    """Projeto do cadastro que não deu para ler: entra na visão geral como crítico, com o motivo."""
+    return {"projeto": nome, "raiz": raiz, "versao": painel_estado.VERSAO, "cadeia_integra": False,
+            "indicadores": _indicadores_vazios(), "agentes": [], "ultima_mensagem": None, "alertas": 1,
+            "saude": "critico", "erro": erro}
+
+
+def calcular_squad(nome, raiz, cfg, paineis, periodo, agora, term):
+    """(resumo, agentes, msgs, ping_pong) de um projeto. `term`: {handle: terminal} do Orca, ou None.
+
+    É a conta de /api/resumo e /api/agentes, feita uma vez só para quem precisar dos dois."""
+    abertos = None if term is None else set(term)
+    e = painel_estado.montar(raiz, nome, paineis, periodo, agora, abertos=abertos, limites=cfg.get("limites"))
+    msgs = painel_estado.ler_log(raiz)
+    tars = painel_estado.tarefas(msgs, agora)
+    subs = painel_subagentes.listar(nome, agora, tars)
+    ags = painel_dados.agentes(nome, paineis, msgs, term, agora, tars, subs)
+    desde = painel_estado.inicio_do_periodo(periodo, agora)
+    ind = dict(e["indicadores"], subagentes_rodando=painel_subagentes.rodando(subs))
+    for st in ("trabalhando", "esperando", "offline"):
+        ind[st] = sum(1 for a in ags if a["status"] == st)
+    ind["abertos"] = sum(1 for t in tars if t["estado"] in painel_dados.ABERTAS)
+    ind["entregas_periodo"] = sum(1 for m in msgs if m.get("tipo") == "entrega"
+                                  and (painel_estado._ts(m.get("ts")) or agora) >= desde)
+    resumo = {"projeto": nome, "versao": e["versao"], "agora": e["agora"], "periodo": periodo,
+              "cadeia": e["cadeia"], "indicadores": ind}
+    return resumo, ags, msgs, e["alertas"]
+
+
+def squad_de(nome, raiz, cfg, paineis, periodo, agora, term):
+    """O Squad do contrato (painel-api.md, 1.13)."""
+    r, ags, msgs, ping_pong = calcular_squad(nome, raiz, cfg, paineis, periodo, agora, term)
+    ind, integra = r["indicadores"], r["cadeia"]["integra"]
+    alertas = len(ping_pong) + ind["atrasados"] + (0 if integra else 1)
+    if not integra or ind["atrasados"]:
+        saude = "critico"
+    elif ind["esperando"] or ind["pendentes"] or ping_pong:
+        saude = "atencao"
+    else:
+        saude = "ok"
+    reais = [m for m in msgs if m.get("tipo") != "nota"]
+    ultima = max(reais, key=painel_dados._epoca, default=None)
+    return {"projeto": nome, "raiz": raiz, "versao": r["versao"], "cadeia_integra": integra, "indicadores": ind,
+            "agentes": ags, "ultima_mensagem": dict(painel_dados.publica(ultima), projeto=nome) if ultima else None,
+            "alertas": alertas, "saude": saude}
+
+
+def projetos_para_geral(raiz, cfg, paineis):
+    """{projeto: raiz} de TODO o cadastro (inclusive os que não dá para ler) e {projeto: motivo} dos sem raiz/config."""
+    lidos = projetos_do_cadastro(raiz, cfg, paineis)
+    quebrados = {}
+    for nome in sorted({p.get("projeto") for p in paineis.values()} - {None}):
+        if not isinstance(nome, str) or "*" in nome or nome in lidos:
+            continue
+        r = next((p.get("raiz") for p in paineis.values() if p.get("projeto") == nome and p.get("raiz")), None)
+        quebrados[nome] = (r, "projeto sem raiz no cadastro" if not r else
+                           "raiz inexistente" if not os.path.isdir(r) else f"sem {CONFIG_REL} na raiz")
+    return lidos, quebrados
+
+
+def geral(raiz, cfg, paineis, periodo, term, agora=None):
+    """O Geral do contrato. Pergunta ao Orca uma vez (o `term` vale para todos) e isola o erro de cada projeto."""
+    agora = agora or datetime.datetime.now().astimezone()
+    lidos, quebrados = projetos_para_geral(raiz, cfg, paineis)
+    squads = []
+    for nome, r in lidos.items():
+        try:
+            c = ler_json(os.path.join(r, CONFIG_REL), {})
+            if not isinstance(c, dict):
+                raise ValueError("config fora do formato")
+            squads.append(squad_de(nome, r, c, paineis, periodo, agora, term))
+        except Exception as exc:  # config ilegível, log torto etc.: este projeto vira crítico, os outros seguem
+            squads.append(squad_quebrado(nome, r, f"{type(exc).__name__}: {str(exc)[:200]}"))
+    for nome, (r, motivo) in quebrados.items():
+        squads.append(squad_quebrado(nome, r, motivo))
+    squads.sort(key=lambda s: (SAUDE_ORDEM[s["saude"]], s["projeto"]))
+    soma = lambda f: sum(f(s) for s in squads)  # noqa: E731
+    return {"agora": agora.isoformat(timespec="seconds"), "periodo": periodo, "squads": squads,
+            "totais": {"squads": len(squads), "agentes": soma(lambda s: len(s["agentes"])),
+                       "trabalhando": soma(lambda s: s["indicadores"]["trabalhando"]),
+                       "esperando": soma(lambda s: s["indicadores"]["esperando"]),
+                       "subagentes_rodando": soma(lambda s: s["indicadores"]["subagentes_rodando"]),
+                       "abertos": soma(lambda s: s["indicadores"]["abertos"]),
+                       "atrasados": soma(lambda s: s["indicadores"]["atrasados"]),
+                       "revisao": soma(lambda s: s["indicadores"]["revisao"]),
+                       "mensagens": soma(lambda s: s["indicadores"]["mensagens"])}}
+
+
+def geral_mensagens(raiz, cfg, paineis, antes, limite):
+    """Mensagens de todos os projetos legíveis, sem nota, intercaladas por ts (mais recentes primeiro)."""
+    lidos, _ = projetos_para_geral(raiz, cfg, paineis)
+    todas, mais = [], False
+    for nome, r in lidos.items():
+        try:
+            msgs = [m for m in painel_estado.ler_log(r) if m.get("tipo") != "nota"]
+        except Exception:
+            continue
+        pag = painel_dados.mensagens(msgs, antes, limite)
+        mais = mais or pag["mais"]
+        todas += [dict(m, projeto=nome) for m in pag["mensagens"]]
+    todas.sort(key=painel_dados._epoca, reverse=True)
+    return {"mensagens": todas[:limite], "mais": mais or len(todas) > limite}
 
 
 class ServidorLimitado(ThreadingHTTPServer):
@@ -191,10 +306,14 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
         def _api(self, caminho, qs):
             if caminho == "/api/projetos":
                 return self._json(self._lista_projetos())
+            rota = caminho[len("/api/"):]
+            if rota == "geral" or rota == "geral/mensagens":
+                return self._geral(rota, qs)
+            if rota == "stream" and qs.get("projeto") == "*":  # o curinga só existe no stream
+                return self._stream_geral()
             ctx = self._projeto(qs)
             if ctx is None:
                 return self._erro(404, "projeto desconhecido")
-            rota = caminho[len("/api/"):]
             if rota == "stream":
                 return self._stream(ctx)
             periodo = qs.get("periodo", "hoje")
@@ -209,6 +328,16 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             if tratador is None:
                 return self._erro(404, "não encontrado")
             return self._json(tratador(ctx, qs, periodo))
+
+        def _geral(self, rota, qs):
+            paineis = carregar_paineis()
+            if rota == "geral/mensagens":
+                return self._json(geral_mensagens(raiz, cfg, paineis, qs.get("antes"),
+                                                  painel_dados.inteiro(qs.get("limite"), 100)))
+            periodo = qs.get("periodo", "hoje")
+            if periodo not in painel_estado.PERIODOS:
+                periodo = "hoje"
+            return self._json(geral(raiz, cfg, paineis, periodo, terminais()))
 
         def _lista_projetos(self):
             paineis = carregar_paineis()
@@ -241,19 +370,7 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
 
         def _resumo(self, ctx, qs, periodo):
             nome, r, c, paineis = ctx
-            e = painel_estado.montar(r, nome, paineis, periodo, abertos=self._abertos(), limites=c.get("limites"))
-            _, _, _, _, agora, msgs, tars = self._base(ctx)
-            subs = self._subs(ctx, agora, tars)
-            ags = painel_dados.agentes(nome, paineis, msgs, terminais(), agora, tars, subs)
-            desde = painel_estado.inicio_do_periodo(periodo, agora)
-            ind = dict(e["indicadores"], subagentes_rodando=painel_subagentes.rodando(subs))
-            for st in ("trabalhando", "esperando", "offline"):
-                ind[st] = sum(1 for a in ags if a["status"] == st)
-            ind["abertos"] = sum(1 for t in tars if t["estado"] in painel_dados.ABERTAS)
-            ind["entregas_periodo"] = sum(1 for m in msgs if m.get("tipo") == "entrega"
-                                          and (painel_estado._ts(m.get("ts")) or agora) >= desde)
-            return {"projeto": nome, "versao": e["versao"], "agora": e["agora"], "periodo": periodo,
-                    "cadeia": e["cadeia"], "indicadores": ind}
+            return calcular_squad(nome, r, c, paineis, periodo, datetime.datetime.now().astimezone(), terminais())[0]
 
         def _agentes(self, ctx, qs, periodo):
             nome, _, _, paineis, agora, msgs, tars = self._base(ctx)
@@ -310,11 +427,19 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             return False
 
         def _stream(self, ctx):
+            nome, r, _, _ = ctx
+            self._sse(lambda: painel_stream.Vigia(r, nome, carregar_paineis, terminais, intervalos))
+
+        def _stream_geral(self):
+            """Todos os projetos do cadastro numa conexão só (1 vaga das 16)."""
+            self._sse(lambda: painel_stream.VigiaGeral(
+                lambda: projetos_do_cadastro(raiz, cfg, carregar_paineis()), carregar_paineis, terminais, intervalos))
+
+        def _sse(self, criar_vigia):
             if not vagas.acquire(False):
                 return self._enviar(503, "conexões SSE demais", TEXTO)
             try:
-                nome, r, _, _ = ctx
-                vigia = painel_stream.Vigia(r, nome, carregar_paineis, terminais, intervalos)
+                vigia = criar_vigia()
                 self._cabecalhos(200, "text/event-stream")
                 self.send_header("X-Accel-Buffering", "no")
                 self.end_headers()
