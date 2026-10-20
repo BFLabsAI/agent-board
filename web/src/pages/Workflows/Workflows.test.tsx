@@ -7,7 +7,7 @@ import { projetosFixture, workflowsFixture } from "../../api/fixtures";
 import type { Workflows as TWorkflows } from "../../api/tipos";
 import { ProvedorPainel } from "../../context/ContextoPainel";
 import { FonteFalsa, fabricaFalsa } from "../../test/utils";
-import { agentesDoSub, agruparIssues, caminhoDe, chipDoTipo, colunasDoGrafo, filtroFluxos } from "./derivar";
+import { ALT_SUB, LARGURA, agentesDoSub, agruparIssues, caminhoDe, chipDoTipo, colunasDoGrafo, filtroFluxos, layoutGrafo, maxCharsRotulo, posicionarTooltip, subsPorAgente } from "./derivar";
 import Workflows from ".";
 
 function montar() {
@@ -153,7 +153,7 @@ describe("derivar", () => {
 });
 
 describe("Workflows: sub-agents", () => {
-  it("coluna SUB-AGENTS, arestas tracejadas, legenda e KPI", async () => {
+  it("faixa SUB-AGENTS, arestas tracejadas, legenda e KPI", async () => {
     montar();
     const g = await screen.findByTestId("grafo-orquestracao");
     expect(within(g).getByText("SUB-AGENTS")).toBeInTheDocument();
@@ -192,10 +192,95 @@ describe("Workflows: sub-agents", () => {
   });
 
   it("derivar: colunas condicionais e agentes de um tipo", () => {
-    expect(colunasDoGrafo([{ coluna: "master" }])).toHaveLength(5);
-    expect(colunasDoGrafo([{ coluna: "subagente" }])).toHaveLength(6);
+    expect(colunasDoGrafo()).toHaveLength(5);
     const r = agentesDoSub("sub:x", [{ de: "a", para: "sub:x", n: 1 }, { de: "b", para: "sub:y", n: 1 }, { de: "m", para: "a", n: 1 }]);
     expect([...r.nos].sort()).toEqual(["a", "sub:x"]);
     expect(caminhoDe("sub:x", [{ de: "m", para: "a", n: 1 }, { de: "a", para: "sub:x", n: 1 }]).nos.has("m")).toBe(true);
   });
 });
+
+describe("Workflows: layout sem sobreposição", () => {
+  const nos = [
+    { id: "m", coluna: "master" as const, rotulo: "master", n: 5 },
+    { id: "a", coluna: "manager" as const, rotulo: "manager01-omp31", n: 31 },
+    { id: "b", coluna: "manager" as const, rotulo: "manager02-omp1", n: 1 },
+    { id: "#1", coluna: "issue" as const, rotulo: "#1", n: 3 },
+    { id: "revisao", coluna: "revisao" as const, rotulo: "Revisão", n: 3 },
+    { id: "sub:subagent-cc", coluna: "subagente" as const, rotulo: "subagent-cc", n: 16 },
+    { id: "sub:subagent-omp", coluna: "subagente" as const, rotulo: "subagent-omp", n: 4 },
+  ];
+  const cruza = (p: { x: number; y: number; w: number; h: number }, q: typeof p) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+
+  it("sub-agents ficam numa faixa abaixo, fora das colunas principais, sem sobrepor nós", () => {
+    const l = layoutGrafo(nos);
+    expect(l.pos.some((p) => p.coluna === "subagente")).toBe(false);
+    expect(l.subPos).toHaveLength(2);
+    const fim = Math.max(...l.pos.map((p) => p.y + p.h));
+    for (const s of l.subPos) {
+      expect(s.y).toBeGreaterThan(fim);
+      expect(s.h).toBe(ALT_SUB);
+      expect(s.x + s.w).toBeLessThanOrEqual(LARGURA);
+    }
+    const todos = [...l.pos, ...l.subPos];
+    for (let i = 0; i < todos.length; i++) for (let j = i + 1; j < todos.length; j++) expect(cruza(todos[i], todos[j])).toBe(false);
+    expect(l.altura).toBeGreaterThan(l.alturaGrafo);
+    expect(layoutGrafo(nos.filter((n) => n.coluna !== "subagente")).faixa).toBeNull();
+  });
+
+  it("contagem por agente (master incluído) e rótulo que não invade o badge", () => {
+    const m = subsPorAgente([{ de: "m", para: "sub:subagent-cc", n: 2 }, { de: "m", para: "sub:subagent-omp", n: 1 }, { de: "a", para: "#1", n: 9 }]);
+    expect(m.get("m")).toBe(3);
+    expect(m.has("a")).toBe(false);
+    const l = layoutGrafo(nos);
+    for (const p of l.pos) {
+      const n = formatarNumeroTeste(p.n);
+      expect(maxCharsRotulo(p.w, n) * 7.2 + 12 + 4 + (Math.max(26, n.length * 7 + 12) + 8)).toBeLessThanOrEqual(p.w + 7.2);
+    }
+    expect(maxCharsRotulo(156, "31")).toBeGreaterThanOrEqual("manager01-omp".length);
+  });
+
+  it("posicionarTooltip nunca sai do card", () => {
+    const caixa = { w: 800, h: 400 };
+    const tip = { w: 220, h: 26 };
+    for (const [x, y] of [[0, 0], [799, 399], [790, 5], [5, 395], [400, 200]]) {
+      const r = posicionarTooltip({ x, y }, caixa, tip);
+      expect(r.left).toBeGreaterThanOrEqual(0);
+      expect(r.top).toBeGreaterThanOrEqual(0);
+      expect(r.left + tip.w).toBeLessThanOrEqual(caixa.w);
+      expect(r.top + tip.h).toBeLessThanOrEqual(caixa.h);
+    }
+    expect(posicionarTooltip({ x: 400, y: 200 }, caixa, tip)).toEqual({ left: 414, top: 214 });
+  });
+
+  it("tooltip da aresta aparece perto do ponteiro, não como title solto", async () => {
+    montar();
+    const g = await screen.findByTestId("grafo-orquestracao");
+    const hit = g.querySelector("[data-hit]") as Element;
+    expect(hit.querySelector("title")).toBeNull();
+    await userEvent.hover(hit);
+    expect(await screen.findByTestId("tooltip-aresta")).toHaveTextContent("→");
+    await userEvent.unhover(hit);
+    expect(screen.queryByTestId("tooltip-aresta")).toBeNull();
+  });
+
+  it("rótulos de sub-agent por harness (genérico) e selo no agente, sem 'desconhecido'", async () => {
+    espiao.mockImplementation(async () => {
+      const w = workflowsFixture();
+      return {
+        ...w,
+        nos: [...w.nos.filter((n) => n.coluna !== "subagente"), { id: "sub:subagent-cc", coluna: "subagente", rotulo: "subagent-cc", n: 7 }, { id: "sub:subagent-omp", coluna: "subagente", rotulo: "subagent-omp", n: 2 }],
+        arestas: [...w.arestas.filter((a) => !a.para.startsWith("sub:")), { de: "r7one-master", para: "sub:subagent-cc", n: 7 }, { de: "r7one-master", para: "sub:subagent-omp", n: 2 }],
+      };
+    });
+    montar();
+    const g = await screen.findByTestId("grafo-orquestracao");
+    expect(g.querySelectorAll('[data-no^="sub:"]')).toHaveLength(2);
+    expect(within(g).getByRole("button", { name: "subagent-omp: 2" })).toBeInTheDocument();
+    expect(within(g).queryByText(/desconhecido/)).toBeNull();
+    expect(g.querySelector('[data-satelite="r7one-master"]')).toHaveTextContent("9");
+  });
+});
+
+function formatarNumeroTeste(n: number) {
+  return String(n);
+}
