@@ -2,7 +2,7 @@
 
 > **Em 1 minuto:** uma página local, só de leitura, que mostra ao vivo o que o time de agentes está fazendo: quem trabalha, o que está pendente ou atrasado, o que espera revisão e como o time conversa. Decisões: [ADR-0005](../adr/0005-painel-web-local-somente-leitura.md) e [ADR-0010](../adr/0010-painel-v2-spa-com-build-e-sse.md).
 
-**Páginas deste guia:** esta (abrir e usar) · [Telas: Dashboard, Kanban, Conversas e Activity Feed](painel-telas.md) · [Telas: Analytics e Workflows](painel-analise.md) · [Telas: Office](painel-office.md) · [Visão geral e Andar (multi-squad)](painel-geral.md) · [Sub-agents](#sub-agents) (nesta página)
+**Páginas deste guia:** esta (abrir e usar) · [Telas: Dashboard, Kanban, Conversas e Activity Feed](painel-telas.md) · [Telas: Analytics e Workflows](painel-analise.md) · [Telas: Office](painel-office.md) · [Visão geral e Andar (multi-squad)](painel-geral.md) · [Workspaces (várias VPSs)](painel-workspaces.md) · [Sub-agents](#sub-agents) (nesta página)
 
 ## Para que serve
 Responde "o que aconteceu enquanto eu estava fora?" sem ler `avisos.log` nem rodar `jq`. Mostra também o que está acontecendo agora: quem está trabalhando, quem espera você e o que atrasou.
@@ -29,7 +29,8 @@ python3 $S/painel.py servir --raiz <projeto>     # o projeto <projeto> aparece p
 ```bash
 ssh -L 8765:127.0.0.1:8765 <servidor>
 ```
-- **Sem login:** quem tem acesso à máquina vê o painel. De fora, só pelo túnel.
+- **Várias VPSs:** para ver todas num painel só e deixá-lo sempre ligado, use o [guia de Workspaces](painel-workspaces.md) (`painel.py servico instalar`).
+- **Sem login:** quem tem acesso à máquina vê o painel. De fora, só pelo túnel (ou pela tailnet, com os Workspaces).
 - **Sem Node:** a página já vem pronta em `scripts/painel_web/`. Só quem desenvolve o painel usa o `web/` ([README](../../web/README.md)).
 
 ## A barra lateral

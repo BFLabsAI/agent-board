@@ -5,6 +5,7 @@ import type { Squad } from "../../api/tipos";
 import { useApi } from "../../api/useApi";
 import { useEventoSquad } from "../../api/useStream";
 import { LinkPainel } from "../../components/LinkPainel";
+import { useContextoPainel } from "../../context/ContextoPainel";
 import { EmptyState, PageHeader, Skeleton } from "../../components/ui";
 import { CardSquad } from "./CardSquad";
 import { FeedGeral } from "./FeedGeral";
@@ -15,7 +16,9 @@ import { Totais } from "./Totais";
 const PULSO_MS = 1500;
 
 export default function Geral() {
-  const api = useApi((c, s) => cliente.geral({ periodo: c.periodo }, s));
+  const api = useApi((c, s) => cliente.geral({ periodo: c.periodo, workspace: c.workspace }, s));
+  const { workspace, workspaces } = useContextoPainel();
+  const nomeWorkspace = workspaces.find((w) => w.id === workspace)?.nome ?? workspace;
   const [squads, setSquads] = useState<Squad[]>([]);
   const [pulsando, setPulsando] = useState<ReadonlySet<string>>(new Set());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -70,7 +73,7 @@ export default function Geral() {
       <PageHeader
         icone={LayoutGrid}
         titulo="Visão geral"
-        subtitulo="Todos os squads do servidor ao mesmo tempo"
+        subtitulo={nomeWorkspace ? `Todos os squads de ${nomeWorkspace} ao mesmo tempo` : "Todos os squads do servidor ao mesmo tempo"}
         acoes={
           <>
           <LinkPainel to="/office?modo=andar" className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-muted px-3 py-1.5 text-sm font-medium text-accent-hover transition-colors hover:border-accent/60 hover:bg-accent/25">

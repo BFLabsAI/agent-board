@@ -14,7 +14,7 @@ import painel_estado
 import painel_subagentes
 from base import LOG_REL
 
-INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0, "sub": 2.0, "projetos": 5.0}  # projetos: de quanto em quanto tempo o stream `*` relê o cadastro; sub: mínimo entre dois eventos do mesmo sub-agent
+INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0, "sub": 2.0, "projetos": 5.0, "workspaces": 10.0}  # projetos: de quanto em quanto tempo o stream `*` relê o cadastro; sub: mínimo entre dois eventos do mesmo sub-agent
 
 
 def _assinatura(a):

@@ -6,20 +6,23 @@ import { NavLinkPainel } from "../components/LinkPainel";
 import { NavLink, useLocation } from "react-router-dom";
 import { Segmented } from "../components/ui";
 import { PERIODOS, useContextoPainel } from "../context/ContextoPainel";
-import { ITEM_GERAL, ITENS_NAV } from "../rotas";
+import { ITEM_GERAL, ITEM_WORKSPACES, ITENS_NAV } from "../rotas";
 import { IndicadorLive } from "./IndicadorLive";
 import { SeletorProjeto } from "./SeletorProjeto";
 
 export function Sidebar({ recolhida, onAlternar }: { recolhida: boolean; onAlternar: () => void }) {
-  const { projetoExibido, periodo, setPeriodo, geral } = useContextoPainel();
+  const { projetoExibido, periodo, setPeriodo, geral, telaWorkspaces: telaTodos, predio } = useContextoPainel();
+  const telaWorkspaces = telaTodos || predio;
   const { search } = useLocation();
-  // a Visão geral não é de um projeto: leva só período e modo TV
-  const buscaGeral = (() => {
+  // a Visão geral não é de um projeto: leva período, modo TV e o Workspace; a tela Workspaces, só período e TV
+  const busca = (chaves: string[]) => {
     const atual = new URLSearchParams(search);
     const n = new URLSearchParams();
-    for (const k of ["periodo", "tv"]) if (atual.get(k)) n.set(k, atual.get(k)!);
+    for (const k of chaves) if (atual.get(k)) n.set(k, atual.get(k)!);
     return n.toString() ? `?${n.toString()}` : "";
-  })();
+  };
+  const buscaGeral = busca(["periodo", "tv", "workspace"]);
+  const buscaWorkspaces = busca(["periodo", "tv"]);
   const { dados: resumo } = useApi((c, s) => cliente.resumo(c, s));
 
   return (
@@ -36,7 +39,7 @@ export function Sidebar({ recolhida, onAlternar }: { recolhida: boolean; onAlter
         {!recolhida && (
           <div className="min-w-0">
             <div className="truncate text-[15px] font-semibold leading-tight text-texto">agent-board</div>
-            <div className="truncate text-xs text-texto-suave">{geral ? "todos os squads" : (projetoExibido ?? "sem projeto")}</div>
+            <div className="truncate text-xs text-texto-suave">{telaWorkspaces ? "todos os workspaces" : geral ? "todos os squads" : (projetoExibido ?? "sem projeto")}</div>
           </div>
         )}
       </div>
@@ -48,14 +51,15 @@ export function Sidebar({ recolhida, onAlternar }: { recolhida: boolean; onAlter
       )}
 
       <nav aria-label="Navegação principal" className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {[ITEM_GERAL, null, ...ITENS_NAV].map((item) => {
+        {[ITEM_WORKSPACES, ITEM_GERAL, null, ...ITENS_NAV].map((item) => {
           if (!item) return <div key="sep" role="separator" className="!my-3 border-t border-border" />;
           const { caminho, rotulo, icone: Icone, exato } = item;
-          const Nav = caminho === ITEM_GERAL.caminho ? NavLink : NavLinkPainel;
+          const topo = caminho === ITEM_GERAL.caminho || caminho === ITEM_WORKSPACES.caminho;
+          const Nav = topo ? NavLink : NavLinkPainel;
           return (
           <Nav
             key={caminho}
-            to={caminho === ITEM_GERAL.caminho ? { pathname: caminho, search: buscaGeral } : caminho}
+            to={topo ? { pathname: caminho, search: caminho === ITEM_GERAL.caminho ? buscaGeral : buscaWorkspaces } : caminho}
             end={exato}
             title={recolhida ? rotulo : undefined}
             className={({ isActive }) =>

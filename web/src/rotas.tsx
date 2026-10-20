@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   Building2,
+  Globe2,
   GitBranch,
   LayoutGrid,
   LayoutDashboard,
@@ -18,6 +19,9 @@ export interface ItemNav {
   /** só casa a rota exata (Dashboard) */
   exato?: boolean;
 }
+
+/** Workspaces (todas as máquinas): primeiro item da sidebar. */
+export const ITEM_WORKSPACES: ItemNav = { caminho: "/workspaces", rotulo: "Workspaces", icone: Globe2, exato: true };
 
 /** Visão geral (todos os squads): fica no topo da sidebar, separada das telas do squad. */
 export const ITEM_GERAL: ItemNav = { caminho: "/geral", rotulo: "Visão geral", icone: LayoutGrid, exato: true };
@@ -39,6 +43,7 @@ export const ITENS_NAV: ItemNav[] = [
 type Tela = LazyExoticComponent<ComponentType>;
 
 export const TELAS: { caminho: string; tela: Tela }[] = [
+  { caminho: "/workspaces", tela: lazy(() => import("./pages/Workspaces")) },
   { caminho: "/geral", tela: lazy(() => import("./pages/Geral")) },
   { caminho: "/", tela: lazy(() => import("./pages/Dashboard")) },
   { caminho: "/kanban", tela: lazy(() => import("./pages/Kanban")) },

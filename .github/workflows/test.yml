@@ -21,6 +21,7 @@ jobs:
       - run: python3 scripts/test_mcp.py
       - run: python3 scripts/test_time.py
       - run: python3 scripts/test_web.py
+      - run: python3 scripts/test_federacao.py
       - run: python3 scripts/test_maestri.py
       - run: python3 scripts/test_docs.py
       - run: python3 scripts/test_contrato.py

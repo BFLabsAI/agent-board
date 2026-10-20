@@ -4,9 +4,9 @@ import type { TotaisGeral } from "../../api/tipos";
 import { Skeleton } from "../../components/ui";
 import { formatarNumero } from "../../lib/formato";
 
-type Tom = "neutro" | "verde" | "ambar" | "vermelho" | "roxo" | "azul";
+export type Tom = "neutro" | "verde" | "ambar" | "vermelho" | "roxo" | "azul";
 
-const TONS: Record<Tom, { icone: string; destaque: string; valor: string }> = {
+export const TONS: Record<Tom, { icone: string; destaque: string; valor: string }> = {
   neutro: { icone: "text-texto-suave", destaque: "", valor: "text-texto" },
   verde: { icone: "text-emerald-400", destaque: "", valor: "text-texto" },
   roxo: { icone: "text-violet-400", destaque: "", valor: "text-texto" },

@@ -8,7 +8,10 @@ Ver docs/adr/0005-painel-web-local-somente-leitura.md, docs/adr/0010 e docs/user
 import argparse
 import datetime
 import json
+import http.client
 import os
+import queue
+import re
 import select
 import socket
 import sys
@@ -19,10 +22,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import painel_dados
 import painel_estado
+import painel_federacao
 import painel_orca
 import painel_stream
 import painel_subagentes
-from base import CONFIG_REL, carregar_paineis, ler_json
+from base import CONFIG_REL, VERSAO, carregar_paineis, ler_json
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 DIR_WEB = os.path.join(AQUI, "painel_web")  # build da SPA (web/)
@@ -201,10 +205,14 @@ class ServidorLimitado(ThreadingHTTPServer):
             self._conexoes.release()
 
 
-def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, intervalos=None, limite_sse=LIMITE_SSE):
-    """`terminais`: função que devolve {handle: terminal} do Orca (ou None); os testes injetam uma falsa."""
+def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, intervalos=None, limite_sse=LIMITE_SSE,
+                  federacao=None):
+    """`terminais`: função que devolve {handle: terminal} do Orca (ou None); os testes injetam uma falsa.
+    `federacao`: painel_federacao.Federacao (identidade e tailnet); os testes injetam uma com tailscale falso."""
     hosts = {f"127.0.0.1:{porta}", f"localhost:{porta}"}
     origens = {f"http://{h}" for h in hosts}
+    fed = federacao or painel_federacao.Federacao(porta)
+    CAB = painel_federacao.CABECALHO
     if terminais is None:
         terminais = painel_orca.terminais if perguntar_orca else (lambda: None)
     vagas = threading.Semaphore(limite_sse)
@@ -243,13 +251,14 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
         def _origem_ok(self):
             """Barra página de outra origem (ou de outra porta do localhost) pedindo o painel por fetch/EventSource/script."""
             origem = self.headers.get("Origin")
-            if origem is not None and origem not in origens:
+            if origem is not None and origem not in origens and origem.lower() not in fed.hosts_e_origens()[1]:
                 return False
             site = self.headers.get("Sec-Fetch-Site")  # navegação direta (digitar a URL, clicar num link) continua valendo
             return site in (None, "same-origin", "none") or self.headers.get("Sec-Fetch-Mode") == "navigate"
 
         def do_GET(self):
-            if self.headers.get("Host") not in hosts:  # DNS rebinding
+            host = self.headers.get("Host")
+            if host not in hosts and (host is None or host.lower() not in fed.hosts_e_origens()[0]):  # DNS rebinding
                 return self._enviar(403, "host não permitido", TEXTO)
             if not self._origem_ok():
                 return self._enviar(403, "origem não permitida", TEXTO)
@@ -266,6 +275,8 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             qs = urllib.parse.parse_qs(url.query)
             if "\0" in caminho or ".." in caminho.split("/") or "\\" in caminho:
                 return self._enviar(404, "não encontrado", TEXTO)
+            if caminho.startswith("/api/w/"):
+                return self._proxy(caminho, url.query)
             if caminho == "/api" or caminho.startswith("/api/"):
                 return self._api(caminho, {k: v[0][:MAX_PARAM] for k, v in qs.items()})
             if caminho.startswith("/assets/"):
@@ -307,8 +318,14 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             if caminho == "/api/projetos":
                 return self._json(self._lista_projetos())
             rota = caminho[len("/api/"):]
+            if rota == "versao":
+                return self._json(self._versao())
+            if rota == "workspaces":
+                return self._workspaces(qs)
             if rota == "geral" or rota == "geral/mensagens":
                 return self._geral(rota, qs)
+            if rota == "stream" and qs.get("workspace") == "*":  # todos os Workspaces, 1 vaga
+                return self._stream_federado()
             if rota == "stream" and qs.get("projeto") == "*":  # o curinga só existe no stream
                 return self._stream_geral()
             ctx = self._projeto(qs)
@@ -338,6 +355,92 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             if periodo not in painel_estado.PERIODOS:
                 periodo = "hoje"
             return self._json(geral(raiz, cfg, paineis, periodo, terminais()))
+
+        def _versao(self):
+            projs = projetos_do_cadastro(raiz, cfg, carregar_paineis())
+            return {"versao": VERSAO, "contrato": painel_federacao.CONTRATO, "workspace": fed.identidade(),
+                    "projetos": list(projs)}
+
+        def _geral_local(self, periodo):
+            return lambda: geral(raiz, cfg, carregar_paineis(), periodo, terminais())
+
+        def _workspaces(self, qs):
+            periodo = qs.get("periodo", "hoje")
+            if periodo not in painel_estado.PERIODOS:
+                periodo = "hoje"
+            so_local = bool(self.headers.get(CAB))  # quem veio de outro painel não federa de novo
+            return self._json({"agora": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+                               "workspaces": fed.resumos(periodo, self._geral_local(periodo), so_local)})
+
+        def _proxy(self, caminho, query):
+            """GET /api/w/<id>/api/<rota>: o id local atende aqui; o remoto é repassado ao IP descoberto (nunca a host da URL)."""
+            if self.headers.get(CAB):
+                return self._enviar(404, "não encontrado", TEXTO)
+            wid, _, resto = caminho[len("/api/w/"):].partition("/")
+            resto = "/" + resto
+            ctl = re.compile(r"[\x00-\x20\x7f]")
+            if not painel_federacao.ID_RE.match(wid) or not resto.startswith("/api/") or ctl.search(resto) \
+                    or len(query) > 2000 or ctl.search(query):
+                return self._enviar(404, "não encontrado", TEXTO)
+            if wid == fed.identidade()["id"]:
+                qs = urllib.parse.parse_qs(query)
+                return self._api(resto, {k: v[0][:MAX_PARAM] for k, v in qs.items()})
+            ws = fed.achar(wid)
+            if ws is None:
+                return self._erro(502, "workspace desconhecido ou offline")
+            alvo = urllib.parse.quote(resto, safe="/") + ("?" + query if query else "")
+            try:
+                conn, r = fed.abrir(ws, alvo, painel_federacao.TIMEOUT_PROXY)
+            except Exception:
+                return self._erro(502, "workspace sem resposta")
+            tipo = r.getheader("Content-Type") or JSON
+            if tipo.startswith("text/event-stream"):
+                return self._repassar_sse(conn, r)
+            try:
+                if 300 <= r.status < 400:
+                    return self._erro(502, "redirecionamento não seguido")
+                if int(r.getheader("Content-Length") or 0) > painel_federacao.MAX_RESPOSTA:
+                    return self._erro(502, "resposta grande demais")
+                corpo = r.read(painel_federacao.MAX_RESPOSTA + 1)
+                if len(corpo) > painel_federacao.MAX_RESPOSTA:
+                    return self._erro(502, "resposta grande demais")
+                self._enviar(r.status, corpo, JSON if tipo.startswith("application/json") else TEXTO)
+            except (OSError, ValueError, http.client.HTTPException):
+                return self._erro(502, "workspace sem resposta")
+            finally:
+                conn.close()
+
+        def _repassar_sse(self, conn, r):
+            """Repassa o SSE de outro Workspace linha a linha. Ocupa 1 vaga; ao desconectar, fecha a conexão remota."""
+            if not vagas.acquire(False):
+                conn.close()
+                return self._enviar(503, "conexões SSE demais", TEXTO)
+            leitor = painel_federacao.LeitorLinhas(conn, r, "fed-proxy-sse")
+            try:
+                if r.status != 200:
+                    return self._erro(502, "workspace sem stream")
+                conn.sock_aberto.settimeout(45)
+                leitor.start()
+                self._cabecalhos(200, "text/event-stream")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+                self.wfile.flush()
+                while not self._desconectou():
+                    try:
+                        linha = leitor.fila.get(timeout=0.5)
+                    except queue.Empty:
+                        continue
+                    if linha is None:
+                        break
+                    self.wfile.write(linha)
+                    if linha in (b"\n", b"\r\n"):
+                        self.wfile.flush()
+            except Exception:
+                pass
+            finally:
+                leitor.fechar()
+                vagas.release()
+                self.close_connection = True
 
         def _lista_projetos(self):
             paineis = carregar_paineis()
@@ -435,9 +538,18 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             self._sse(lambda: painel_stream.VigiaGeral(
                 lambda: projetos_do_cadastro(raiz, cfg, carregar_paineis()), carregar_paineis, terminais, intervalos))
 
+        def _stream_federado(self):
+            """Local + um cliente SSE por Workspace remoto numa conexão só (1 vaga)."""
+            def criar():
+                local = painel_stream.VigiaGeral(lambda: projetos_do_cadastro(raiz, cfg, carregar_paineis()),
+                                                 carregar_paineis, terminais, intervalos)
+                return painel_federacao.VigiaFederado(fed, local, self._geral_local("hoje"), intervalos)
+            self._sse(criar)
+
         def _sse(self, criar_vigia):
             if not vagas.acquire(False):
                 return self._enviar(503, "conexões SSE demais", TEXTO)
+            vigia = None
             try:
                 vigia = criar_vigia()
                 self._cabecalhos(200, "text/event-stream")
@@ -453,6 +565,8 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             except Exception:  # cliente foi embora, timeout de escrita ou erro: encerra e devolve a vaga
                 pass
             finally:
+                if hasattr(vigia, "fechar"):
+                    vigia.fechar()
                 vagas.release()
                 self.close_connection = True
 
@@ -468,14 +582,14 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
     return Handler
 
 
-def servidor(raiz, porta, perguntar_orca=True, terminais=None, intervalos=None, limite_sse=LIMITE_SSE):
+def servidor(raiz, porta, perguntar_orca=True, terminais=None, intervalos=None, limite_sse=LIMITE_SSE, federacao=None):
     cfg = None
     if raiz:
         cfg = ler_json(os.path.join(raiz, CONFIG_REL), None)
         if cfg is None:
             sys.exit(f"{raiz} não tem {CONFIG_REL}; rode painel.py init antes")
     srv = ServidorLimitado(("127.0.0.1", porta), BaseHTTPRequestHandler)
-    srv.RequestHandlerClass = criar_handler(raiz, cfg, srv.server_address[1], perguntar_orca, terminais, intervalos, limite_sse)
+    srv.RequestHandlerClass = criar_handler(raiz, cfg, srv.server_address[1], perguntar_orca, terminais, intervalos, limite_sse, federacao)
     return srv
 
 

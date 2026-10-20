@@ -1,7 +1,7 @@
 # agent-board: base de conhecimento do produto
 
 > **Para quem é:** o CEO. Serve para entender, explicar, vender e decidir sobre o agent-board.
-> **Versão descrita:** `1.13.0`, a do release do painel multi-squad (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a interface web, com as sete telas) saiu na 1.11.0; a 1.12.0 acrescentou os sub-agents e a 1.13.0, a Visão geral multi-squad e o Office modo Andar.
+> **Versão descrita:** `1.14.0`, a do release dos Workspaces federados (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a interface web, com as sete telas) saiu na 1.11.0; a 1.12.0 acrescentou os sub-agents a 1.13.0, a Visão geral multi-squad e o Office modo Andar; e a 1.14.0, os **Workspaces federados** (várias VPSs num painel só, pela Tailscale, sem hub) e o Office modo Prédio.
 > **Fonte de verdade:** o código em `scripts/`. Quando uma doc discorda do código, vale o código, e a diferença está na seção [14. Divergências encontradas](#14-divergências-encontradas).
 > **Estilo:** frases curtas e muitas tabelas, como em [ESTILO.md](ESTILO.md). Este arquivo passa do limite de tamanho do guia de estilo de propósito: é uma base de conhecimento, não um guia de passo a passo.
 
@@ -43,7 +43,7 @@ O agent-board é um **carteiro com regras** para times de agentes de IA. Cada ag
 | Como o CEO acompanha? | `painel.py resumo` ("o que houve enquanto eu estava fora"), `painel.py tarefas`, o painel web e as notas e decisões do time. |
 | Onde roda? | Linux (testado em CI e nesta VPS) e macOS (documentado, sem CI). Windows só por WSL, não testado. Python 3.8 ou mais novo. |
 | Quanto custa em dependências? | Zero pacotes Python. Precisa de `git`, `bash` e da CLI `orca` ou `maestri`. |
-| Em que estágio está? | Versão 1.13.0, com 435 testes Python em 11 suítes e 254 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com a Visão geral de todos os squads, sete telas por squad e os sub-agents de cada agente. |
+| Em que estágio está? | Versão 1.14.0, com 507 testes Python em 12 suítes e 307 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com os Workspaces federados (todas as VPSs da tailnet num painel só), a Visão geral de todos os squads, sete telas por squad e os sub-agents de cada agente. |
 | Qual o maior limite? | A trava automática só existe para Claude Code e OMP. Outros harnesses seguem o contrato por disciplina. |
 
 ---
@@ -78,7 +78,7 @@ Vários agentes de IA trabalhando juntos no mesmo projeto têm quatro defeitos n
 | **Nada se perde.** O agente é segurado até 3 vezes ao tentar encerrar com resposta pendente. | `decide_stop` em [`hook_core.py`](../scripts/hook_core.py) |
 | **Sem dependência.** Só biblioteca padrão do Python. Nenhum `pip install`. | [`MELHORIAS.md`](MELHORIAS.md), o código não importa nada de fora |
 | **Dois transportes, um conjunto de regras.** Orca ou Maestri, mesma política e mesmo log. | [ADR-0006](adr/0006-maestri-como-transporte.md) |
-| **Testado.** 414 testes em 11 suítes (mais 211 do front), incluindo CLI falsa do Maestri, adaptador do OMP rodando de verdade no `bun` e conferência dos links da documentação. | Seção [7.6](#76-testes-e-ci) |
+| **Testado.** 507 testes em 12 suítes (mais 307 do front), incluindo CLI falsa do Maestri, adaptador do OMP rodando de verdade no `bun` e conferência dos links da documentação. | Seção [7.6](#76-testes-e-ci) |
 | **Em uso real.** 557 mensagens em 13 dias num projeto desta VPS (seção [11.3](#113-uso-real-nesta-vps)). | Log agregado |
 | **Governança configurável.** Quem pede a quem, limite de pedidos abertos, prazo padrão e alerta de ping-pong, com `simular` para testar antes de ligar. | [Regras](conceitos/regras.md) |
 
@@ -235,6 +235,27 @@ flowchart LR
 | **Base** | Caminhos, cadastro, config, identidade, trava, busca das CLIs. | [`base.py`](../scripts/base.py) |
 | **Coletor de sub-agents** | Chamado pelo hook depois da resposta: grava o ciclo de vida dos sub-agents (`spawn`, `inicio`, `atividade`, `fim`, `retorno`) em `subagentes/`, fora do log. Nunca bloqueia. O painel lê com [`painel_subagentes.py`](../scripts/painel_subagentes.py). | [`subagentes.py`](../scripts/subagentes.py) |
 | **Adaptador OMP** | Traduz os eventos do OMP para o mesmo core. | [`omp-agent-board.ts`](../scripts/omp-agent-board.ts) |
+
+#### Federação de Workspaces (1.14)
+
+O diagrama mostra duas VPSs. Cada uma roda o próprio painel, e cada painel consulta o outro pela tailnet. Não existe servidor central.
+
+```mermaid
+flowchart LR
+    NAV["Navegador (Mac, iPhone)"] -->|"HTTPS 443"| TA
+    subgraph A["Workspace A (VPS)"]
+        TA["tailscale serve"] --> PA["painel.py servir (systemd)"]
+        PA --> DA[("log, cadastro, Orca")]
+    end
+    subgraph B["Workspace B (VPS)"]
+        TB["tailscale serve"] --> PB["painel.py servir (systemd)"]
+        PB --> DB[("log, cadastro, Orca")]
+    end
+    PA -->|"HTTP 8765: /api/versao, /api/geral, stream"| TB
+    PB -->|"HTTP 8765: /api/versao, /api/geral, stream"| TA
+```
+
+Peças: [`painel_federacao.py`](../scripts/painel_federacao.py) (identidade, descoberta por `tailscale status --json`, proxy `/api/w/<id>/api/...`, stream `workspace=*`) e [`cmd_servico.py`](../scripts/cmd_servico.py) (`painel.py servico`: unit systemd e `tailscale serve`). Decisão: [ADR-0012](adr/0012-workspaces-federados.md). Guia: [Workspaces](userguide/painel-workspaces.md).
 
 ### 4.2 Quem aplica as regras
 
@@ -671,10 +692,11 @@ Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.
 
 | Parte | Estado | Evidência |
 |---|---|---|
-| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (140 testes) |
+| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (149 testes) |
 | Casca da SPA | **Pronta** | Sidebar, rotas, tema escuro, seletor de projeto e de período, indicador Live, clientes da API e do SSE, componentes de UI |
-| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 254 testes Vitest no total |
+| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 307 testes Vitest no total |
 | Office: Hub, Mapa e Grade, gaveta, Live Logs e modo TV | **Prontos e integrados** | `web/src/pages/Office/` |
+| **Workspaces federados** (1.14): `/api/versao`, `/api/workspaces`, proxy `/api/w/`, stream `workspace=*`, `painel.py servico`, tela Workspaces, seletor Workspace › Squad e Office modo Prédio | **Prontos** | `painel_federacao.py`, `cmd_servico.py`, `cmd_web.py`, `test_federacao.py`, `web/src/pages/Workspaces/`, `web/src/pages/Office/Predio/` |
 | **Multi-squad** (1.13): `/api/geral`, stream `*`, Visão geral e Office modo Andar | **Prontos** | `cmd_web.geral`, `painel_stream.VigiaGeral`, `web/src/pages/Geral/`, `web/src/pages/Office/Andar/` |
 | **Sub-agents** (1.12): coletor, API, SSE e telas | **Prontos** | `subagentes.py`, `painel_subagentes.py`, `test_subagentes.py` (25 testes), `web/src/pages/Office/Subagentes.test.tsx` |
 | CSP sem script inline; `HEAD` e `OPTIONS` com 405 | **Corrigidos** (divergências 4 e 5) | `cmd_web.py` |
@@ -693,7 +715,8 @@ Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.
 | **Workflows** | Grafo em colunas (Master, Managers e researchers, Issues, Revisão, Resultado), grafo de comunicação e os 10 fluxos mais comuns |
 | **Sub-agents** (1.12) | Em todas as telas, abaixo do agente que os lançou: Office (sub-cards no Mapa, drones no Hub, resumo na Grade, lista na gaveta), Kanban (aninhados no agente e no cartão da tarefa), Dashboard (cartão "Sub-agents rodando"), Analytics (aba Sub-agents) e Workflows (coluna SUB-AGENTS). Status `rodando`, `concluido`, `erro` e `perdido`; agente com sub-agent rodando conta como `trabalhando`. Na 1.13 o sub-agent se chama `subagent-cc` ou `subagent-omp` (harness do pai), o Mapa só destaca os rodando e resume os terminados, a gaveta separa Rodando e Terminados e o Workflows os põe numa faixa própria, com o selo `⑂ N` |
 | **Visão geral** (1.13) | Fica no topo do menu e abre sozinha quando o cadastro tem mais de um projeto. Totais de todos os squads, um card por squad com selo de saúde (ok, atenção, crítico) e um feed unificado de mensagens. Guia: [painel-geral.md](userguide/painel-geral.md) |
-| **Office** | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa sala central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma, por hierarquia ou por time) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens; o botão Live Logs abre o feed por cima. Na 1.13 ganhou o modo **Andar** (`?modo=andar`): uma sala isométrica por squad, com pulsos ao vivo e modo TV |
+| **Workspaces** (1.14) | Uma máquina (VPS) com o agent-board; hierarquia Workspace › Squad › Agente › Sub-agent. Todo painel enxerga todos os Workspaces da tailnet, sem hub. A tela **Workspaces** abre sozinha com mais de 1 online: cards com versão, latência, totais, squads e, se cair, "offline" com `offline_desde`. Seletor Workspace › Squad e todas as telas de squad funcionam com um Workspace remoto. Guia: [painel-workspaces.md](userguide/painel-workspaces.md) |
+| **Office** | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa sala central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma, por hierarquia ou por time) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens; o botão Live Logs abre o feed por cima. Na 1.13 ganhou o modo **Andar** (`?modo=andar`): uma sala isométrica por squad, com pulsos ao vivo e modo TV. Na 1.14, o modo **Prédio** (`?modo=predio`): um andar por Workspace, com as salas dos squads |
 
 #### Rotas da API v2 (já implementadas)
 
@@ -712,7 +735,9 @@ Todas são `GET`, aceitam `?projeto=` e, quando faz sentido, `?periodo=hoje|24h|
 | `/api/workflows` | Nós, arestas, comunicação, fluxos e KPIs |
 | `/api/subagentes` | Sub-agents (1.12), com filtros `periodo`, `agente`, `status` e `limite` |
 | `/api/geral` e `/api/geral/mensagens` | Todos os squads de uma vez (1.13): totais, saúde de cada squad e o feed unificado, paginado por `antes`. Não aceitam `?projeto=` |
-| `/api/stream` | SSE (abaixo). Com `?projeto=*` (1.13), um stream só para todos os projetos |
+| `/api/versao` e `/api/workspaces` | Identidade e versão do Workspace; resumo de todos os Workspaces (1.14), com `offline_desde` |
+| `/api/w/<id>/api/...` | Proxy `GET` para um Workspace descoberto (1.14) |
+| `/api/stream` | SSE (abaixo). Com `?projeto=*` (1.13), um stream só para todos os projetos; com `?workspace=*` (1.14), todos os Workspaces |
 
 #### Tempo real (SSE)
 
@@ -764,6 +789,8 @@ A ordem de checagem no código é: `desconhecido`, `offline`, `esperando`, `trab
 | **Outro qualquer** | Não | Mesmo caminho | Precisa de terminal Orca ou Maestri e de `board.py send` |
 
 **Sub-agents no painel** (1.12): Claude Code (5 eventos) e OMP (3, sem descrição nem tipo). **Codex, Maestri e os demais não têm** coleta, porque não há hook de ciclo de vida equivalente.
+
+**Workspaces** (1.14): precisam de Linux com `systemd` e `tailscale` (HTTPS habilitado na tailnet) em cada VPS; descoberta só entre peers Linux. Não exige nada novo dos agentes.
 
 **Painel multi-squad** (1.13): um squad é um projeto do cadastro. O mesmo servidor atende todos eles, de qualquer harness; a Visão geral e o Andar só leem o log, o cadastro e o Orca de cada um, sem exigir nada novo dos agentes.
 
@@ -830,7 +857,8 @@ Dependências do front (só desenvolvimento): React 18.3.1, Vite 8.3.2, TypeScri
 | `test_agent_board.py` (hook, política, avisos, bloqueios) | 101 | Sim |
 | `test_politica.py` | 35 | Sim |
 | `test_maestri.py` (com CLI `maestri` falsa) | 35 | Sim |
-| `test_web.py` (API, SSE, servidor) | 119 | Sim |
+| `test_web.py` (API, SSE, servidor) | 149 | Sim |
+| `test_federacao.py` (Workspaces: descoberta, proxy, stream, `servico`) | 63 | Sim |
 | `test_contrato.py` | 26 | Sim |
 | `test_registro.py` (log, hash, arquivo morto) | 23 | Sim |
 | `test_time.py` (notas, resumo, worktree, notificação) | 19 | Sim |
@@ -838,9 +866,9 @@ Dependências do front (só desenvolvimento): React 18.3.1, Vite 8.3.2, TypeScri
 | `test_docs.py` (links e âncoras da documentação) | 2 | Sim |
 | `test_subagentes.py` (coletor e leitura do painel; 1 pulado) | 25 | Sim |
 | `test_omp.py` (adaptador no `bun`) | 14 | **Não** |
-| **Total** | **414** | 10 de 11 suítes |
+| **Total** | **507** | 10 de 12 suítes |
 
-Contagem feita rodando as suítes em Python 3.12.3. O front tem mais **211 testes** (Vitest, 16 arquivos, `cd web && npx vitest run`), que a CI também não roda. A CI roda 3.8 e 3.12, mais `ruff` (versão 0.17.0, regras `E4`, `E7`, `E9`, `F`). Atenção: `test_agent_board.py` falha 5 verificações de aviso se rodado **dentro de um terminal aberto pelo Orca server** (seção [14](#14-divergências-encontradas)).
+Contagem feita rodando as suítes em Python 3.12.3. O front tem mais **307 testes** (Vitest, 21 arquivos, `cd web && npx vitest run`), que a CI também não roda. A CI roda 3.8 e 3.12, mais `ruff` (versão 0.17.0, regras `E4`, `E7`, `E9`, `F`). Atenção: `test_agent_board.py` falha 5 verificações de aviso se rodado **dentro de um terminal aberto pelo Orca server** (seção [14](#14-divergências-encontradas)).
 
 ---
 
@@ -892,7 +920,7 @@ No Maestri, o cadastro começa no agente: `painel.py solicitar`, depois `solicit
 
 | Ação | Como |
 |---|---|
-| **Atualizar** | `git pull` na pasta da skill, `bash scripts/install.sh`, rodar os testes. Se o contrato mudou, em cada projeto: `painel.py init … --atualizar-contrato`, commit e um `aviso` ao time |
+| **Atualizar** | `git pull` na pasta da skill, `bash scripts/install.sh`, rodar os testes. Da 1.14 em diante, em cada VPS, uma vez: `painel.py servico instalar`. Se o contrato mudou, em cada projeto: `painel.py init … --atualizar-contrato`, commit e um `aviso` ao time |
 | **Desinstalar** | Tirar do `settings.json` as entradas com `agent-board` (há backup), apagar `~/.omp/agent/hooks/pre/agent-board.ts` e `claude mcp remove --scope user agent-board` |
 | **Só desligar** | Esvaziar o `paineis.json`: os hooks deixam de agir sobre qualquer um |
 
@@ -901,7 +929,10 @@ No Maestri, o cadastro começa no agente: `painel.py solicitar`, depois `solicit
 ```bash
 python3 $S/painel.py servir --raiz <projeto>        # http://127.0.0.1:8765
 ssh -L 8765:127.0.0.1:8765 <servidor>               # para ver do seu computador
+python3 $S/painel.py servico instalar               # 1.14: sempre ligado e visível na tailnet (systemd + tailscale serve)
 ```
+
+Com o serviço, abra `https://<maquina>.<tailnet>.ts.net` no Mac ou no iPhone. Guia: [Workspaces](userguide/painel-workspaces.md).
 
 ---
 
@@ -964,6 +995,7 @@ O motivo vem na própria mensagem de erro, com a correção sugerida. Lista deta
 | **Corpo das mensagens fica em disco** | O log guarda só o assunto. Mas `~/.agent-hooks/agent-board/envios/<id>.json` guarda o **comando completo, com o corpo**, por 7 dias, para o `reenviar`. Os arquivos são criados com a permissão padrão (sem `chmod 600`) | `guardar_envio` em `hook_core.py` |
 | **Sem filtro de conteúdo** | Nada no código filtra o corpo de uma mensagem. Ele chega ao agente de destino como texto. Quem confiar cegamente no que lê pode ser induzido | Leitura do `envio.py` e do `hook_core.py` |
 | **Painel sem login** | Quem tem acesso à máquina vê o painel. A proteção é escutar só em loopback | [ADR-0005](adr/0005-painel-web-local-somente-leitura.md). Expor em `0.0.0.0` está fora do escopo |
+| **Workspaces: a tailnet é a fronteira** | Com `painel.py servico instalar`, qualquer um na tailnet vê o painel de todas as VPSs, inclusive comandos e caminhos de sub-agents. Continua só leitura, sem porta pública. O proxy `/api/w/` só repassa `GET /api/...` ao IP de um Workspace descoberto (anti-SSRF, sem redirect, 5 s, 5 MB) e `X-AgentBoard-Federado` evita laço | [ADR-0012](adr/0012-workspaces-federados.md) |
 | **Aviso na tela é digitado como texto do usuário** | Por isso o hook não digita quando há um diálogo aberto | Hooks e limites |
 | **Correio do Orca por terminal** | Não sobrevive se o painel fechar antes de ler. A linha no log fica e o `reenviar` manda de novo | Hooks e limites |
 | **Duas máquinas no mesmo checkout** | Não suportado: a trava vale por máquina | [ADR-0003](adr/0003-trava-fora-do-log-e-modulos.md) |
@@ -982,7 +1014,7 @@ O agent-board protege um time **cooperativo** de agentes contra erro, esquecimen
 
 ## 10. Decisões de arquitetura (ADRs)
 
-Onze ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **aceita**.
+Doze ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **aceita**.
 
 | ADR | Data | Decisão | Consequência principal |
 |---|---|---|---|
@@ -997,6 +1029,7 @@ Onze ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **ace
 | [0009](adr/0009-entrega-fecha-o-pedido.md) Entrega fecha o pedido | 2026-10-14 | `respostas()` conta `resposta` **e** `entrega` com `--responde-a`. Entrega rejeitada não reabre o pedido. `resposta` a pedido de trabalho continua permitida. | Quadro, `vigiar`, limite e painel concordam. Pedido entregue deixa de aparecer como atrasado. |
 | [0010](adr/0010-painel-v2-spa-com-build-e-sse.md) Painel v2: SPA com build commitado e SSE | 2026-10-20 | SPA React em `web/`, build em `scripts/painel_web/`. SSE no lugar do polling. Multi-projeto. Sem telemetria nova (o item foi reaberto em parte pela 0011). Herda só leitura, loopback, `Host` e conteúdo como texto. | Cadeia de build só para quem desenvolve. Peso do build no repo (meta: menos de 600 KB gzip). Conexões longas: `ThreadingHTTPServer`, heartbeat de 15 s, limite de 16. |
 | [0011](adr/0011-subagentes-no-painel.md) Sub-agents no painel: coletor de ciclo de vida | 2026-10-20 | Hooks novos só de coleta gravam `spawn`, `inicio`, `atividade`, `fim` e `retorno` em `subagentes/` (fora do repo, sem hash, 14 dias). 4 execuções por sub-agent; a atividade pega carona nos hooks existentes. Sem prompt nem saída; segredos mascarados. Claude Code e OMP. | Quem atualiza roda o `install.sh` de novo. O painel mostra comandos e caminhos mascarados. O `retorno` de sub-agent em segundo plano só diz que ele subiu. |
+| [0012](adr/0012-workspaces-federados.md) Workspaces federados | 2026-10-20 | Workspace = uma VPS. Federação simétrica, sem hub; acesso só pela Tailscale (`tailscale serve`); painel sempre ligado por systemd; descoberta por `tailscale status --json` + `/api/versao`; proxy só para peers descobertos; continua só leitura; banco central só quando houver histórico cruzado. | Cada VPS roda `painel.py servico instalar` uma vez. Quem está na tailnet vê o painel de todas. Workspace offline some do ao vivo; sem histórico cruzado. |
 
 ---
 
@@ -1018,6 +1051,8 @@ Fonte: [CHANGELOG.md](../CHANGELOG.md).
 
 | Versão | Data | Destaques |
 |---|---|---|
+| **1.14.0** | 2026-10-20 | **Workspaces federados** ([ADR-0012](adr/0012-workspaces-federados.md)): `/api/versao`, `/api/workspaces`, proxy `/api/w/`, stream `workspace=*`, `painel.py servico`, tela Workspaces, seletor Workspace › Squad e Office modo Prédio. Cada VPS roda `painel.py servico instalar` uma vez. |
+| **1.13.1** | 2026-10-20 | Workflows com os sub-agents de cada agente entre o agente e as issues; sub-agents ligados a issues; mesmas regras em Kanban, Dashboard e Office. |
 | **1.13.0** | 2026-10-20 | **Painel multi-squad**: Visão geral, `/api/geral`, `/api/geral/mensagens`, stream `*` e Office modo Andar. Sub-agents mais claros (`subagent-cc`/`subagent-omp`, resumo dos terminados, faixa própria no Workflows). |
 | **1.12.1** | 2026-10-20 | Corrige o status piscando dos managers parados e os sub-agents sumidos em sessões abertas antes da 1.12.0. |
 | **1.12.0** | 2026-10-20 | **Sub-agents no painel** ([ADR-0011](adr/0011-subagentes-no-painel.md)): coletor nos hooks, `/api/subagentes` e evento SSE `subagente`, telas do Office, Kanban, Dashboard, Analytics e Workflows. Exige rodar o `install.sh` de novo. |
@@ -1242,6 +1277,9 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | `web/` | Código-fonte da SPA do painel v2 (React, Vite, TypeScript, Tailwind). Veja [`web/README.md`](../web/README.md). O build vai para `scripts/painel_web/` e é commitado no release |
 | `web/src/pages/Geral/` | Tela Visão geral (1.13): totais, cards de squad e feed unificado |
 | `web/src/pages/Office/Andar/` | Office modo Andar (1.13): uma sala isométrica por squad |
+| `web/src/pages/Workspaces/`, `web/src/pages/Office/Predio/` | Tela Workspaces e Office modo Prédio (1.14) |
+| [`docs/userguide/painel-workspaces.md`](userguide/painel-workspaces.md) | Guia dos Workspaces federados |
+| [`docs/planos/workspaces.md`](planos/workspaces.md) | Plano dos Workspaces (1.14) |
 
 ### 13.2 Em `scripts/`
 
@@ -1264,9 +1302,11 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | [`cmd_tarefas.py`](../scripts/cmd_tarefas.py) | `tarefas`, `vigiar`, `simular` |
 | [`cmd_time.py`](../scripts/cmd_time.py) | `nota`, `notas`, `resumo` e o worktree do `cadastrar --worktree` |
 | [`cmd_maestri.py`](../scripts/cmd_maestri.py) | `eu`, `solicitar`, `solicitacoes`, `maestri conectar`, `maestri rotina` |
-| [`cmd_web.py`](../scripts/cmd_web.py) | `servir`: servidor HTTP, rotas `/api/*` (inclui `/api/geral`) e SSE |
+| [`cmd_web.py`](../scripts/cmd_web.py) | `servir`: servidor HTTP, rotas `/api/*` (inclui `/api/geral`, `/api/workspaces` e o proxy `/api/w/`) e SSE |
 | [`painel_estado.py`](../scripts/painel_estado.py) | Estado v1, tarefas e status do agente |
 | [`painel_dados.py`](../scripts/painel_dados.py) | Dados derivados do log para a API v2 |
+| [`painel_federacao.py`](../scripts/painel_federacao.py) | Workspaces (1.14): identidade, descoberta, proxy e stream federado |
+| [`cmd_servico.py`](../scripts/cmd_servico.py) | `painel.py servico`: systemd e `tailscale serve` |
 | [`painel_stream.py`](../scripts/painel_stream.py) | O vigia que gera os eventos SSE (`Vigia` por projeto e `VigiaGeral` para o stream `*`) |
 | [`subagentes.py`](../scripts/subagentes.py) | Coletor de sub-agents (grava em `subagentes/`) |
 | [`painel_subagentes.py`](../scripts/painel_subagentes.py) | Leitura dos eventos de sub-agents para a API |
@@ -1276,7 +1316,7 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | [`omp-agent-board.ts`](../scripts/omp-agent-board.ts) | Adaptador do OMP |
 | [`install.sh`](../scripts/install.sh) | Instalador idempotente |
 | [`VERSION`](../scripts/VERSION) | Versão do pacote |
-| `test_*.py` | 11 suítes de teste |
+| `test_*.py` | 12 suítes de teste |
 
 Contagem de linhas em `scripts/`: cerca de 5.000 de código (Python, TypeScript e `install.sh`), mais cerca de 255 do `painel_web.html`, e cerca de 3.700 de teste.
 
@@ -1290,6 +1330,7 @@ Contagem de linhas em `scripts/`: cerca de 5.000 de código (Python, TypeScript 
 | `avisos.log` | Avisos digitados ou suprimidos, falhas, encerramentos sem resposta, alertas |
 | `avisos-estado.json` | Controle de 1 aviso por destino a cada 60 s |
 | `alertas-estado.json` | Controle do alerta de ping-pong |
+| `workspace.json` | Opcional (1.14): `nome`, `porta_federacao`, `hosts_extras`, `ignorar` |
 | `subagentes/<projeto>/AAAA-MM-DD.jsonl` | Ciclo de vida dos sub-agents (1.12), sem hash. Apagado depois de 14 dias |
 | `pendentes/` | Estado entre o pré e o pós-envio. Apagado depois de 1 h |
 | `cobrancas/<painel>.json` | Quantas vezes o Stop já cobrou as mesmas pendências |

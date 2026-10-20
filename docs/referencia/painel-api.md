@@ -272,3 +272,84 @@ Os sub-agents fazem parte do fluxo de trabalho: o agente recebe a tarefa, dispar
   - `agente → #NNN` direta só quando **nenhum** sub-agent do pai está ligado àquela issue. Assim, o trabalho que passou por sub-agents aparece passando por eles.
 - **Ordem das colunas:** master → manager/researcher → **subagente** → issue → revisao → resultado.
 - `kpis.subagentes` continua igual. Novo `kpis.subagentes_com_issue`, a fração de 0 a 1 dos sub-agents com pelo menos uma issue.
+
+## Workspaces federados (1.14)
+
+Um **Workspace** é uma máquina (VPS) com o agent-board: R7, BF Labs, Aura Bios, iTarget. A hierarquia fica Workspace › Squad (projeto) › Agente › Sub-agent. Não há hub: **todo painel enxerga todos os Workspaces** da tailnet e mostra o próprio mais os outros. Tudo continua só leitura.
+
+### Exposição na tailnet (cada Workspace)
+
+- O servidor continua escutando em 127.0.0.1:8765. Quem expõe é o `tailscale serve`, só na tailnet e sem porta pública:
+  - `https://<maquina>.<tailnet>.ts.net/` → `http://127.0.0.1:8765`, para o navegador (Mac e iPhone com MagicDNS);
+  - `http://<ip-tailnet>:8765/` → `http://127.0.0.1:8765`, para os outros painéis, que chegam pelo IP (algumas VPSs rodam com `--accept-dns=false`).
+- **Host permitido:** além de `127.0.0.1:<porta>` e `localhost:<porta>`, o servidor aceita o `DNSName` e os `TailscaleIPs` do próprio nó, com e sem porta (lidos de `tailscale status --json` no boot e a cada 5 min), mais `hosts_extras` do `workspace.json`. Origin vale para as mesmas origens.
+- **Serviço sempre ligado:** um unit systemd `agent-board-painel.service` (`Restart=always`) roda `painel.py servir --porta 8765` a partir do checkout da skill. `painel.py servico instalar|status|remover` gera e instala o unit e o `tailscale serve`. Os dois passos são idempotentes.
+
+### Identidade do Workspace
+
+`~/.agent-hooks/agent-board/workspace.json` (opcional, `chmod 600`):
+
+```json
+{"nome": "R7", "porta_federacao": 8765, "hosts_extras": [], "ignorar": []}
+```
+
+- `id` é o `HostName` da Tailscale (`r7-workspace`), que é estável. Sem Tailscale, vale o hostname da máquina.
+- `nome` é o rótulo que aparece na tela. Se não houver, vale o `id`.
+
+### `GET /api/versao`
+
+```ts
+{ versao: string; contrato: 3; workspace: { id: string; nome: string }; projetos: string[] }
+```
+
+### Descoberta
+
+A cada 30 s, e sob demanda com cache, o painel lê `tailscale status --json` e faz o seguinte:
+
+1. Pega os peers `Online` cujo `OS` é `linux`, menos os listados em `ignorar`.
+2. Para cada um, faz `GET http://<TailscaleIPs[0]>:<porta_federacao>/api/versao` com timeout de 1,5 s.
+3. Quem responde com um `contrato` conhecido vira Workspace.
+
+Sem `tailscale` instalado, só existe o Workspace local. A descoberta nunca bloqueia uma requisição por mais de 2 s; o que ainda não respondeu sai como `online: false`.
+
+### `GET /api/workspaces?periodo`
+
+```ts
+interface WorkspaceResumo {
+  id: string; nome: string; local: boolean
+  online: boolean; versao: string | null; desatualizado: boolean   // versao < a do painel que responde
+  offline_desde: string | null   // ISO de quando este painel viu o Workspace offline pela 1ª vez; null se online (só em memória, zera ao reiniciar)
+  latencia_ms: number | null; erro?: string
+  saude: "ok" | "atencao" | "critico" | "offline"                  // pior saúde entre os squads; offline se não respondeu
+  totais: Geral["totais"] | null
+  squads: { projeto: string; saude: Squad["saude"]; agentes: number; trabalhando: number }[]
+}
+{ agora: string; workspaces: WorkspaceResumo[] }   // local primeiro, depois por nome
+```
+
+### Proxy para outro Workspace
+
+`GET /api/w/<workspace_id>/api/<rota>?<query>` repassa a requisição para o Workspace `<workspace_id>`. Quando o id é o local, atende localmente.
+
+- Só `GET` e só caminhos `/api/...`. Caminho ou query com espaço ou caractere de controle, ou query com mais de 2000 caracteres, dá 404; o id precisa casar `[A-Za-z0-9][A-Za-z0-9._-]{0,62}`. O destino é sempre o IP do Workspace descoberto, nunca um host da URL, e redirecionamento não é seguido (502).
+- Se as 16 vagas SSE estiverem ocupadas, o repasse do stream dá 503.
+- Timeout de 5 s; resposta limitada a 5 MB.
+- O stream (`/api/w/<id>/api/stream?...`) é repassado como SSE, linha a linha.
+- O painel que repassa manda `X-AgentBoard-Federado: 1`. Quem recebe esse cabeçalho **não federa de novo**: `/api/workspaces` responde só o local e `/api/w/` dá 404. Isso evita laço.
+- Workspace desconhecido ou offline: 502 `{erro}`.
+
+### Stream de todos os Workspaces
+
+`GET /api/stream?workspace=*` usa uma conexão só, que ocupa 1 vaga.
+
+- Junta o stream `projeto=*` local e um cliente SSE por Workspace remoto, com reconexão e backoff.
+- Os eventos `mensagem`, `agente`, `tarefa` e `subagente` chegam com `workspace` e `projeto` no `data`.
+- Eventos novos `workspace` (data: `WorkspaceResumo`, com `offline_desde`) quando um Workspace entra, sai ou muda de online/saúde.
+- O `ola` traz `{workspace: "*", workspaces: string[], agora}`.
+
+### Front
+
+- Todas as chamadas do cliente ganham `workspace`: o local usa as rotas de sempre, e um remoto usa o prefixo `/api/w/<id>`.
+- O seletor da barra lateral vira **Workspace › Squad**.
+- A tela nova **Workspaces** fica acima da Visão geral.
+- O Office ganha o modo **Prédio**: um andar por Workspace, com uma sala por squad.

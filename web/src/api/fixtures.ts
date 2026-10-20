@@ -24,7 +24,10 @@ import type {
   Squad,
   Tarefa,
   TipoMsg,
+  Versao,
   Workflows,
+  WorkspaceResumo,
+  Workspaces,
 } from "./tipos";
 
 export const PROJETO_FIXTURE = "r7one";
@@ -539,10 +542,134 @@ function periodoValido(v: unknown): Periodo {
 
 type Params = Record<string, string | number | undefined | null>;
 
-/** Imita o servidor: mesma rota, mesmas formas de resposta. */
+// ---------- Workspaces federados (1.14) ----------
+
+export const WORKSPACE_LOCAL = "r7-workspace";
+const VERSAO_PAINEL = "1.14.0";
+
+interface DefWorkspace {
+  id: string;
+  nome: string;
+  local: boolean;
+  online: boolean;
+  versao: string | null;
+  latencia: number | null;
+  erro?: string;
+  /** minutos atrás em que ficou offline */
+  offlineMin?: number;
+  /** squads: nome no Workspace e o squad do R7 em que os dados são baseados */
+  squads: Array<{ nome: string; origem: string }>;
+}
+
+const DEFS_WORKSPACES: DefWorkspace[] = [
+  { id: WORKSPACE_LOCAL, nome: "R7", local: true, online: true, versao: VERSAO_PAINEL, latencia: null, squads: [] },
+  {
+    id: "bf-labs", nome: "BF Labs", local: false, online: true, versao: VERSAO_PAINEL, latencia: 38,
+    squads: [{ nome: "bf-marketing", origem: SQUAD_AB }, { nome: "bf-ads", origem: SQUAD_MENT }, { nome: "bf-sites", origem: PROJETO_FIXTURE }],
+  },
+  {
+    id: "aura-bios", nome: "Aura Bios", local: false, online: false, versao: null, latencia: null,
+    erro: "sem resposta em 1,5 s (connection timed out)", offlineMin: 47, squads: [],
+  },
+  {
+    id: "itarget", nome: "iTarget", local: false, online: true, versao: "1.12.0", latencia: 112,
+    squads: [{ nome: "itarget-app", origem: PROJETO_FIXTURE }, { nome: "itarget-crm", origem: SQUAD_AB }],
+  },
+];
+
+function renomear<T>(obj: T, de: string, para: string): T {
+  return JSON.parse(JSON.stringify(obj).split(de).join(para)) as T;
+}
+
+const defDe = (id: string) => DEFS_WORKSPACES.find((d) => d.id === id);
+
+export function squadsDoWorkspace(id: string, agora = Date.now()): Squad[] {
+  const def = defDe(id);
+  if (!def || def.local) return squadsFixture(agora);
+  const base = squadsFixture(agora);
+  return def.squads.map((d) => {
+    const origem = base.find((x) => x.projeto === d.origem) ?? base[0];
+    return renomear(origem, d.origem, d.nome);
+  });
+}
+
+function piorSaude(squads: Squad[]): WorkspaceResumo["saude"] {
+  if (squads.some((s) => s.saude === "critico")) return "critico";
+  if (squads.some((s) => s.saude === "atencao")) return "atencao";
+  return "ok";
+}
+
+export function workspaceFixture(id: string, agora = Date.now()): WorkspaceResumo {
+  const def = defDe(id) ?? DEFS_WORKSPACES[0];
+  const comum = { id: def.id, nome: def.nome, local: def.local, versao: def.versao };
+  if (!def.online) {
+    return {
+      ...comum, online: false, desatualizado: false, latencia_ms: null, erro: def.erro, saude: "offline", totais: null, squads: [],
+      offline_desde: iso(agora - (def.offlineMin ?? 5) * MIN),
+    };
+  }
+  const squads = squadsDoWorkspace(def.id, agora);
+  return {
+    ...comum,
+    online: true,
+    desatualizado: def.versao !== null && def.versao !== VERSAO_PAINEL,
+    latencia_ms: def.latencia,
+    saude: piorSaude(squads),
+    totais: totaisDe(squads),
+    squads: squads.map((s) => ({ projeto: s.projeto, saude: s.saude, agentes: s.agentes.length, trabalhando: s.indicadores.trabalhando })),
+  };
+}
+
+export function workspacesFixture(agora = Date.now()): Workspaces {
+  return { agora: iso(agora), workspaces: DEFS_WORKSPACES.map((d) => workspaceFixture(d.id, agora)) };
+}
+
+export function versaoFixture(id = WORKSPACE_LOCAL): Versao {
+  const def = defDe(id) ?? DEFS_WORKSPACES[0];
+  const projetos = def.local ? projetosFixture().map((p) => p.projeto) : def.squads.map((s) => s.nome);
+  return { versao: def.versao ?? VERSAO_PAINEL, contrato: 3, workspace: { id: def.id, nome: def.nome }, projetos };
+}
+
+const RE_PROXY = /^\/api\/w\/([^/]+)(\/api\/.*)$/;
+
+/** Imita o servidor: mesma rota, mesmas formas de resposta (inclui o proxy `/api/w/<id>/api/...`). */
 export function responderFixture(caminho: string, params: Params = {}): unknown {
+  const m = RE_PROXY.exec(caminho);
+  if (caminho === "/api/workspaces") return workspacesFixture();
+  if (!m) return responderLocal(caminho, params);
+  const id = decodeURIComponent(m[1]);
+  const rota = m[2];
+  const def = defDe(id);
+  if (!def) throw new ErroApi(502, "workspace desconhecido");
+  if (!def.online) throw new ErroApi(502, `workspace offline: ${def.erro ?? "sem resposta"}`);
+  if (def.local) return responderLocal(rota, params);
+  const agora = Date.now();
+  if (rota === "/api/versao") return versaoFixture(id);
+  if (rota === "/api/projetos") {
+    return def.squads.map((s, i) => ({ projeto: s.nome, raiz: `/root/${s.nome}`, agentes: 4, atual: i === 0 }) satisfies Projeto);
+  }
+  if (rota === "/api/geral") {
+    const squads = squadsDoWorkspace(id, agora);
+    return { agora: iso(agora), periodo: periodoValido(params.periodo), squads, totais: totaisDe(squads) } satisfies Geral;
+  }
+  if (rota === "/api/geral/mensagens") {
+    const lista = def.squads
+      .flatMap((s) => renomear(msgsDoSquad(s.origem, agora), s.origem, s.nome))
+      .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+    const limite = Number(params.limite) || 100;
+    const antes = params.antes ? lista.filter((x) => x.ts < String(params.antes)) : lista;
+    return { mensagens: antes.slice(0, limite), mais: antes.length > limite } satisfies PaginaMensagensGeral;
+  }
+  const projeto = (params.projeto as string | undefined) || def.squads[0]?.nome;
+  if (!def.squads.some((s) => s.nome === projeto)) throw new ErroApi(404, "projeto desconhecido");
+  const r = responderLocal(rota, { ...params, projeto: PROJETO_FIXTURE });
+  return renomear(r, PROJETO_FIXTURE, projeto);
+}
+
+function responderLocal(caminho: string, params: Params = {}): unknown {
   const agora = Date.now();
   const projeto = (params.projeto as string | undefined) || PROJETO_FIXTURE;
+  if (caminho === "/api/versao") return versaoFixture();
   if (caminho === "/api/geral") return geralFixture(periodoValido(params.periodo), agora);
   if (caminho === "/api/geral/mensagens") {
     let lista = mensagensGeralFixture(agora);
@@ -611,11 +738,18 @@ export function responderFixture(caminho: string, params: Params = {}): unknown 
  * em tempos, uma mensagem nova e uma atualização de agente.
  */
 export function fabricaFixtures(url = ""): FonteEventos {
+  const todosWs = url.includes("workspace=*");
+  const proxy = /^\/api\/w\/([^/]+)\//.exec(url);
+  const wsId = proxy ? decodeURIComponent(proxy[1]) : WORKSPACE_LOCAL;
   const todos = url.includes("projeto=*");
+  const projetoUrl = /projeto=([^&]+)/.exec(url)?.[1];
   const ouvintes = new Map<string, Array<(ev: MessageEvent) => void>>();
   let n = 0;
-  const emitir = (tipo: string, dado: unknown) =>
-    ouvintes.get(tipo)?.forEach((f) => f({ data: JSON.stringify(dado) } as MessageEvent));
+  const emitir = (tipo: string, dado: unknown) => {
+    // stream de um Workspace remoto: renomeia os dados-base do R7 para o squad aberto
+    const final = proxy && projetoUrl && projetoUrl !== "*" ? renomear(dado, PROJETO_FIXTURE, decodeURIComponent(projetoUrl)) : dado;
+    ouvintes.get(tipo)?.forEach((f) => f({ data: JSON.stringify(final) } as MessageEvent));
+  };
   const fonte: FonteEventos = {
     onopen: null,
     onerror: null,
@@ -630,9 +764,25 @@ export function fabricaFixtures(url = ""): FonteEventos {
     n += 1;
     const agora = Date.now();
     emitir("ping", { agora: iso(agora) });
+    if (todosWs) {
+      // stream "workspace=*": eventos de todos os Workspaces online, com `workspace` e `projeto`
+      const online = DEFS_WORKSPACES.filter((d) => d.online);
+      const def = online[n % online.length];
+      const squads = squadsDoWorkspace(def.id, agora);
+      const sq = squads[n % squads.length];
+      emitir("mensagem", {
+        id: `live-${n}`, ts: iso(agora), de: sq.agentes[n % sq.agentes.length].agente, para: sq.agentes[0].agente,
+        tipo: n % 4 === 0 ? "entrega" : "andamento", assunto: "Atualização simulada (fixtures)", projeto: sq.projeto, workspace: def.id,
+      } satisfies MensagemSquad & { workspace: string });
+      if (n % 3 === 0) {
+        const w = workspaceFixture("bf-labs", agora);
+        emitir("workspace", { ...w, latencia_ms: 30 + ((n * 7) % 25) });
+      }
+      return;
+    }
     if (todos) {
       // stream "*": todo evento traz o projeto (squad) de origem
-      const squads = squadsFixture(agora);
+      const squads = squadsDoWorkspace(wsId, agora);
       const sq = squads[n % squads.length];
       if (n % 2 === 0) {
         const alvo = sq.agentes[n % sq.agentes.length];
@@ -666,9 +816,11 @@ export function fabricaFixtures(url = ""): FonteEventos {
   }, 5000);
   setTimeout(() => {
     fonte.onopen?.(new Event("open"));
-    emitir("ola", todos
-      ? { projeto: "*", projetos: projetosFixture().map((p) => p.projeto), agora: iso(Date.now()) }
-      : { projeto: PROJETO_FIXTURE, agora: iso(Date.now()) });
+    emitir("ola", todosWs
+      ? { workspace: "*", workspaces: DEFS_WORKSPACES.filter((d) => d.online).map((d) => d.id), agora: iso(Date.now()) }
+      : todos
+        ? { projeto: "*", projetos: projetosFixture().map((p) => p.projeto), agora: iso(Date.now()) }
+        : { projeto: PROJETO_FIXTURE, agora: iso(Date.now()) });
   }, 300);
   return fonte;
 }

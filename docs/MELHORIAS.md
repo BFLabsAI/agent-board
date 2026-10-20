@@ -1,6 +1,6 @@
 # O que melhorou no agent-board
 
-Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.13.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
+Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.14.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
 
 ---
 
@@ -79,6 +79,7 @@ No Claude Code, o agente pode usar ferramentas prontas (`board_send`, `board_pen
 
 **Antes:** uma página única que se atualizava a cada 5 s.
 **Agora:** o painel v2, com sete telas que se atualizam sozinhas (push por SSE, sem polling) e um indicador **Live** na barra lateral:
+- **Workspaces** (1.14): todas as VPSs da sua tailnet num painel só, sem servidor central. Cada VPS roda `painel.py servico instalar` uma vez e fica sempre ligada. Abra `https://<maquina>.<tailnet>.ts.net` no Mac ou no iPhone. O Office ganhou o modo **Prédio**, um andar por VPS. Guia: [Workspaces](userguide/painel-workspaces.md). Decisão: [ADR-0012](adr/0012-workspaces-federados.md);
 - **Visão geral** (1.13): todos os squads (um squad é um projeto) numa tela só, com saúde de cada um e um feed unificado;
 - **Dashboard**: agentes trabalhando, pedidos abertos, pendentes, atrasados, revisão e tempo de resposta;
 - **Kanban**: tarefas por estado, ou agentes por status (trabalhando, esperando você, parado…);
@@ -113,10 +114,10 @@ Achados no teste ao vivo no Maestri e na revisão das docs (todos com teste auto
 
 ## 10. Qualidade
 
-- **11 suítes de testes Python (435 testes) e 254 testes do front** (inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) A CI roda 10 das 11 suítes Python em Python 3.8 e 3.12, mais lint. A suíte do OMP (precisa do `bun`) e a do front rodam à mão.
+- **12 suítes de testes Python (507 testes) e 307 testes do front** (inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) A CI roda 10 das 12 suítes Python em Python 3.8 e 3.12, mais lint. A suíte do OMP (precisa do `bun`), a dos sub-agents e a do front rodam à mão.
 - Código dividido em módulos pequenos (antes era um arquivo de quase 800 linhas).
 - Sem nenhuma dependência nova: só a biblioteca padrão do Python.
-- Decisões importantes registradas em **11 ADRs** (`docs/adr/`).
+- Decisões importantes registradas em **12 ADRs** (`docs/adr/`).
 
 ---
 

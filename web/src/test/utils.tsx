@@ -4,7 +4,7 @@ import { vi } from "vitest";
 import { App } from "../App";
 import { cliente } from "../api/cliente";
 import {
-  agentesFixture, conversasFixture, projetosFixture, resumoFixture, tarefasFixture,
+  agentesFixture, conversasFixture, projetosFixture, resumoFixture, tarefasFixture, workspacesFixture,
 } from "../api/fixtures";
 import type { FabricaFonte, FonteEventos } from "../api/stream";
 import { ProvedorPainel } from "../context/ContextoPainel";
@@ -37,7 +37,16 @@ export class FonteFalsa implements FonteEventos {
 }
 export const fabricaFalsa: FabricaFonte = (url) => new FonteFalsa(url);
 
+/** Padrão dos testes: um Workspace só (o local), então a abertura e o seletor se comportam como antes dos Workspaces. */
+export function mockarWorkspaces(modo: "um" | "varios" = "um") {
+  vi.spyOn(cliente, "workspaces").mockImplementation(async () => {
+    const f = workspacesFixture();
+    return modo === "um" ? { ...f, workspaces: f.workspaces.slice(0, 1) } : f;
+  });
+}
+
 export function mockarCliente() {
+  mockarWorkspaces();
   vi.spyOn(cliente, "projetos").mockImplementation(async () => projetosFixture());
   vi.spyOn(cliente, "resumo").mockImplementation(async () => resumoFixture());
   vi.spyOn(cliente, "agentes").mockImplementation(async () => agentesFixture());

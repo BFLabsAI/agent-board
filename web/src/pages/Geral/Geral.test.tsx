@@ -251,8 +251,9 @@ describe("abertura e seletor", () => {
     renderPainel("/kanban?projeto=agent-board");
     const nav = await screen.findByRole("navigation", { name: "Navegação principal" });
     const links = within(nav).getAllByRole("link").map((l) => l.textContent);
-    expect(links[0]).toBe("Visão geral");
-    expect(links[1]).toBe("Dashboard");
+    expect(links[0]).toBe("Workspaces");
+    expect(links[1]).toBe("Visão geral");
+    expect(links[2]).toBe("Dashboard");
     await waitFor(() => expect(FonteFalsa.todas.some((f) => f.url === "/api/stream?projeto=agent-board")).toBe(true));
     await userEvent.click(within(nav).getByRole("link", { name: "Visão geral" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Visão geral" })).toBeInTheDocument();

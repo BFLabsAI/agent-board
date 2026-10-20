@@ -12,15 +12,15 @@ export interface EstadoApi<T> {
 
 /**
  * Busca REST com loading/erro/recarregar.
- * `buscador` recebe o contexto global (projeto, período) e um AbortSignal.
- * Refaz sozinho quando projeto/período mudam ou quando o stream reconecta.
+ * `buscador` recebe o contexto global (projeto, período, workspace) e um AbortSignal.
+ * Refaz sozinho quando projeto/período/workspace mudam ou quando o stream reconecta.
  * Passe `deps` com os filtros locais da tela.
  */
 export function useApi<T>(
   buscador: (ctx: Contexto, sinal: AbortSignal) => Promise<T>,
   deps: ReadonlyArray<unknown> = [],
 ): EstadoApi<T> {
-  const { projeto, periodo } = useContextoPainel();
+  const { projeto, periodo, workspace } = useContextoPainel();
   const [dados, setDados] = useState<T | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<Error | null>(null);
@@ -34,7 +34,7 @@ export function useApi<T>(
   useEffect(() => {
     const ac = new AbortController();
     setCarregando(true);
-    fn.current({ projeto: projeto ?? undefined, periodo }, ac.signal)
+    fn.current({ projeto: projeto ?? undefined, periodo, workspace }, ac.signal)
       .then((d) => {
         if (ac.signal.aborted) return;
         setDados(d);
@@ -48,7 +48,7 @@ export function useApi<T>(
         if (!ac.signal.aborted) setCarregando(false);
       });
     return () => ac.abort();
-  }, [projeto, periodo, tique, ...deps]);
+  }, [projeto, periodo, workspace, tique, ...deps]);
 
   return { dados, carregando, erro, recarregar };
 }
