@@ -495,7 +495,8 @@ class Dados(Cenario):
         w = painel_dados.workflows([], [], "hoje", agora_local(), {}, {})
         self.assertEqual((w["nos"], w["arestas"], w["fluxos"]), ([], [], []))
         self.assertEqual(w["kpis"], {"conversas": 0, "taxa_aprovacao": None, "tempo_ate_entrega_p50_min": None,
-                                     "fluxo_mais_comum": None, "msgs_por_conversa": None, "subagentes": 0})
+                                     "fluxo_mais_comum": None, "msgs_por_conversa": None, "subagentes": 0,
+                                     "subagentes_com_issue": None})
 
 
 
@@ -1742,13 +1743,15 @@ class CamposDeSubagentes(SubBase):
         w = painel_dados.workflows(msgs, painel_dados.conversas(msgs, agora, tars), "7d", agora, {}, {t["id"]: t for t in tars},
                                    self.listar())
         nos = {n["id"]: n for n in w["nos"]}
-        # agrupado por harness do pai (subagent-cc / subagent-omp), não pelo tipo
-        self.assertEqual((nos["sub:subagent-cc"]["coluna"], nos["sub:subagent-cc"]["rotulo"], nos["sub:subagent-cc"]["n"]),
-                         ("subagente", "subagent-cc", 4))
+        # um nó por agente pai (não por harness nem por tipo)
+        self.assertEqual((nos["sub:" + G]["coluna"], nos["sub:" + G]["rotulo"], nos["sub:" + G]["n"]), ("subagente", G, 3))
+        self.assertEqual((nos["sub:" + R]["rotulo"], nos["sub:" + R]["n"]), (R, 1))
+        self.assertNotIn("sub:subagent-cc", nos)
         self.assertNotIn("sub:Explore", nos)
         ar = {(a["de"], a["para"]): a["n"] for a in w["arestas"]}
-        self.assertEqual((ar[(G, "sub:subagent-cc")], ar[(R, "sub:subagent-cc")]), (3, 1))
+        self.assertEqual((ar[(G, "sub:" + G)], ar[(R, "sub:" + R)]), (3, 1))
         self.assertEqual(w["kpis"]["subagentes"], 4)
+        self.assertEqual(w["kpis"]["subagentes_com_issue"], 0.25)  # só g1, pela tarefa p1 (#7)
         self.assertEqual(nos[G]["coluna"], "manager")
         ordem = [n["coluna"] for n in w["nos"]]
         self.assertLess(ordem.index("manager"), ordem.index("subagente"))
@@ -1760,7 +1763,92 @@ class CamposDeSubagentes(SubBase):
         self.sub_gravar({"ts": ontem.isoformat(timespec="seconds"), "ev": "inicio", "agente": G, "id": "o1", "tipo": "Explore"},
                         {"ts": ontem.isoformat(timespec="seconds"), "ev": "fim", "agente": G, "id": "o1"})
         w = painel_dados.workflows([], [], "hoje", agora_local(), {}, {}, self.listar())
-        self.assertEqual((w["nos"], w["kpis"]["subagentes"]), ([], 0))
+        self.assertEqual((w["nos"], w["kpis"]["subagentes"], w["kpis"]["subagentes_com_issue"]), ([], 0, None))
+
+
+class SubagentesNoProcesso(SubBase):
+    """1.13.1: issues e tarefa dos sub-agents; nós e arestas de workflows por agente pai."""
+    X, Y = "alpha-manager09-cc", "alpha-master9"
+
+    def pedido(self, cid, minutos, de, para, **extra):
+        self.gravar(m(cid, quando(minutos).isoformat(timespec="seconds"), de, para, "pedido", **extra))
+
+    def wf(self):
+        msgs = registro.ler_log(self.raiz)
+        agora = agora_local()
+        tars = painel_estado.tarefas(msgs, agora)
+        return painel_dados.workflows(msgs, painel_dados.conversas(msgs, agora, tars), "hoje", agora, {},
+                                      {t["id"]: t for t in tars}, self.listar())
+
+    def test_issues_da_descricao(self):
+        self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="#588 backend #12, #588 de novo; x#7a #1234567 #9"),
+                        ev("inicio", 4.9, id="a1", tipo="Explore"))
+        self.assertEqual(self.um()["issues"], [9, 12, 588])  # "#1234567" (7 dígitos) e "#7a" não valem
+
+    def test_issues_da_tarefa(self):
+        self.pedido("t1", 30, self.Y, self.X, issues=[40, 3])
+        self.sub_gravar(ev("inicio", 5, agente=self.X, id="a1"))
+        s = self.um()
+        self.assertEqual((s["tarefa"]["id"], s["issues"]), ("t1", [3, 40]))
+
+    def test_issues_juntas_sem_repetir(self):
+        self.pedido("t1", 30, self.Y, self.X, issues=[588, 3])
+        self.sub_gravar(ev("spawn", 5, agente=self.X, tipo="Plan", descricao="#588 e #20"),
+                        ev("inicio", 4.9, agente=self.X, id="a1", tipo="Plan"))
+        self.assertEqual(self.um()["issues"], [3, 20, 588])
+
+    def test_issues_vazias_e_mascara_continua(self):
+        self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="#5 token=abc123segredo"),
+                        ev("inicio", 4.9, id="a1", tipo="Explore"), ev("inicio", 4, id="a2"))
+        d = {s["id"]: s for s in self.listar()}
+        self.assertEqual((d["a1"]["issues"], d["a2"]["issues"]), ([5], []))
+        self.assertNotIn("abc123segredo", d["a1"]["descricao"])
+
+    def test_tarefa_cai_no_pedido_enviado_quando_nao_recebeu(self):
+        self.pedido("env-velho", 50, self.Y, self.X)
+        self.pedido("env-novo", 40, self.Y, self.X)
+        self.pedido("env-tarde", 1, self.Y, self.X)  # chegou depois do inicio
+        self.sub_gravar(ev("inicio", 5, agente=self.Y, id="m1"), ev("inicio", 45, agente=self.Y, id="m0"))
+        t = {s["id"]: s["tarefa"] for s in self.listar()}
+        self.assertEqual(t["m1"]["id"], "env-novo")
+        self.assertEqual(t["m0"]["id"], "env-velho")
+
+    def test_tarefa_recebida_ganha_do_pedido_enviado(self):
+        self.pedido("recebida", 60, "alpha-ceo", self.Y)
+        self.pedido("enviada", 30, self.Y, self.X)
+        self.sub_gravar(ev("inicio", 5, agente=self.Y, id="m1"))
+        self.assertEqual(self.um()["tarefa"]["id"], "recebida")
+
+    def test_workflows_nos_e_arestas_por_agente_pai(self):
+        self.sub_gravar(
+            ev("spawn", 20, agente=self.X, descricao="#588 backend"), ev("inicio", 19.9, agente=self.X, id="a1"),
+            ev("spawn", 18, agente=self.X, descricao="#588 e #587"), ev("inicio", 17.9, agente=self.X, id="a2"),
+            ev("inicio", 15, agente=self.X, id="a3"),
+            ev("spawn", 10, agente=self.Y, descricao="#9 fix"), ev("inicio", 9.9, agente=self.Y, id="b1"))
+        w = self.wf()
+        nos = {n["id"]: n for n in w["nos"]}
+        self.assertEqual((nos["sub:" + self.X]["coluna"], nos["sub:" + self.X]["rotulo"], nos["sub:" + self.X]["n"]),
+                         ("subagente", self.X, 3))
+        self.assertEqual(nos["sub:" + self.Y]["n"], 1)
+        self.assertEqual(nos["#588"]["coluna"], "issue")
+        ar = {(a["de"], a["para"]): a["n"] for a in w["arestas"]}
+        self.assertEqual((ar[(self.X, "sub:" + self.X)], ar[(self.Y, "sub:" + self.Y)]), (3, 1))
+        self.assertEqual((ar[("sub:" + self.X, "#588")], ar[("sub:" + self.X, "#587")], ar[("sub:" + self.Y, "#9")]), (2, 1, 1))
+        self.assertNotIn((self.X, "#588"), ar)
+        self.assertNotIn("sub:subagent-cc", nos)
+        # 2 de 3 do X e o do Y têm issue
+        self.assertEqual((w["kpis"]["subagentes"], w["kpis"]["subagentes_com_issue"]), (4, 0.75))
+        cols = [n["coluna"] for n in w["nos"]]
+        self.assertEqual(cols, sorted(cols, key=("master", "manager", "researcher", "subagente", "issue", "revisao", "resultado").index))
+
+    def test_workflows_aresta_direta_so_some_onde_ha_subagent_ligado(self):
+        self.pedido("c1", 30, self.Y, self.X, issues=[588])
+        self.pedido("c2", 30, self.Y, "alpha-manager08-cc", issues=[600])
+        self.sub_gravar(ev("spawn", 20, agente=self.X, descricao="#588"), ev("inicio", 19.9, agente=self.X, id="a1"))
+        ar = {(a["de"], a["para"]): a["n"] for a in self.wf()["arestas"]}
+        self.assertNotIn((self.X, "#588"), ar)       # coberta pelo sub-agent
+        self.assertEqual(ar[("alpha-manager08-cc", "#600")], 1)    # sem sub-agent: continua direta
+        self.assertEqual(ar[("sub:" + self.X, "#588")], 1)
 
 
 class ApiDeSubagentes(SubBase):
@@ -1819,7 +1907,7 @@ class ApiDeSubagentes(SubBase):
         todos = self.api("/api/subagentes")
         self.assertEqual([s["id"] for s in todos], ["r1", "p1", "e2", "e1"])  # hoje: o de 3 dias atrás fica fora
         self.assertEqual({k for k in todos[0]}, {"id", "agente", "tipo", "descricao", "status", "fundo", "inicio", "fim", "inicio_aproximado", "nome",
-                                                  "duracao_s", "ultima_atividade", "n_atividades", "tarefa"})
+                                                  "duracao_s", "ultima_atividade", "n_atividades", "tarefa", "issues"})
         self.assertEqual([s["id"] for s in self.api("/api/subagentes?periodo=7d")][-1], "tres")
         self.assertEqual([s["id"] for s in self.api(f"/api/subagentes?agente={R}")], ["r1"])
         self.assertEqual([s["id"] for s in self.api("/api/subagentes?status=erro")], ["e2"])
@@ -1872,7 +1960,9 @@ class ApiDeSubagentes(SubBase):
         self.assertEqual(an["por_dia_30"][-1]["n"], 4)
         w = self.api("/api/workflows?periodo=7d")
         self.assertEqual(w["kpis"]["subagentes"], 5)
-        self.assertIn({"id": "sub:subagent-cc", "coluna": "subagente", "rotulo": "subagent-cc", "n": 5}, w["nos"])
+        self.assertIn({"id": "sub:" + G, "coluna": "subagente", "rotulo": G, "n": 4}, w["nos"])
+        self.assertIn({"id": "sub:" + R, "coluna": "subagente", "rotulo": R, "n": 1}, w["nos"])
+        self.assertNotIn("sub:subagent-cc", [n["id"] for n in w["nos"]])
 
     def test_todos_os_endpoints_com_arquivo_torto(self):
         self.cenario()
