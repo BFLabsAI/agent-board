@@ -27,7 +27,10 @@ from base import CONFIG_REL, carregar_paineis, ler_json
 AQUI = os.path.dirname(os.path.abspath(__file__))
 DIR_WEB = os.path.join(AQUI, "painel_web")  # build da SPA (web/)
 PAGINA_ANTIGA = os.path.join(AQUI, "painel_web.html")
-CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+# SPA: nenhum script inline (estilo inline fica, para atributos style do React/framer-motion)
+CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+# painel v1 (painel_web.html, fallback sem build): página única com script embutido
+CSP_ANTIGA = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
 LIMITE_SSE = 16
 TIPOS = {".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff",
@@ -68,17 +71,17 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
         def log_message(self, fmt, *args):  # sem log por requisição no terminal
             pass
 
-        def _cabecalhos(self, codigo, tipo):
+        def _cabecalhos(self, codigo, tipo, csp=CSP):
             self.send_response(codigo)
             self.send_header("Content-Type", tipo)
-            self.send_header("Content-Security-Policy", CSP)
+            self.send_header("Content-Security-Policy", csp)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Cache-Control", "no-store")
 
-        def _enviar(self, codigo, corpo, tipo):
+        def _enviar(self, codigo, corpo, tipo, csp=CSP):
             dados = corpo.encode() if isinstance(corpo, str) else corpo
-            self._cabecalhos(codigo, tipo)
+            self._cabecalhos(codigo, tipo, csp)
             self.send_header("Content-Length", str(len(dados)))
             self.end_headers()
             self.wfile.write(dados)
@@ -112,7 +115,7 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             for arq in (os.path.join(DIR_WEB, "index.html"), PAGINA_ANTIGA):
                 if os.path.isfile(arq):
                     with open(arq, "rb") as f:
-                        return self._enviar(200, f.read(), TIPOS[".html"])
+                        return self._enviar(200, f.read(), TIPOS[".html"], CSP if arq != PAGINA_ANTIGA else CSP_ANTIGA)
             return self._enviar(404, "painel sem página", TEXTO)
 
         def _asset(self, rel, pasta):
@@ -259,9 +262,13 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
                 self.close_connection = True
 
         def _recusar(self):
+            if self.command == "HEAD":  # HEAD não leva corpo
+                self._cabecalhos(405, TEXTO)
+                self.send_header("Content-Length", "0")
+                return self.end_headers()
             self._enviar(405, "o painel é só leitura", TEXTO)
 
-        do_POST = do_PUT = do_PATCH = do_DELETE = _recusar
+        do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = do_OPTIONS = _recusar
 
     return Handler
 

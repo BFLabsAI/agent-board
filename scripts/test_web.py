@@ -211,8 +211,10 @@ class Servidor(Base):
         self.assertEqual(self.pedir("GET", "/api/estado", host=f"localhost:{self.porta}")[0].status, 200)
 
     def test_so_leitura_e_rotas_desconhecidas(self):
-        for metodo in ("POST", "PUT", "DELETE", "PATCH"):
-            self.assertEqual(self.pedir(metodo, "/api/estado")[0].status, 405, metodo)
+        for metodo in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+            r = self.pedir(metodo, "/api/estado")[0]
+            self.assertEqual(r.status, 405, metodo)
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff", metodo)
         self.assertEqual(self.pedir("GET", "/../../etc/passwd")[0].status, 404)
         self.assertEqual(self.pedir("GET", "/painel_web.html")[0].status, 404)
 
@@ -746,6 +748,14 @@ class ApiV2(Cenario):
         r, corpo = self.get("/")
         self.assertEqual(r.status, 200)
         self.assertIn(b"agent-board", corpo)
+        self.assertIn("script-src 'self' 'unsafe-inline'", r.getheader("Content-Security-Policy"))  # v1 tem script embutido
+
+    def test_spa_sem_script_inline(self):
+        self.web()
+        for caminho in ("/", "/assets/app.js", "/api/projetos"):
+            csp = self.get(caminho)[0].getheader("Content-Security-Policy")
+            self.assertIn("script-src 'self';", csp, caminho)
+            self.assertIn("frame-ancestors 'none'", csp, caminho)
 
     # --- SSE
     def stream(self, projeto="alpha", srv_porta=None):
