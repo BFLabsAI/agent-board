@@ -42,6 +42,8 @@ interface Valor {
   setWorkspace: (id: string) => void;
   /** true na tela Workspaces (/workspaces): stream de todos os Workspaces */
   telaWorkspaces: boolean;
+  /** true no Office em modo Prédio (/office?modo=predio): também usa o stream de todos os Workspaces */
+  predio: boolean;
   /** true enquanto se decide se a abertura em "/" vai para /geral (esperando o cadastro) */
   inicioPendente: boolean;
 }
@@ -67,6 +69,9 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
   const geral = pathname === CAMINHO_GERAL || andar;
   // abriu em "/" sem ?projeto=: com mais de 1 projeto no cadastro, cai na Visão geral (uma vez só)
   const telaWorkspaces = pathname === CAMINHO_WORKSPACES;
+  const predio = pathname === CAMINHO_OFFICE && params.get("modo") === "predio";
+  // as duas telas olham todos os Workspaces: stream `workspace=*`
+  const todosWorkspaces = telaWorkspaces || predio;
   const [inicioPendente, setInicioPendente] = useState(() => pathname === "/" && !params.get("projeto") && !params.get("workspace"));
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [projetosCarregando, setCarregando] = useState(true);
@@ -80,7 +85,7 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
   const workspaceUrl = params.get("workspace") || null;
   const workspace = workspaceUrl && !workspaces.find((w) => w.id === workspaceUrl)?.local ? workspaceUrl : null;
   // as chamadas que não passam `workspace` (paginação, etc.) leem o ativo daqui, já no render
-  definirWorkspaceAtivo(telaWorkspaces ? null : workspace);
+  definirWorkspaceAtivo(todosWorkspaces ? null : workspace);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -205,8 +210,8 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
 
   // deixa o projeto escolhido visível na URL (link compartilhável)
   useEffect(() => {
-    if (!geral && !telaWorkspaces && !inicioPendente && projeto && params.get("projeto") !== projeto) atualizar("projeto", projeto);
-  }, [geral, telaWorkspaces, inicioPendente, projeto, params, atualizar]);
+    if (!geral && !todosWorkspaces && !inicioPendente && projeto && params.get("projeto") !== projeto) atualizar("projeto", projeto);
+  }, [geral, todosWorkspaces, inicioPendente, projeto, params, atualizar]);
 
   const valor = useMemo<Valor>(
     () => ({
@@ -227,16 +232,17 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
       recarregarWorkspaces,
       setWorkspace,
       telaWorkspaces,
+      predio,
       inicioPendente,
     }),
-    [projeto, projetos, projetosCarregando, setProjeto, periodo, setPeriodo, tv, geral, andar, workspace, workspaceUrl, workspaces, workspacesCarregando, recarregarWorkspaces, setWorkspace, telaWorkspaces, inicioPendente],
+    [projeto, projetos, projetosCarregando, setProjeto, periodo, setPeriodo, tv, geral, andar, workspace, workspaceUrl, workspaces, workspacesCarregando, recarregarWorkspaces, setWorkspace, telaWorkspaces, predio, inicioPendente],
   );
 
   return (
     <Ctx.Provider value={valor}>
       <StreamProvider
-        projeto={telaWorkspaces ? null : geral ? PROJETO_TODOS : projeto}
-        workspace={telaWorkspaces ? WORKSPACE_TODOS : workspace}
+        projeto={todosWorkspaces ? null : geral ? PROJETO_TODOS : projeto}
+        workspace={todosWorkspaces ? WORKSPACE_TODOS : workspace}
         fabrica={fabricaStream}
       >
         <ColetorWorkspaces aplicar={setWorkspaces} recarregar={recarregarWorkspaces} />

@@ -14,6 +14,7 @@ import Grade from "./Grade";
 import Hub from "./Hub";
 import { LiveLogs } from "./LiveLogs";
 import Mapa from "./Mapa";
+import Predio from "./Predio";
 import { EsqueletoCena, modoDe, Moldura } from "./Moldura";
 
 /** Um squad (projeto escolhido): Hub, Mapa e Grade. O Andar tem os próprios dados (todos os squads). */
@@ -102,5 +103,6 @@ function OfficeProjeto({ modo }: { modo: "hub" | "mapa" | "grade" }) {
 export default function Office() {
   const [params] = useSearchParams();
   const modo = modoDe(params);
+  if (modo === "predio") return <Predio />;
   return modo === "andar" ? <Andar /> : <OfficeProjeto modo={modo} />;
 }

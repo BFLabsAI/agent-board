@@ -34,6 +34,10 @@ export interface OpcoesPulsos {
   projeto?: string;
   /** pulsos simultâneos (padrão 4) */
   maxAtivos?: number;
+  /** no stream `workspace=*` (Prédio): só reage a mensagens deste Workspace */
+  workspace?: string;
+  /** teto compartilhado entre várias salas (Prédio): `usados` conta os pulsos em voo de todas */
+  orcamento?: { usados: number; max: number };
   /** chamado a cada mensagem aceita da sala, antes da fila (a sala pisca) */
   aoMensagem?: (m: Mensagem) => void;
 }
@@ -82,6 +86,7 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
       const dur = reduzidoRef.current ? 0.6 : Math.min(2.6, Math.max(1.0, 0.9 + rota.len / 650));
       const id = `${m.id}#${++seq.current}`;
       ativos.current += 1;
+      if (opRef.current.orcamento) opRef.current.orcamento.usados += 1;
       ultimaLargada.current = Date.now();
 
       setPulsos((p) => [...p, { id, d: rota.d, cor, dur, pasta: m.tipo === "entrega", fim: rota.fim, tipo: chave }]);
@@ -99,6 +104,7 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
       agendar(() => {
         setPulsos((p) => p.filter((x) => x.id !== id));
         ativos.current -= 1;
+        if (opRef.current.orcamento) opRef.current.orcamento.usados = Math.max(0, opRef.current.orcamento.usados - 1);
         drenarRef.current();
       }, dur * 1000 + 450);
     },
@@ -110,6 +116,15 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
     const aguardar = Math.max(0, ultimaLargada.current + ESPACO_MS - Date.now());
     espera.current = agendar(() => {
       espera.current = null;
+      const orc = opRef.current.orcamento;
+      if (orc && orc.usados >= orc.max) {
+        // o prédio todo está no limite: tenta de novo daqui a pouco
+        espera.current = agendar(() => {
+          espera.current = null;
+          drenarRef.current();
+        }, 400);
+        return;
+      }
       const prox = fila.current.shift();
       if (prox) iniciar(prox);
       drenarRef.current();
@@ -120,6 +135,8 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
   useEvento("mensagem", (m) => {
     const alvo = opRef.current.projeto;
     if (alvo && (m as { projeto?: string }).projeto !== alvo) return;
+    const ws = opRef.current.workspace;
+    if (ws && (m as { workspace?: string }).workspace !== ws) return;
     opRef.current.aoMensagem?.(m);
     const rota = rotaRef.current(m.de, m.para);
     if (!rota) return;
@@ -133,6 +150,8 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
     return () => {
       ts.forEach(clearTimeout);
       ts.clear();
+      const orc = opRef.current.orcamento;
+      if (orc) orc.usados = Math.max(0, orc.usados - ativos.current);
       espera.current = null;
       ativos.current = 0;
       fila.current = [];

@@ -13,7 +13,8 @@ export function pontoSaude(s: SaudeWorkspace): string {
 
 /** Primeiro nível do seletor: Workspace. Lista própria (não nativa) para ter a bolinha de saúde. */
 export function SeletorWorkspace() {
-  const { workspaces, workspaceSelecionado, telaWorkspaces, setWorkspace } = useContextoPainel();
+  const { workspaces, workspaceSelecionado, telaWorkspaces: telaTodos, predio, setWorkspace } = useContextoPainel();
+  const telaWorkspaces = telaTodos || predio;
   const [aberto, setAberto] = useState(false);
   const [ativo, setAtivo] = useState(0);
   const raiz = useRef<HTMLDivElement>(null);
