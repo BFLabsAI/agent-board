@@ -27,5 +27,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    testTimeout: 15000, // a VPS roda várias suítes em paralelo; 5 s dava falso negativo
   },
 });

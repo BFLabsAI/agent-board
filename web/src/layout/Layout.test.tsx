@@ -1,6 +1,8 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cliente } from "../api/cliente";
+import { conversasFixture } from "../api/fixtures";
 import { CHAVE_PROJETO } from "../context/ContextoPainel";
 import { ITENS_NAV } from "../rotas";
 import { FonteFalsa, mockarCliente, renderPainel } from "../test/utils";
@@ -34,8 +36,12 @@ describe("navegação", () => {
   });
 
   it("renderiza o detalhe da conversa", async () => {
+    vi.spyOn(cliente, "conversa").mockImplementation(async () => ({
+      conversa: conversasFixture()[0],
+      mensagens: [],
+    }));
     renderPainel("/conversas/p-0141");
-    expect(await screen.findByRole("heading", { level: 1, name: /Conversa p-0141/ })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Timeline da conversa")).toBeInTheDocument();
   });
 
   it("clicar no menu troca de tela e marca o item ativo", async () => {

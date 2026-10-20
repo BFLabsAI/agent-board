@@ -1,0 +1,7 @@
+@keyframes feed-destaque {
+  0% { background-color: rgba(99, 102, 241, 0.32); box-shadow: inset 3px 0 0 #818cf8; }
+  100% { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+.feed-novo {
+  animation: feed-destaque 4s ease-out;
+}
