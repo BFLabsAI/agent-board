@@ -110,7 +110,7 @@ class Estado(Base):
         self.assertEqual([a["agente"] for a in e["agentes"]], [M, G, R])  # beta-master fica fora
         self.assertNotIn("raiz", e["agentes"][0])
         self.assertEqual(e["linha_do_tempo"][0]["id"], "h3")
-        self.assertEqual(e["indicadores"]["tempo_resposta"], {"media": 60.0, "p90": 60.0})
+        self.assertEqual(e["indicadores"]["tempo_resposta"], {"media": 60.0, "p50": 60.0, "p90": 60.0})
         e7 = painel_estado.montar(self.raiz, "alpha", PAINEIS, "7d", agora=AGORA)
         self.assertEqual(e7["indicadores"]["mensagens"], 4)
 

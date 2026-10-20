@@ -211,6 +211,7 @@ def _tempo_resposta(msgs, desde):
         return None
     minutos.sort()
     return {"media": round(sum(minutos) / len(minutos), 1),
+            "p50": round(minutos[(len(minutos) - 1) // 2], 1),
             "p90": round(minutos[min(len(minutos) - 1, int(len(minutos) * 0.9))], 1)}
 
 

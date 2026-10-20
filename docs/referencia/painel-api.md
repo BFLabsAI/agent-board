@@ -142,3 +142,4 @@ Em ordem de prioridade:
 - `fluxos` junta tipos repetidos em sequência.
 - Conversas: a raiz é um `pedido` ou `entrega` sem pai no log; a lista usa só o log ativo.
 - Caminhos com `..` respondem 404.
+- `indicadores.tempo_resposta` (resumo e estado): `{media, p50, p90}` em minutos.
