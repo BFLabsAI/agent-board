@@ -1,8 +1,8 @@
 import { Link, NavLink, useLocation, type LinkProps, type NavLinkProps, type To } from "react-router-dom";
 
-const MANTER = ["projeto", "periodo", "tv"];
+const MANTER = ["projeto", "workspace", "periodo", "tv"];
 
-/** Acrescenta ?projeto=, ?periodo= e ?tv= da URL atual ao destino, para a navegação não perdê-los. */
+/** Acrescenta ?projeto=, ?workspace=, ?periodo= e ?tv= da URL atual ao destino, para a navegação não perdê-los. */
 export function useDestino(): (para: To) => To {
   const { search } = useLocation();
   return (para) => {

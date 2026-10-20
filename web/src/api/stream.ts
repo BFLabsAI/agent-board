@@ -14,6 +14,8 @@ type Ouvinte<K extends NomeEvento> = (dado: EventosStream[K]) => void;
 
 export interface OpcoesStream {
   projeto?: string | null;
+  /** Workspace remoto (id), ou "*" para o stream de todos os Workspaces. Ausente/null = o local. */
+  workspace?: string | null;
   fabrica?: FabricaFonte;
   /** espera inicial e teto do backoff exponencial (ms) */
   baseMs?: number;
@@ -24,14 +26,20 @@ export interface OpcoesStream {
   falhasParaOffline?: number;
 }
 
-const NOMES: NomeEvento[] = ["ola", "mensagem", "agente", "tarefa", "subagente", "ping"];
+export const NOMES_EVENTO: NomeEvento[] = ["ola", "mensagem", "agente", "tarefa", "subagente", "workspace", "ping"];
+const NOMES = NOMES_EVENTO;
+
+/** Valor de `workspace` que abre o stream de todos os Workspaces numa conexão só. */
+export const WORKSPACE_TODOS = "*";
 
 /** Valor de `projeto` que abre o stream de todos os squads numa conexão só. */
 export const PROJETO_TODOS = "*";
 
-export function urlStream(projeto?: string | null): string {
-  if (projeto === PROJETO_TODOS) return "/api/stream?projeto=*";
-  return projeto ? `/api/stream?projeto=${encodeURIComponent(projeto)}` : "/api/stream";
+export function urlStream(projeto?: string | null, workspace?: string | null): string {
+  if (workspace === WORKSPACE_TODOS) return "/api/stream?workspace=*";
+  const base = workspace ? `/api/w/${encodeURIComponent(workspace)}/api/stream` : "/api/stream";
+  if (projeto === PROJETO_TODOS) return `${base}?projeto=*`;
+  return projeto ? `${base}?projeto=${encodeURIComponent(projeto)}` : base;
 }
 
 /**
@@ -50,7 +58,7 @@ export class ConexaoStream {
   private fechado = false;
   private timerReconexao: ReturnType<typeof setTimeout> | null = null;
   private timerSilencio: ReturnType<typeof setTimeout> | null = null;
-  private readonly o: Required<Omit<OpcoesStream, "projeto">> & { projeto?: string | null };
+  private readonly o: Required<Omit<OpcoesStream, "projeto" | "workspace">> & { projeto?: string | null; workspace?: string | null };
 
   constructor(opcoes: OpcoesStream = {}) {
     this.o = {
@@ -104,7 +112,7 @@ export class ConexaoStream {
 
   private conectar() {
     if (this.fechado) return;
-    const fonte = this.o.fabrica(urlStream(this.o.projeto));
+    const fonte = this.o.fabrica(urlStream(this.o.projeto, this.o.workspace));
     this.fonte = fonte;
     fonte.onopen = () => {
       if (this.fonte !== fonte) return;

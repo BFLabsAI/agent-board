@@ -29,6 +29,28 @@ describe("ConexaoStream", () => {
     c.parar();
   });
 
+  it("workspace remoto usa o proxy, com projeto ou '*' sem encode", () => {
+    expect(urlStream(null, "bf-labs")).toBe("/api/w/bf-labs/api/stream");
+    expect(urlStream("r7 one", "bf-labs")).toBe("/api/w/bf-labs/api/stream?projeto=r7%20one");
+    expect(urlStream("*", "bf-labs")).toBe("/api/w/bf-labs/api/stream?projeto=*");
+    const c = new ConexaoStream({ projeto: "*", workspace: "bf-labs", fabrica: fabricaFalsa });
+    c.iniciar();
+    expect(ultima().url).toBe("/api/w/bf-labs/api/stream?projeto=*");
+    c.parar();
+  });
+
+  it("workspace '*' abre o stream de todos os Workspaces e entrega o evento workspace", () => {
+    expect(urlStream(null, "*")).toBe("/api/stream?workspace=*");
+    const c = new ConexaoStream({ workspace: "*", fabrica: fabricaFalsa });
+    const vistos: unknown[] = [];
+    c.assinar("workspace", (w) => vistos.push(w));
+    c.iniciar();
+    expect(ultima().url).toBe("/api/stream?workspace=*");
+    ultima().emitir("workspace", { id: "bf-labs" });
+    expect(vistos).toEqual([{ id: "bf-labs" }]);
+    c.parar();
+  });
+
   it("sem projeto usa a URL pura", () => {
     expect(urlStream(null)).toBe("/api/stream");
   });
