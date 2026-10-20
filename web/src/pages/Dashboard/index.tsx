@@ -1,7 +1,7 @@
-import { Activity, AlertTriangle, ArrowRight, Bot, CheckCheck, ClipboardCheck, Inbox, LayoutDashboard, RefreshCw, Send, Timer, Users } from "lucide-react";
+import { Activity, AlertTriangle, ArrowRight, Bot, Workflow, CheckCheck, ClipboardCheck, Inbox, LayoutDashboard, RefreshCw, Send, Timer, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cliente } from "../../api/cliente";
-import type { Agente, Mensagem, Resumo } from "../../api/tipos";
+import type { Agente, Mensagem, Resumo, SubAgente } from "../../api/tipos";
 import { useApi } from "../../api/useApi";
 import { useEvento } from "../../api/useStream";
 import { LinkPainel } from "../../components/LinkPainel";
@@ -61,7 +61,23 @@ export default function Dashboard() {
 
   // push: o card do agente é trocado
   useEvento("agente", (a) => {
-    setAgentes((atual) => (atual.some((x) => x.agente === a.agente) ? atual.map((x) => (x.agente === a.agente ? a : x)) : [...atual, a]));
+    // o evento pode vir sem `subagentes`: mantém os que a tela já tem
+    setAgentes((atual) => {
+      const antes = atual.find((x) => x.agente === a.agente);
+      const novo = { ...a, subagentes: a.subagentes ?? antes?.subagentes ?? [] };
+      return antes ? atual.map((x) => (x.agente === a.agente ? novo : x)) : [...atual, novo];
+    });
+  });
+
+  // push: sub-agent nasceu, mudou de status ou teve atividade: atualiza o card do pai
+  useEvento("subagente", (s: SubAgente) => {
+    setAgentes((atual) =>
+      atual.map((a) => {
+        if (a.agente !== s.agente) return a;
+        const lista = a.subagentes ?? [];
+        return { ...a, subagentes: lista.some((x) => x.id === s.id) ? lista.map((x) => (x.id === s.id ? s : x)) : [s, ...lista] };
+      }),
+    );
   });
 
   // push: tarefa nova ou mudou de estado: refaz o resumo (e os alertas), agrupando rajadas
@@ -91,6 +107,8 @@ export default function Dashboard() {
       esperando: agentes.filter((a) => a.status === "esperando").length,
       pendentes: agentes.reduce((s, a) => s + a.pendentes, 0),
       comPendente: agentes.filter((a) => a.pendentes > 0).length,
+      subsRodando: agentes.reduce((n, a) => n + (a.subagentes ?? []).filter((x) => x.status === "rodando").length, 0),
+      agentesComSubs: agentes.filter((a) => (a.subagentes ?? []).some((x) => x.status === "rodando")).length,
     }),
     [agentes],
   );
@@ -102,6 +120,8 @@ export default function Dashboard() {
   const esperando = temAgentes ? vivos.esperando : (i?.esperando ?? 0);
   const pendentes = temAgentes ? vivos.pendentes : (i?.pendentes ?? 0);
   const comPendente = temAgentes ? vivos.comPendente : (i?.agentes_com_pendente ?? 0);
+  const subsRodando = temAgentes ? vivos.subsRodando : (i?.subagentes_rodando ?? 0);
+  const agentesComSubs = vivos.agentesComSubs;
   const p50 = i?.tempo_resposta?.p50 ?? i?.tempo_resposta?.media;
 
   return (
@@ -124,8 +144,9 @@ export default function Dashboard() {
           <EmptyState icone={AlertTriangle} titulo="Não foi possível carregar o resumo" descricao={resumoApi.erro.message} />
         </div>
       ) : (
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard rotulo="Agentes trabalhando" valor={trabalhando} icone={Bot} tom="verde" subtexto={`${esperando} esperando`} carregando={carregandoKpi && !temAgentes} />
+          <StatCard rotulo="Sub-agents rodando" valor={subsRodando} icone={Workflow} tom="roxo" subtexto={temAgentes ? `em ${agentesComSubs} ${agentesComSubs === 1 ? "agente" : "agentes"}` : undefined} carregando={carregandoKpi && !temAgentes} />
           <StatCard rotulo="Pedidos abertos" valor={formatarNumero(i?.abertos ?? 0)} icone={Inbox} tom="azul" subtexto={i ? `${i.atrasados} atrasados` : undefined} carregando={carregandoKpi} />
           <StatCard rotulo="Pendentes" valor={pendentes} icone={AlertTriangle} tom="laranja" subtexto={`${comPendente} ${comPendente === 1 ? "agente" : "agentes"}`} carregando={carregandoKpi && !temAgentes} />
           <StatCard rotulo="Atrasados" valor={i?.atrasados ?? 0} icone={Timer} tom={(i?.atrasados ?? 0) > 0 ? "vermelho" : "cinza"} subtexto={(i?.atrasados ?? 0) > 0 ? "passaram do prazo" : "em dia"} carregando={carregandoKpi} />

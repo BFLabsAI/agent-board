@@ -14,7 +14,7 @@ const TOM = {
   rosa: { valor: "text-fuchsia-300", icone: "text-fuchsia-400", brilho: "from-fuchsia-500/10" },
 } as const;
 
-function KpiCard({
+export function KpiCard({
   rotulo, valor, sub, icone: Icone, tom, carregando, titulo,
 }: { titulo?: string; rotulo: string; valor: ReactNode; sub?: ReactNode; icone: LucideIcon; tom: keyof typeof TOM; carregando: boolean }) {
   const t = TOM[tom];

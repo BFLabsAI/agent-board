@@ -10,6 +10,7 @@ export const MAX_ISSUES = 8;
 export const COLUNAS_GRAFO = [
   { titulo: "MASTER", colunas: ["master"] },
   { titulo: "MANAGERS / RESEARCHERS", colunas: ["manager", "researcher"] },
+  { titulo: "SUB-AGENTS", colunas: ["subagente"] },
   { titulo: "ISSUES", colunas: ["issue"] },
   { titulo: "REVISÃO", colunas: ["revisao"] },
   { titulo: "RESULTADO", colunas: ["resultado"] },
@@ -17,6 +18,30 @@ export const COLUNAS_GRAFO = [
 
 export function indiceColuna(c: ColunaWorkflow): number {
   return COLUNAS_GRAFO.findIndex((g) => (g.colunas as ReadonlyArray<string>).includes(c));
+}
+
+/** A coluna SUB-AGENTS só aparece se o servidor mandou nós de sub-agent (JSON antigo não tem). */
+export function colunasDoGrafo(nos: ReadonlyArray<Pick<No, "coluna">>): typeof COLUNAS_GRAFO[number][] {
+  const tem = nos.some((n) => n.coluna === "subagente");
+  return COLUNAS_GRAFO.filter((g) => tem || !(g.colunas as ReadonlyArray<string>).includes("subagente"));
+}
+
+export const COR_SUBAGENTE = "#f472b6";
+
+export function ehSub(c: ColunaWorkflow): boolean {
+  return c === "subagente";
+}
+
+/** Sub-agent selecionado: ele e os agentes que o usam (só as arestas diretas). */
+export function agentesDoSub(id: string, arestas: Aresta[]): { nos: Set<string>; arestas: Set<string> } {
+  const nos = new Set([id]);
+  const es = new Set<string>();
+  for (const a of arestas) {
+    if (a.para !== id) continue;
+    nos.add(a.de);
+    es.add(chaveAresta(a));
+  }
+  return { nos, arestas: es };
 }
 
 const ORDEM_RESULTADO = ["aprovado", "rejeitado", "concluido", "atrasado", "em_aberto"];
@@ -34,6 +59,8 @@ export function corNo(no: Pick<No, "id" | "coluna">): string {
       return "#38bdf8";
     case "revisao":
       return "#a78bfa";
+    case "subagente":
+      return COR_SUBAGENTE;
     default:
       return (
         { aprovado: "#34d399", rejeitado: "#f87171", concluido: "#2dd4bf", atrasado: "#fb923c", em_aberto: "#94a3b8" }[no.id] ??
@@ -78,8 +105,8 @@ export interface NoPos extends No {
   cor: string;
 }
 
-export const LARGURA = 1000;
-export const LARG_NO = 148;
+export const LARGURA = 1120;
+export const LARG_NO = 136;
 export const ALT_NO = 34;
 const PASSO = 46;
 const ALTURA_MIN = 380;
@@ -95,12 +122,13 @@ function ordemNo(a: No, b: No): number {
 }
 
 export function layoutGrafo(nos: No[]): { pos: NoPos[]; altura: number } {
-  const cols = COLUNAS_GRAFO.map((g) => nos.filter((n) => (g.colunas as ReadonlyArray<string>).includes(n.coluna)).sort(ordemNo));
+  const colunas = colunasDoGrafo(nos);
+  const cols = colunas.map((g) => nos.filter((n) => (g.colunas as ReadonlyArray<string>).includes(n.coluna)).sort(ordemNo));
   const maior = Math.max(1, ...cols.map((c) => c.length));
   const altura = Math.max(ALTURA_MIN, maior * PASSO + TOPO + 40);
   const util = altura - TOPO;
   const folga = 28;
-  const passoX = (LARGURA - 2 * folga - LARG_NO) / (COLUNAS_GRAFO.length - 1);
+  const passoX = (LARGURA - 2 * folga - LARG_NO) / (colunas.length - 1);
   const pos: NoPos[] = [];
   cols.forEach((c, i) => {
     const ini = TOPO + (util - c.length * PASSO) / 2 + (PASSO - ALT_NO) / 2;
