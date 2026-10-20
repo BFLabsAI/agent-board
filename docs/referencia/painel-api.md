@@ -207,3 +207,13 @@ interface SubAgente {
 | `GET /api/analytics` | ganha `subagentes: { por_agente: {agente, n, rodando, erro, duracao_media_s}[], por_tipo: {tipo, n, duracao_media_s}[], por_dia_30: {dia, n}[] }` (30 d, `por_dia_30` crescente) |
 | `GET /api/workflows?periodo` | ganha nós `coluna: "subagente"` (id `sub:<tipo>`, um por tipo) com arestas agente → `sub:<tipo>`, e `kpis.subagentes: number` |
 | `GET /api/stream` | evento novo `subagente` (data: `SubAgente`), emitido quando um sub-agent nasce, muda de status ou tem atividade nova (no máximo 1 por sub-agent a cada 2 s). O servidor vigia o arquivo do dia a cada 1 s |
+
+### Notas da implementação (#22)
+
+- Leitura: `scripts/painel_subagentes.py` lê os arquivos dos últimos 31 dias de forma incremental (cache por arquivo, compartilhado entre requisições e conexões SSE) e nunca escreve. A pasta do projeto usa o mesmo nome que o coletor (`subagentes.pasta_segura`).
+- `erro` tem prioridade sobre `rodando`: o `retorno` com `ok=false` encerra o sub-agent mesmo sem `fim`.
+- `tarefa` é a tarefa mais recente do pai que estava **aberta no momento do `inicio`** (`ts` anterior ao início e ainda não fechada nele), e não a aberta de hoje.
+- `Agente.subagentes`: todos os `rodando` mais os 5 terminados (concluído, erro ou perdido) mais recentes, pelo `fim` (ou `inicio`) nas últimas 24 h; ordenados pelo `inicio`, do mais recente.
+- `/api/estado` também traz `indicadores.subagentes_rodando` e `tarefas[].subagentes`.
+- `descricao` e `ultima_atividade.resumo` passam por `base.mascarar` na saída, além da máscara do coletor.
+- SSE: o conjunto de arquivos vigiado é o de hoje e o de ontem (a virada do dia troca os nomes sozinha); o evento `agente` sai quando o conjunto (id, status) de sub-agents do agente muda, não a cada atividade. O intervalo mínimo por sub-agent é configurável (`intervalos["sub"]`, 2 s).

@@ -21,6 +21,7 @@ import painel_dados
 import painel_estado
 import painel_orca
 import painel_stream
+import painel_subagentes
 from base import CONFIG_REL, carregar_paineis, ler_json
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -203,7 +204,8 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
                 return self._conversa(ctx, rota[len("conversas/"):])
             tratador = {"estado": self._estado, "resumo": self._resumo, "agentes": self._agentes,
                         "tarefas": self._tarefas, "conversas": self._conversas, "mensagens": self._mensagens,
-                        "analytics": self._analytics, "workflows": self._workflows}.get(rota)
+                        "analytics": self._analytics, "workflows": self._workflows,
+                        "subagentes": self._subagentes}.get(rota)
             if tratador is None:
                 return self._erro(404, "não encontrado")
             return self._json(tratador(ctx, qs, periodo))
@@ -221,9 +223,17 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             msgs = painel_estado.ler_log(r)
             return nome, r, c, paineis, agora, msgs, painel_estado.tarefas(msgs, agora)
 
+        def _subs(self, ctx, agora, tars=None):
+            """SubAgente[] do projeto (vazio se o coletor nunca gravou nada)."""
+            return painel_subagentes.listar(ctx[0], agora, tars)
+
         def _estado(self, ctx, qs, periodo):
             nome, r, c, paineis = ctx
-            return painel_estado.montar(r, nome, paineis, periodo, abertos=self._abertos(), limites=c.get("limites"))
+            e = painel_estado.montar(r, nome, paineis, periodo, abertos=self._abertos(), limites=c.get("limites"))
+            subs = self._subs(ctx, datetime.datetime.now().astimezone(), e["tarefas"])
+            e["indicadores"]["subagentes_rodando"] = painel_subagentes.rodando(subs)
+            e["tarefas"] = painel_subagentes.anexar_tarefas(e["tarefas"], subs)
+            return e
 
         def _abertos(self):
             t = terminais()
@@ -233,9 +243,10 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             nome, r, c, paineis = ctx
             e = painel_estado.montar(r, nome, paineis, periodo, abertos=self._abertos(), limites=c.get("limites"))
             _, _, _, _, agora, msgs, tars = self._base(ctx)
-            ags = painel_dados.agentes(nome, paineis, msgs, terminais(), agora, tars)
+            subs = self._subs(ctx, agora, tars)
+            ags = painel_dados.agentes(nome, paineis, msgs, terminais(), agora, tars, subs)
             desde = painel_estado.inicio_do_periodo(periodo, agora)
-            ind = dict(e["indicadores"])
+            ind = dict(e["indicadores"], subagentes_rodando=painel_subagentes.rodando(subs))
             for st in ("trabalhando", "esperando", "offline"):
                 ind[st] = sum(1 for a in ags if a["status"] == st)
             ind["abertos"] = sum(1 for t in tars if t["estado"] in painel_dados.ABERTAS)
@@ -246,11 +257,18 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
 
         def _agentes(self, ctx, qs, periodo):
             nome, _, _, paineis, agora, msgs, tars = self._base(ctx)
-            return painel_dados.agentes(nome, paineis, msgs, terminais(), agora, tars)
+            return painel_dados.agentes(nome, paineis, msgs, terminais(), agora, tars, self._subs(ctx, agora, tars))
 
         def _tarefas(self, ctx, qs, periodo):
             _, _, _, _, agora, _, tars = self._base(ctx)
-            return painel_dados.tarefas_do_periodo(tars, periodo, agora)
+            lista = painel_dados.tarefas_do_periodo(tars, periodo, agora)
+            return painel_subagentes.anexar_tarefas(lista, self._subs(ctx, agora, tars))
+
+        def _subagentes(self, ctx, qs, periodo):
+            _, _, _, _, agora, _, tars = self._base(ctx)
+            return painel_subagentes.filtrar(self._subs(ctx, agora, tars), periodo, agora,
+                                             painel_dados.inteiro(qs.get("limite"), 200, 1, 1000),
+                                             qs.get("agente"), qs.get("status"))
 
         def _conversas(self, ctx, qs, periodo):
             _, _, _, _, agora, msgs, tars = self._base(ctx)
@@ -271,13 +289,15 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
                                           qs.get("agente"), qs.get("tipo"), qs.get("q"))
 
         def _analytics(self, ctx, qs, periodo):
-            return painel_dados.analytics(painel_estado.ler_tudo(ctx[1]), datetime.datetime.now().astimezone())
+            agora = datetime.datetime.now().astimezone()
+            return painel_dados.analytics(painel_estado.ler_tudo(ctx[1]), agora, self._subs(ctx, agora))
 
         def _workflows(self, ctx, qs, periodo):
             nome, _, _, paineis, agora, msgs, tars = self._base(ctx)
             papeis = {p["agente"]: p.get("papel") for p in paineis.values() if p.get("projeto") == nome}
             convs = painel_dados.conversas(msgs, agora, tars)
-            return painel_dados.workflows(msgs, convs, periodo, agora, papeis, {t["id"]: t for t in tars})
+            return painel_dados.workflows(msgs, convs, periodo, agora, papeis, {t["id"]: t for t in tars},
+                                          self._subs(ctx, agora, tars))
 
         # --- SSE -----------------------------------------------------------------
         def _desconectou(self):
