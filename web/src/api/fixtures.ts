@@ -159,13 +159,20 @@ function ultimaDoThread(t: Thread, agora: number): number {
 }
 
 interface SubSemente {
-  pai: string; tipo: string; descricao: string; status: SubAgente["status"]; inicioMin: number; durS?: number;
+  pai: string; tipo: string | null; descricao: string | null; aprox?: boolean; status: SubAgente["status"]; inicioMin: number; durS?: number;
   ferramenta?: string; resumo?: string; tarefa?: string; fundo?: boolean;
 }
 
 const SUBS: SubSemente[] = [
   { pai: MASTER, tipo: "Explore", descricao: "Mapear rotas do stream", status: "rodando", inicioMin: 3, ferramenta: "Bash", resumo: "grep -rn \"EventSource\" web/src", tarefa: "p-0145" },
   { pai: MASTER, tipo: "general-purpose", descricao: "Revisar diff do rodapé", status: "concluido", inicioMin: 40, durS: 312, ferramenta: "Bash", resumo: "git diff main...feat/rodape-modelo --stat" },
+  // sessões antigas: sem tipo, sem descrição, sem atividade
+  { pai: MASTER, tipo: null, descricao: null, status: "rodando", inicioMin: 11, aprox: true },
+  { pai: MASTER, tipo: null, descricao: null, status: "concluido", inicioMin: 70, aprox: true },
+  { pai: MASTER, tipo: null, descricao: null, status: "concluido", inicioMin: 75, aprox: true },
+  { pai: MASTER, tipo: null, descricao: null, status: "concluido", inicioMin: 80, aprox: true },
+  { pai: MASTER, tipo: null, descricao: null, status: "erro", inicioMin: 85, aprox: true },
+  { pai: "r7one-manager02-omp", tipo: null, descricao: null, status: "concluido", inicioMin: 95, aprox: true },
   { pai: "r7one-manager01-cc", tipo: "general-purpose", descricao: "Testes de reconexão SSE", status: "rodando", inicioMin: 6, ferramenta: "Edit", resumo: "web/src/api/stream.test.ts", tarefa: "p-0145" },
   { pai: "r7one-manager01-cc", tipo: "general-purpose", descricao: "Backoff exponencial no cliente", status: "rodando", inicioMin: 4, ferramenta: "Bash", resumo: "npx vitest run src/api", tarefa: "p-0145", fundo: true },
   { pai: "r7one-manager01-cc", tipo: "Explore", descricao: "Achar usos de polling", status: "concluido", inicioMin: 22, durS: 95, ferramenta: "Bash", resumo: "rg setInterval web/src" },
@@ -185,6 +192,7 @@ export function subagentesFixture(agora = Date.now()): SubAgente[] {
       id: `a${(0x51ab + i * 977).toString(16)}${i}`, agente: x.pai, tipo: x.tipo, descricao: x.descricao,
       status: x.status, fundo: !!x.fundo, inicio: iso(inicio), fim: fim ? iso(fim) : null,
       duracao_s: x.durS ?? null,
+      ...(x.aprox ? { inicio_aproximado: true } : null),
       ultima_atividade: x.ferramenta ? { ts: iso(ult), ferramenta: x.ferramenta, resumo: x.resumo ?? "" } : null,
       n_atividades: 3 + ((i * 7) % 19),
       tarefa: x.tarefa ? { id: x.tarefa, assunto: tarefas.get(x.tarefa) ?? x.tarefa } : null,
