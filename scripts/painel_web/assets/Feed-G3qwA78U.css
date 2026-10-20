@@ -1,0 +1,1 @@
+@keyframes feed-destaque{0%{background-color:#6366f152;box-shadow:inset 3px 0 #818cf8}to{background-color:#0000;box-shadow:inset 3px 0 #0000}}.feed-novo{animation:4s ease-out feed-destaque}
