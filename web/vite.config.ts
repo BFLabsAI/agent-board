@@ -27,6 +27,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    exclude: ["e2e/**", "node_modules/**"], // e2e roda só com `npm run e2e`
     testTimeout: 15000, // a VPS roda várias suítes em paralelo; 5 s dava falso negativo
   },
 });
