@@ -11,7 +11,8 @@ import { IndicadorLive } from "./IndicadorLive";
 import { SeletorProjeto } from "./SeletorProjeto";
 
 export function Sidebar({ recolhida, onAlternar }: { recolhida: boolean; onAlternar: () => void }) {
-  const { projetoExibido, periodo, setPeriodo, geral, telaWorkspaces } = useContextoPainel();
+  const { projetoExibido, periodo, setPeriodo, geral, telaWorkspaces: telaTodos, predio } = useContextoPainel();
+  const telaWorkspaces = telaTodos || predio;
   const { search } = useLocation();
   // a Visão geral não é de um projeto: leva período, modo TV e o Workspace; a tela Workspaces, só período e TV
   const busca = (chaves: string[]) => {

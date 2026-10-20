@@ -4,7 +4,7 @@ import { pontos, type PosMesa, type Pt } from "../Hub/geometria";
 
 export const ALTURA_PAREDE = 46;
 export const ESPESSURA_LAJE = 14;
-const ALTURA_PLACA = 128;
+export const ALTURA_PLACA = 128;
 const GAP_X = 70;
 const GAP_Y = 10;
 

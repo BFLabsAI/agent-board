@@ -1,6 +1,6 @@
-import { AlertTriangle, Globe2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Building2, Globe2, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useEventoWorkspace } from "../../api/useStream";
 import { EmptyState, PageHeader, Skeleton } from "../../components/ui";
 import { useContextoPainel } from "../../context/ContextoPainel";
@@ -9,6 +9,14 @@ import { CardWorkspace } from "./CardWorkspace";
 import { FaixaTotais } from "./FaixaTotais";
 
 const PULSO_MS = 1500;
+
+/** Office do prédio, levando período e modo TV. */
+function destinoPredio(search: string): string {
+  const atual = new URLSearchParams(search);
+  const n = new URLSearchParams({ modo: "predio" });
+  for (const k of ["periodo", "tv"]) if (atual.get(k)) n.set(k, atual.get(k)!);
+  return `/office?${n.toString()}`;
+}
 
 export default function Workspaces() {
   const { workspaces, workspacesCarregando, recarregarWorkspaces } = useContextoPainel();
@@ -52,9 +60,19 @@ export default function Workspaces() {
         titulo="Workspaces"
         subtitulo="Todas as máquinas com o agent-board na tailnet"
         acoes={
+          <>
+          {workspaces.length > 1 && (
+            <Link
+              to={destinoPredio(search)}
+              className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-muted px-3 py-1.5 text-sm font-medium text-accent-hover transition-colors hover:border-accent/60 hover:bg-accent/25"
+            >
+              <Building2 className="h-4 w-4" aria-hidden="true" /> Office do prédio
+            </Link>
+          )}
           <button type="button" onClick={recarregarWorkspaces} className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-texto-suave transition-colors hover:bg-surface-4 hover:text-texto">
             <RefreshCw className={`h-4 w-4 ${workspacesCarregando ? "animate-spin" : ""}`} aria-hidden="true" /> Atualizar
           </button>
+          </>
         }
       />
 

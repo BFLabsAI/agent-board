@@ -5,7 +5,8 @@ import { SeletorWorkspace } from "./SeletorWorkspace";
 
 /** Seletor de dois níveis: Workspace › Squad. Com um Workspace só, mostra apenas o squad. */
 export function SeletorProjeto() {
-  const { workspaces, telaWorkspaces } = useContextoPainel();
+  const { workspaces, telaWorkspaces: telaTodos, predio } = useContextoPainel();
+  const telaWorkspaces = telaTodos || predio;
   return (
     <div className="space-y-3">
       {(workspaces.length > 1 || telaWorkspaces) && <SeletorWorkspace />}

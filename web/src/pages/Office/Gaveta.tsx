@@ -13,6 +13,7 @@ import { IssueChips } from "../../components/SubLinha";
 import { agruparPorIssue, issuesSub } from "../../lib/subStatus";
 import { DuracaoSub } from "./DuracaoSub";
 import { descricaoSub, emDestaque, ESTILO_SUB, mesclarSub, ordenarSubs, resumoTerminados, nomeSub, subsDe, tipoDetalhe, textoAtividade } from "./subagentes";
+import { useContextoPainel } from "../../context/ContextoPainel";
 import { useReduzirMovimento } from "./useReduzirMovimento";
 
 const ABERTAS = new Set(["aberto", "em_andamento", "atrasado", "aguardando_revisao"]);
@@ -76,14 +77,24 @@ function Terminal({ agente }: { agente: Agente }) {
 }
 
 /** Querystring `?projeto=` para links da gaveta quando o agente é de um projeto que não é o da URL (Office/Andar). */
-const qsProjeto = (projeto?: string) => (projeto ? `projeto=${encodeURIComponent(projeto)}` : "");
+const qsProjeto = (projeto?: string, workspace?: string) =>
+  [projeto ? `projeto=${encodeURIComponent(projeto)}` : "", workspace ? `workspace=${encodeURIComponent(workspace)}` : ""].filter(Boolean).join("&");
 
-function UltimasMensagens({ agente, projeto }: { agente: string; projeto?: string }) {
-  const { dados, carregando, erro } = useApi((c, s) => cliente.mensagens({ projeto: projeto ?? c.projeto, agente, limite: 10 }, s), [agente, projeto]);
+/** Id do Workspace para as chamadas ao cliente: o local não leva prefixo (null); sem `workspace`, vale o ativo (undefined). */
+function useWorkspaceApi(workspace?: string): string | null | undefined {
+  const { workspaces } = useContextoPainel();
+  if (!workspace) return undefined;
+  return workspaces.find((w) => w.id === workspace)?.local ? null : workspace;
+}
+
+function UltimasMensagens({ agente, projeto, workspace }: { agente: string; projeto?: string; workspace?: string }) {
+  const wsApi = useWorkspaceApi(workspace);
+  const { dados, carregando, erro } = useApi((c, s) => cliente.mensagens({ projeto: projeto ?? c.projeto, agente, limite: 10, ...(workspace ? { workspace: wsApi } : {}) }, s), [agente, projeto, workspace]);
   const [novas, setNovas] = useState<Mensagem[]>([]);
-  useEffect(() => setNovas([]), [agente, projeto]);
+  useEffect(() => setNovas([]), [agente, projeto, workspace]);
   useEvento("mensagem", (m) => {
     if (projeto && (m as { projeto?: string }).projeto !== projeto) return;
+    if (workspace && (m as { workspace?: string }).workspace !== workspace) return;
     if (m.de === agente || m.para === agente) setNovas((n) => [m, ...n].slice(0, 10));
   });
   const lista = useMemo(() => {
@@ -115,7 +126,7 @@ function UltimasMensagens({ agente, projeto }: { agente: string; projeto?: strin
   );
 }
 
-function ItemSub({ sub, foco, projeto }: { sub: SubAgente; foco: boolean; projeto?: string }) {
+function ItemSub({ sub, foco, projeto, workspace }: { sub: SubAgente; foco: boolean; projeto?: string; workspace?: string }) {
   const e = ESTILO_SUB[sub.status];
   const atividade = textoAtividade(sub);
   const ref = useRef<HTMLLIElement>(null);
@@ -145,7 +156,7 @@ function ItemSub({ sub, foco, projeto }: { sub: SubAgente; foco: boolean; projet
       {descricaoSub(sub) && <p className="mt-1 text-[13px] leading-snug text-texto">{truncar(descricaoSub(sub), 140)}</p>}
       {atividade && <p className="mt-1 truncate font-mono text-[10.5px] text-texto-fraco" title={atividade}>{atividade}</p>}
       {sub.tarefa && (
-        <LinkPainel to={`/conversas/${encodeURIComponent(sub.tarefa.id)}${projeto ? `?${qsProjeto(projeto)}` : ""}`} className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] text-accent-hover hover:underline" title={sub.tarefa.assunto}>
+        <LinkPainel to={`/conversas/${encodeURIComponent(sub.tarefa.id)}${projeto ? `?${qsProjeto(projeto, workspace)}` : ""}`} className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] text-accent-hover hover:underline" title={sub.tarefa.assunto}>
           <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{sub.tarefa.id} · {truncar(sub.tarefa.assunto, 48)}</span>
         </LinkPainel>
@@ -154,13 +165,14 @@ function ItemSub({ sub, foco, projeto }: { sub: SubAgente; foco: boolean; projet
   );
 }
 
-function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | null; projeto?: string }) {
+function SecaoSubs({ agente, foco, projeto, workspace }: { agente: Agente; foco: string | null; projeto?: string; workspace?: string }) {
+  const wsApi = useWorkspaceApi(workspace);
   const locais = useMemo(() => ordenarSubs(subsDe(agente)), [agente]);
   const [todos, setTodos] = useState(false);
   useEffect(() => {
     setTodos(false);
   }, [agente.agente]);
-  const api = useApi((c, s) => (todos ? cliente.subagentes({ projeto: projeto ?? c.projeto, agente: agente.agente, periodo: "24h" }, s) : Promise.resolve<SubAgente[]>([])), [todos, agente.agente, projeto]);
+  const api = useApi((c, s) => (todos ? cliente.subagentes({ projeto: projeto ?? c.projeto, agente: agente.agente, periodo: "24h", ...(workspace ? { workspace: wsApi } : {}) }, s) : Promise.resolve<SubAgente[]>([])), [todos, agente.agente, projeto, workspace]);
   const lista = useMemo(() => {
     if (!todos) return locais;
     // eventos ao vivo (locais) prevalecem sobre a listagem carregada
@@ -191,7 +203,7 @@ function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | n
               <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-texto-fraco">Rodando</h4>
               <ul className="space-y-1.5" data-testid="subs-rodando-lista">
                 {destaque.map((s) => (
-                  <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} />
+                  <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} workspace={workspace} />
                 ))}
               </ul>
             </div>
@@ -218,7 +230,7 @@ function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | n
                       )}
                       <ul className="space-y-1.5">
                         {g.subs.map((s) => (
-                          <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} />
+                          <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} workspace={workspace} />
                         ))}
                       </ul>
                     </div>
@@ -241,7 +253,8 @@ function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | n
 
 /** Gaveta lateral com o trabalho do agente selecionado. */
 /** `projeto`: squad do agente quando ele não é o da URL (Office/Andar, stream de todos os squads). */
-export function Gaveta({ agente, tarefas, aoFechar, subFoco = null, projeto }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void; subFoco?: string | null; projeto?: string }) {
+/** `workspace`: Workspace do agente no Prédio (stream `workspace=*`); os dados vêm dele. */
+export function Gaveta({ agente, tarefas, aoFechar, subFoco = null, projeto, workspace }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void; subFoco?: string | null; projeto?: string; workspace?: string }) {
   const reduzido = useReduzirMovimento();
   useEffect(() => {
     if (!agente) return;
@@ -264,6 +277,7 @@ export function Gaveta({ agente, tarefas, aoFechar, subFoco = null, projeto }: {
           aria-label={`Trabalho de ${agente.agente}`}
           data-testid="gaveta"
           data-projeto={projeto}
+          data-workspace={workspace}
           initial={reduzido ? { opacity: 0 } : { x: 420, opacity: 0.4 }}
           animate={reduzido ? { opacity: 1 } : { x: 0, opacity: 1 }}
           exit={reduzido ? { opacity: 0 } : { x: 420, opacity: 0 }}
@@ -321,7 +335,7 @@ export function Gaveta({ agente, tarefas, aoFechar, subFoco = null, projeto }: {
             )}
           </Secao>
 
-          <SecaoSubs agente={agente} foco={subFoco} projeto={projeto} />
+          <SecaoSubs agente={agente} foco={subFoco} projeto={projeto} workspace={workspace} />
 
           <Secao icone={Inbox} titulo="Mensagens sem resposta" extra={<span className="font-semibold text-texto" data-testid="sem-resposta">{agente.pendentes}</span>}>
             <p className="text-sm text-texto-fraco">
@@ -348,12 +362,12 @@ export function Gaveta({ agente, tarefas, aoFechar, subFoco = null, projeto }: {
           </Secao>
 
           <Secao icone={MessagesSquare} titulo="Últimas mensagens">
-            <UltimasMensagens agente={agente.agente} projeto={projeto} />
+            <UltimasMensagens agente={agente.agente} projeto={projeto} workspace={workspace} />
           </Secao>
 
           <div className="mt-auto border-t border-border px-5 py-3">
             <LinkPainel
-              to={`/conversas?agente=${encodeURIComponent(agente.agente)}${projeto ? `&${qsProjeto(projeto)}` : ""}`}
+              to={`/conversas?agente=${encodeURIComponent(agente.agente)}${projeto ? `&${qsProjeto(projeto, workspace)}` : ""}`}
               className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-accent-hover transition-colors hover:bg-accent-muted"
             >
               Ver conversas de {nomeCurto(agente.agente)} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />

@@ -13,6 +13,7 @@ import { geoPiso, layoutSala, type DimSala } from "./layout";
 
 /** Máximo de pulsos em voo por sala (o Hub solo usa 4). */
 const MAX_PULSOS_SALA = 2;
+export type OrcamentoPulsos = { usados: number; max: number };
 const PISCA_MS = 1200;
 const NOOP = () => undefined;
 
@@ -26,6 +27,12 @@ export interface PropsSala {
   aoSelecionar: (projeto: string, agente: string) => void;
   aoSelecionarSub: (projeto: string, agente: string, subId: string) => void;
   aoEntrar: (projeto: string) => void;
+  /** Prédio: Workspace da sala (filtra os eventos do stream `workspace=*`) */
+  workspace?: string;
+  /** pulsos simultâneos desta sala (padrão 2; o Prédio usa 1) */
+  maxPulsos?: number;
+  /** teto de pulsos compartilhado entre as salas do prédio */
+  orcamento?: OrcamentoPulsos;
 }
 
 /** Texto longo em até `n` linhas de `larg` caracteres (o erro do squad vem do servidor: só texto). */
@@ -45,7 +52,7 @@ function quebrar(t: string, larg: number, n: number): string[] {
   return corte.map((l) => truncar(l, larg));
 }
 
-export const Sala = memo(function Sala({ squad, dim, selecionado, aoSelecionar, aoSelecionarSub, aoEntrar }: PropsSala) {
+export const Sala = memo(function Sala({ squad, dim, selecionado, aoSelecionar, aoSelecionarSub, aoEntrar, workspace, maxPulsos = MAX_PULSOS_SALA, orcamento }: PropsSala) {
   const reduzido = useReduzirMovimento();
   const { projeto, saude } = squad;
   const cor = COR_SAUDE[saude];
@@ -72,7 +79,7 @@ export const Sala = memo(function Sala({ squad, dim, selecionado, aoSelecionar, 
   }, []);
   useEffect(() => () => { if (timerPisca.current) clearTimeout(timerPisca.current); }, []);
 
-  const { pulsos, baloes, flashes } = usePulsos(rota, reduzido, { projeto, maxAtivos: MAX_PULSOS_SALA, aoMensagem });
+  const { pulsos, baloes, flashes } = usePulsos(rota, reduzido, { projeto, workspace, orcamento, maxAtivos: maxPulsos, aoMensagem });
 
   const ancoras = useMemo(() => {
     const m = new Map<string, Pt>();
@@ -117,7 +124,7 @@ export const Sala = memo(function Sala({ squad, dim, selecionado, aoSelecionar, 
   const erro = squad.erro;
 
   return (
-    <g data-testid="sala" data-squad={projeto} data-saude={saude} data-pulsando={piscando || undefined}>
+    <g data-testid="sala" data-squad={projeto} data-workspace={workspace} data-saude={saude} data-pulsando={piscando || undefined}>
       {/* laje, piso e paredes baixas do fundo */}
       <polygon points={geo.lajeEsq} fill="#0d0d1c" stroke={cor} strokeOpacity={0.35} strokeWidth={1.2} />
       <polygon points={geo.lajeDir} fill="#080813" stroke={cor} strokeOpacity={0.35} strokeWidth={1.2} />

@@ -1,21 +1,23 @@
-import { Building2, Expand, LayoutGrid, Layers, Minimize2, Network, Orbit } from "lucide-react";
+import { Building, Building2, Expand, LayoutGrid, Layers, Minimize2, Network, Orbit } from "lucide-react";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader, Segmented, Skeleton } from "../../components/ui";
 import { useContextoPainel } from "../../context/ContextoPainel";
 import { PROJETO_TODOS } from "../../api/stream";
 
-export type Modo = "hub" | "mapa" | "grade" | "andar";
+export type Modo = "hub" | "mapa" | "grade" | "andar" | "predio";
 const MODOS = [
   { valor: "hub" as const, rotulo: "Hub", icone: Orbit },
   { valor: "mapa" as const, rotulo: "Mapa", icone: Network },
   { valor: "grade" as const, rotulo: "Grade", icone: LayoutGrid },
   { valor: "andar" as const, rotulo: "Andar", icone: Layers },
+  { valor: "predio" as const, rotulo: "Prédio", icone: Building },
 ];
 
 /** `?modo=andar` ou `?projeto=*` abrem o andar com todos os squads. */
 export function modoDe(params: URLSearchParams): Modo {
   const v = params.get("modo");
+  if (v === "predio") return "predio";
   if (v === "andar" || params.get("projeto") === PROJETO_TODOS) return "andar";
   return v === "mapa" || v === "grade" ? v : "hub";
 }
@@ -34,7 +36,7 @@ export function EsqueletoCena() {
  */
 export function Moldura({ modo, corpo, sobre }: { modo: Modo; corpo: ReactNode; sobre?: ReactNode }) {
   const [, setParams] = useSearchParams();
-  const { tv } = useContextoPainel();
+  const { tv, workspaces } = useContextoPainel();
   const raiz = useRef<HTMLDivElement>(null);
 
   const atualizar = useCallback(
@@ -58,7 +60,9 @@ export function Moldura({ modo, corpo, sobre }: { modo: Modo; corpo: ReactNode; 
         if (m === "hub") n.delete("modo");
         else n.set("modo", m);
         // o andar é de todos os squads: sem projeto único na URL
-        if (m === "andar" || n.get("projeto") === PROJETO_TODOS) n.delete("projeto");
+        if (m === "andar" || m === "predio" || n.get("projeto") === PROJETO_TODOS) n.delete("projeto");
+        // o prédio é de todos os Workspaces
+        if (m === "predio") n.delete("workspace");
         return n;
       },
       { replace: true },
@@ -81,7 +85,9 @@ export function Moldura({ modo, corpo, sobre }: { modo: Modo; corpo: ReactNode; 
     return () => document.removeEventListener("fullscreenchange", fn);
   }, [tv, atualizar]);
 
-  const seletor = <Segmented opcoes={MODOS} valor={modo} onChange={escolherModo} ariaLabel="Modo de visualização" tamanho={tv ? "sm" : "md"} />;
+  // o Prédio só faz sentido com mais de um Workspace (fica de fora; aberto por URL, mostra a explicação)
+  const opcoesModo = workspaces.length > 1 || modo === "predio" ? MODOS : MODOS.filter((o) => o.valor !== "predio");
+  const seletor = <Segmented opcoes={opcoesModo} valor={modo} onChange={escolherModo} ariaLabel="Modo de visualização" tamanho={tv ? "sm" : "md"} />;
   const botaoTv = (
     <button
       type="button"
@@ -104,7 +110,7 @@ export function Moldura({ modo, corpo, sobre }: { modo: Modo; corpo: ReactNode; 
         <PageHeader
           icone={Building2}
           titulo="Office"
-          subtitulo={modo === "andar" ? "Todos os squads, uma sala para cada" : "O time no escritório, ao vivo"}
+          subtitulo={modo === "predio" ? "Todos os workspaces, um andar para cada" : modo === "andar" ? "Todos os squads, uma sala para cada" : "O time no escritório, ao vivo"}
           acoes={
             <>
               {seletor}

@@ -1,0 +1,4 @@
+/* Prédio: só transform e opacity. */
+.predio-placa { cursor: pointer; outline: none; }
+.predio-placa .predio-placa-caixa { transition: stroke-opacity 0.18s; }
+.predio-placa:hover .predio-placa-caixa, .predio-placa:focus-visible .predio-placa-caixa { stroke-opacity: 1; stroke-width: 3.5; }
