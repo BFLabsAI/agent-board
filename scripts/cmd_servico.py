@@ -47,17 +47,30 @@ def _ler(caminho):
         return None
 
 
-def comandos_serve(porta):
-    return [["tailscale", "serve", "--bg", "--https=443", f"http://127.0.0.1:{porta}"],
+def comandos_serve(porta, https=True):
+    """Navegador: HTTPS 443 se a tailnet emite certificado; senão HTTP 80 (o tráfego já vai cifrado pelo WireGuard).
+    Outros painéis: HTTP na própria porta, pelo IP da tailnet."""
+    navegador = "--https=443" if https else "--http=80"
+    return [["tailscale", "serve", "--bg", navegador, f"http://127.0.0.1:{porta}"],
             ["tailscale", "serve", "--bg", f"--http={porta}", f"http://127.0.0.1:{porta}"]]
 
 
-def comandos_serve_off(porta):
-    return [["tailscale", "serve", "--https=443", "off"], ["tailscale", "serve", f"--http={porta}", "off"]]
+def comandos_serve_off(porta, https=True):
+    navegador = "--https=443" if https else "--http=80"
+    return [["tailscale", "serve", navegador, "off"], ["tailscale", "serve", f"--http={porta}", "off"]]
 
 
-def serve_configurado(status, porta):
-    """`tailscale serve status --json` já tem HTTPS 443 e HTTP <porta> apontando para 127.0.0.1:<porta>?"""
+def tailnet_tem_https(executar):
+    """A tailnet emite certificado HTTPS (CertDomains em `tailscale status --json`)?"""
+    rc, out = executar(["tailscale", "status", "--json"])
+    try:
+        return rc == 0 and bool((json.loads(out) or {}).get("CertDomains"))
+    except ValueError:
+        return False
+
+
+def serve_configurado(status, porta, https=True):
+    """`tailscale serve status --json` já tem o navegador (HTTPS 443 ou HTTP 80) e HTTP <porta> em 127.0.0.1:<porta>?"""
     web = (status or {}).get("Web") or {}
     alvo = f"127.0.0.1:{porta}"
 
@@ -68,7 +81,7 @@ def serve_configurado(status, porta):
                 if alvo in prox:
                     return True
         return False
-    return tem(443) and tem(porta)
+    return tem(443 if https else 80) and tem(porta)
 
 
 def executar_real(cmd):
@@ -96,9 +109,13 @@ def instalar(porta=8765, dry_run=False, dir_unit=DIR_UNIT, executar=executar_rea
     """Devolve 0 se tudo certo. Idempotente: unit igual não é reescrito; serve já configurado não é repetido."""
     unit = gerar_unit(porta)
     caminho = os.path.join(dir_unit, NOME_UNIT)
+    https = tailnet_tem_https(executar)
+    if not https:
+        saida("aviso: a tailnet não emite HTTPS (habilite em login.tailscale.com > DNS > HTTPS Certificates); "
+              "o navegador usa http://<maquina>.<tailnet>.ts.net, cifrado pela Tailscale")
     if dry_run:
         saida(f"# {caminho}\n{unit}")
-        for cmd in [["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", NOME_UNIT]] + comandos_serve(porta):
+        for cmd in [["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", NOME_UNIT]] + comandos_serve(porta, https):
             saida("$ " + " ".join(shlex.quote(c) for c in cmd))
         return 0
     try:
@@ -117,10 +134,10 @@ def instalar(porta=8765, dry_run=False, dir_unit=DIR_UNIT, executar=executar_rea
     if rc != 0:
         saida(f"systemctl enable falhou: {out.strip()}")
         return 1
-    if serve_configurado(_serve_status(executar), porta):
+    if serve_configurado(_serve_status(executar), porta, https):
         saida("tailscale serve já configurado")
         return 0
-    for cmd in comandos_serve(porta):
+    for cmd in comandos_serve(porta, https):
         rc, out = executar(cmd)
         if rc != 0:
             saida(f"{' '.join(cmd)} falhou: {out.strip()}")
@@ -141,10 +158,12 @@ def remover(porta=8765, dry_run=False, dir_unit=DIR_UNIT, executar=executar_real
         os.remove(caminho)
         saida(f"removido {caminho}")
     executar(["systemctl", "daemon-reload"])
-    if serve_configurado(_serve_status(executar), porta):
-        for cmd in comandos_serve_off(porta):
-            executar(cmd)
-        saida("tailscale serve desligado")
+    st = _serve_status(executar)
+    for https in (True, False):
+        if serve_configurado(st, porta, https):
+            for cmd in comandos_serve_off(porta, https):
+                executar(cmd)
+            saida("tailscale serve desligado")
     return 0
 
 
@@ -154,7 +173,7 @@ def status(porta=8765, dir_unit=DIR_UNIT, executar=executar_real, saida=print):
     rc, out = executar(["systemctl", "is-active", NOME_UNIT])
     saida(f"serviço: {out.strip() or 'desconhecido'}")
     st = _serve_status(executar)
-    saida("tailscale serve: " + ("configurado" if serve_configurado(st, porta) else
+    saida("tailscale serve: " + ("configurado" if serve_configurado(st, porta) or serve_configurado(st, porta, False) else
                                  "não configurado" if st is not None else "indisponível"))
     return 0 if rc == 0 else 1
 

@@ -615,9 +615,12 @@ class Servico(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, True)
         self.cmds, self.saida = [], []
         self.serve_json = None
+        self.cert_domains = ["r7-workspace.tailcf59a0.ts.net"]  # tailnet com HTTPS habilitado
 
     def executar(self, cmd):
         self.cmds.append(cmd)
+        if cmd[:3] == ["tailscale", "status", "--json"]:
+            return 0, json.dumps({"CertDomains": self.cert_domains})
         if cmd[:3] == ["tailscale", "serve", "status"]:
             return (0, json.dumps(self.serve_json)) if self.serve_json is not None else (1, "")
         if cmd[:2] == ["systemctl", "is-active"]:
@@ -674,6 +677,19 @@ class Servico(unittest.TestCase):
         self.assertEqual(self.rodar(cmd_servico.instalar, 8765), 0)
         self.assertEqual(os.stat(self.unit()).st_mtime_ns, antes)
         self.assertNotIn(["systemctl", "daemon-reload"], self.cmds)
+        self.assertEqual([c for c in self.cmds if c[:2] == ["tailscale", "serve"] and "--bg" in c], [])
+
+    def test_tailnet_sem_https_usa_http_80_no_navegador(self):
+        self.cert_domains = None
+        self.assertEqual(self.rodar(cmd_servico.instalar, 8765), 0)
+        self.assertIn(["tailscale", "serve", "--bg", "--http=80", "http://127.0.0.1:8765"], self.cmds)
+        self.assertNotIn(["tailscale", "serve", "--bg", "--https=443", "http://127.0.0.1:8765"], self.cmds)
+        self.assertTrue(any("não emite HTTPS" in l for l in self.saida))
+        # idempotente também no modo HTTP
+        self.serve_json = {"Web": {"h:80": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8765"}}},
+                                   "h:8765": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8765"}}}}}
+        self.cmds = []
+        self.rodar(cmd_servico.instalar, 8765)
         self.assertEqual([c for c in self.cmds if c[:2] == ["tailscale", "serve"] and "--bg" in c], [])
 
     def test_serve_configurado(self):
