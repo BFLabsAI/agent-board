@@ -1300,7 +1300,7 @@ class LeitorDeSubagentes(SubBase):
 
     def test_projeto_sem_diretorio_ou_com_nome_malicioso(self):
         self.assertEqual(self.listar(), [])
-        for nome in ("..", ".", "a/b", "..\\x", "", None, "a\0b"):
+        for nome in ("..", ".", "a/b", "..\\x", "", None, "a\0b", "../../etc"):
             self.assertEqual(painel_subagentes.listar(nome), [], nome)
         self.assertEqual(painel_subagentes.assinatura("zzz", agora_local()),
                          tuple((n, 0, 0) for n, _, _ in painel_subagentes.assinatura("zzz", agora_local())))

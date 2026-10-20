@@ -3,7 +3,7 @@ agent-board: os sub-agents que o coletor grava em $AGENT_BOARD_HOME/subagentes/<
 docs/referencia/painel-api.md, "Sub-agents"), lidos e ligados para o painel web.
 
 Só leitura: nada aqui escreve (nem em avisos.log). O arquivo é entrada não confiável, como o log: linha torta é
-ignorada, texto é limitado e a saída leva a máscara de segredos de `painel_dados.mascarar`. A leitura é
+ignorada, texto é limitado e a saída leva a máscara de segredos de `mascarar`. A leitura é
 incremental e fica em cache por arquivo, compartilhada por todas as requisições e conexões SSE.
 """
 import datetime
@@ -14,7 +14,7 @@ import re
 import threading
 
 import base
-import painel_dados
+from base import mascarar
 import painel_estado
 from painel_estado import _ts
 
@@ -35,11 +35,10 @@ _ligados = {}    # (projeto, assinatura dos arquivos) -> registros ligados
 
 
 def pasta(projeto):
-    """Pasta do projeto, ou None se o nome tentaria sair de `subagentes/`."""
-    if not isinstance(projeto, str) or not projeto or projeto in (".", "..") or "/" in projeto or "\\" in projeto \
-            or "\0" in projeto:
+    """Pasta do projeto, com o mesmo nome que o coletor usa (subagentes.pasta_segura); None se o nome não é texto."""
+    if not isinstance(projeto, str):
         return None
-    return os.path.join(base.HOME, "subagentes", projeto)
+    return os.path.join(base.HOME, "subagentes", re.sub(r"[^\w.-]", "_", projeto).lstrip(".") or "_")
 
 
 # --- leitura incremental ---------------------------------------------------------------------------
@@ -216,10 +215,10 @@ def publico(reg, agora, tars_do_pai=()):
     dur = round(max(0.0, (reg["fim"] - reg["inicio"]).total_seconds()), 1) if reg["fim"] else None
     desc = reg["descricao"]
     return {"id": reg["id"], "agente": reg["agente"], "tipo": reg["tipo"],
-            "descricao": painel_dados.mascarar(desc) if desc is not None else None,
+            "descricao": mascarar(desc) if desc is not None else None,
             "status": _status(reg, agora), "fundo": reg["fundo"], "inicio": reg["inicio_ts"], "fim": reg["fim_ts"],
             "duracao_s": dur,
-            "ultima_atividade": dict(ult, resumo=painel_dados.mascarar(ult["resumo"])) if ult else None,
+            "ultima_atividade": dict(ult, resumo=mascarar(ult["resumo"])) if ult else None,
             "n_atividades": reg["n"], "tarefa": _tarefa_de(reg, tars_do_pai)}
 
 

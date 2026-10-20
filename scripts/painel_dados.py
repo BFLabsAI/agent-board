@@ -7,7 +7,7 @@ import datetime
 import re
 
 import painel_estado
-from base import eh_maestri, papel_do_nome
+from base import eh_maestri, mascarar, papel_do_nome
 from painel_estado import TIPOS_TAREFA, _ts
 from politica import ids_de
 
@@ -85,23 +85,6 @@ def harness_de(handle, nome, terminal):
         return m.group(1)
     ident = (terminal or {}).get("agentIdentity")
     return {"claude": "cc", "omp": "omp", "pi": "omp"}.get(ident)
-
-
-SEGREDOS = re.compile(
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"  # chave privada PEM
-    r"|\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}"                                           # OpenAI/Anthropic/Stripe
-    r"|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}"     # GitHub
-    r"|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}"                        # AWS, Google
-    r"|\bxox[abposr]-[A-Za-z0-9-]{10,}|\bnpm_[A-Za-z0-9]{30,}"                        # Slack, npm
-    r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"                  # JWT
-    r"|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"
-    r"|(?i:\b[\w.-]*(?:password|passwd|senha|secret|token|api[_-]?key|apikey|authorization)[\w.-]*)\s*[=:]\s*(?:(?:Bearer|Basic)\s+)?\S+",
-    re.S)
-
-
-def mascarar(texto):
-    """Troca por [oculto] o que parece segredo (token, chave, senha, Bearer) no texto do terminal."""
-    return SEGREDOS.sub("[oculto]", texto)
 
 
 def tela_de(preview, linhas=12):
