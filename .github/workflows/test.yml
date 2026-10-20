@@ -33,3 +33,23 @@ jobs:
         with:
           version: "0.17.0"
           args: check scripts
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build
+      # o build é commitado em scripts/painel_web/ (quem instala a skill não precisa de Node); tem que estar em dia
+      - run: test -z "$(git status --porcelain -- ../scripts/painel_web)" || (git status --short -- ../scripts/painel_web; echo "scripts/painel_web desatualizado: rode npm run build e commite"; exit 1)
