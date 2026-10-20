@@ -9,7 +9,7 @@ import { Sidebar } from "./Sidebar";
 const CHAVE = "agent-board:sidebar-recolhida";
 
 export function Layout() {
-  const { tv } = useContextoPainel();
+  const { tv, inicioPendente } = useContextoPainel();
   const { pathname } = useLocation();
   const [recolhida, setRecolhida] = useState(() => lerLocal(CHAVE) === "1");
 
@@ -32,7 +32,7 @@ export function Layout() {
       <main id="conteudo" tabIndex={-1} className="min-w-0 flex-1 overflow-x-hidden px-10 py-8" data-modo-tv={tv || undefined}>
         <LimiteErro key={pathname}>
           <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-            <Outlet />
+            {inicioPendente && pathname === "/" ? <Skeleton className="h-64 w-full" /> : <Outlet />}
           </Suspense>
         </LimiteErro>
       </main>

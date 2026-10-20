@@ -1,6 +1,6 @@
 import type { Agente, Tarefa } from "../../../api/tipos";
 import type { SubAgente } from "../../../api/tipos";
-import { ordenarSubs, subsDe } from "../subagentes";
+import { descricaoSub, emDestaque, ordenarSubs, subsDe, terminadosDe, textoAtividade } from "../subagentes";
 import { tarefasAbertasDe } from "./dados";
 
 export const L = {
@@ -17,24 +17,42 @@ export const L = {
   tarefaIndent: 14,
   maxTarefas: 3,
   maisAlt: 22,
-  subW: 176,
-  subAlt: 92,
-  subGap: 8,
-  /** faixa dos conectores entre o card do pai e a coluna de sub-cards */
-  subGapX: 30,
-  maxSubs: 4,
+  /** sub-cards ficam sob o pai, centralizados no eixo dele */
+  subInset: 20,
+  subGap: 6,
+  /** espaço do conector (drop + barra) entre o card do pai e o 1º sub-card */
+  subTopo: 14,
+  subResumoAlt: 22,
+  subMaisAlt: 20,
+  maxSubs: 3,
 } as const;
 
-/** Sub-agents que cabem sob o pai (rodando primeiro) e quantos viram "+N". */
-export function recortarSubs(subs: SubAgente[]): { mostradas: SubAgente[]; extra: number } {
-  const ord = ordenarSubs(subs);
-  return { mostradas: ord.slice(0, L.maxSubs), extra: Math.max(0, ord.length - L.maxSubs) };
+export interface SubsRecortados {
+  /** rodando/perdido em destaque (até L.maxSubs) */
+  mostradas: SubAgente[];
+  /** rodando/perdido que não couberam */
+  extra: number;
+  /** concluído/erro: só o resumo compacto */
+  terminados: SubAgente[];
 }
 
-/** Altura do bloco de sub-cards (0 sem sub-agents). */
-export function alturaSubs(mostradas: number, extra: number): number {
-  if (mostradas === 0) return 0;
-  return 8 + mostradas * (L.subAlt + L.subGap) + (extra > 0 ? L.maisAlt : 0);
+/** Rodando e perdido viram sub-cards (até 3, rodando primeiro); concluído e erro viram resumo. */
+export function recortarSubs(subs: SubAgente[]): SubsRecortados {
+  const destaque = ordenarSubs(subs.filter(emDestaque));
+  return { mostradas: destaque.slice(0, L.maxSubs), extra: Math.max(0, destaque.length - L.maxSubs), terminados: terminadosDe(subs) };
+}
+
+/** Altura do sub-card: só as linhas que têm conteúdo (descrição e atividade são opcionais). */
+export function alturaSub(s: SubAgente): number {
+  const linhas = 1 + (descricaoSub(s) ? 1 : 0) + (textoAtividade(s) ? 1 : 0);
+  return 18 + 16 + (descricaoSub(s) ? 17 : 0) + (textoAtividade(s) ? 15 : 0) + (linhas - 1) * 3;
+}
+
+/** Altura do bloco de sub-agents sob o pai (0 sem nada a mostrar). */
+export function alturaSubs(mostradas: SubAgente[], extra: number, nTerminados: number): number {
+  const itens = [...mostradas.map(alturaSub), ...(extra > 0 ? [L.subMaisAlt] : []), ...(nTerminados > 0 ? [L.subResumoAlt] : [])];
+  if (itens.length === 0) return 0;
+  return L.subTopo + itens.reduce((t, h) => t + h, 0) + (itens.length - 1) * L.subGap + 4;
 }
 
 export interface NoMapa {
@@ -43,14 +61,15 @@ export interface NoMapa {
   y: number;
   w: number;
   h: number;
-  /** largura ocupada na fila: card + coluna de sub-cards, quando há */
-  largTotal: number;
   subs: SubAgente[];
   subsExtra: number;
+  terminados: SubAgente[];
+  /** altura do bloco de sub-agents (entre o card e as tarefas) */
+  subsAlt: number;
   tarefas: Tarefa[];
   /** quantas tarefas cabem; o resto vira "+N" */
   visiveis: number;
-  /** altura do bloco pendurado (0 sem tarefas) */
+  /** altura do que pende do card: sub-agents + tarefas */
   pendurado: number;
 }
 
@@ -108,22 +127,24 @@ export function calcularLayout(agentes: Agente[], tarefas: Tarefa[]): LayoutMapa
       const lista = tarefasAbertasDe(agente.agente, tarefas);
       const { visiveis, h } = alturaPendurada(lista.length);
       const eMaster = agente.papel === "master";
-      const { mostradas, extra } = recortarSubs(subsDe(agente));
+      const { mostradas, extra, terminados } = recortarSubs(subsDe(agente));
+      const subsAlt = alturaSubs(mostradas, extra, terminados.length);
       const w = eMaster ? L.largMaster : L.larg;
       return {
         agente,
         tarefas: lista,
         visiveis,
-        pendurado: Math.max(h, alturaSubs(mostradas.length, extra) > 0 ? alturaSubs(mostradas.length, extra) : 0),
+        pendurado: h + subsAlt,
         w,
         h: eMaster ? L.altMaster : L.alt,
-        largTotal: mostradas.length > 0 ? w + L.subGapX + L.subW : w,
         subs: mostradas,
         subsExtra: extra,
+        terminados,
+        subsAlt,
       };
     }),
   );
-  const largFila = medidas.map((f) => f.reduce((s, n) => s + n.largTotal, 0) + (f.length - 1) * L.gapX);
+  const largFila = medidas.map((f) => f.reduce((s, n) => s + n.w, 0) + (f.length - 1) * L.gapX);
   const largura = Math.max(L.larg, ...largFila) + L.pad * 2;
 
   const nos: NoMapa[] = [];
@@ -136,7 +157,7 @@ export function calcularLayout(agentes: Agente[], tarefas: Tarefa[]): LayoutMapa
     let maior = 0;
     for (const m of fila) {
       nos.push({ ...m, x, y });
-      x += m.largTotal + L.gapX;
+      x += m.w + L.gapX;
       maior = Math.max(maior, m.h + m.pendurado);
     }
     baseFila.push(y + maior);

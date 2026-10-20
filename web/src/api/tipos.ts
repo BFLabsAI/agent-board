@@ -40,6 +40,8 @@ export interface SubAgente {
   id: string;
   /** nome do agente pai no cadastro */
   agente: string;
+  /** rótulo do sub-agent no painel: "subagent-cc" ou "subagent-omp" (harness do pai). Use no lugar do tipo. */
+  nome?: string;
   tipo: string | null;
   /** texto não confiável (descrição que o pai passou) */
   descricao: string | null;
@@ -47,6 +49,8 @@ export interface SubAgente {
   fundo: boolean;
   inicio: string;
   fim: string | null;
+  /** true quando o sub-agent foi visto sem o evento de início (sessão antiga): inicio é só o 1º evento visto */
+  inicio_aproximado?: boolean;
   duracao_s: number | null;
   /** resumo é texto não confiável, já mascarado no servidor */
   ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null;
@@ -175,6 +179,52 @@ export interface Resumo {
   indicadores: Indicadores;
 }
 
+/** Mensagem de qualquer squad (/api/geral/mensagens e eventos do stream "*"). */
+export type MensagemSquad = Mensagem & { projeto: string };
+
+export type SaudeSquad = "ok" | "atencao" | "critico";
+
+/** Um squad = um projeto do cadastro (visão geral, 1.13). */
+export interface Squad {
+  projeto: string;
+  raiz: string;
+  versao: string;
+  cadeia_integra: boolean;
+  indicadores: Indicadores;
+  agentes: Agente[];
+  ultima_mensagem: MensagemSquad | null;
+  /** ping-pong + atrasados + cadeia quebrada */
+  alertas: number;
+  saude: SaudeSquad;
+  /** projeto com raiz inexistente ou config ilegível (texto não confiável) */
+  erro?: string;
+}
+
+export interface TotaisGeral {
+  squads: number;
+  agentes: number;
+  trabalhando: number;
+  esperando: number;
+  subagentes_rodando: number;
+  abertos: number;
+  atrasados: number;
+  revisao: number;
+  mensagens: number;
+}
+
+export interface Geral {
+  agora: string;
+  periodo: Periodo;
+  /** ordem: critico, atencao, ok; depois por nome */
+  squads: Squad[];
+  totais: TotaisGeral;
+}
+
+export interface PaginaMensagensGeral {
+  mensagens: MensagemSquad[];
+  mais: boolean;
+}
+
 export interface PaginaMensagens {
   mensagens: Mensagem[];
   mais: boolean;
@@ -223,18 +273,23 @@ export interface Workflows {
 
 /** Eventos do /api/stream */
 export interface EventoOla {
+  /** "*" quando a conexão é a de todos os squads */
   projeto: string;
   agora: string;
+  /** só no stream "*": os projetos vigiados */
+  projetos?: string[];
 }
+/** No stream "*" cada evento traz o projeto (squad) de origem. */
+export type ComProjeto<T> = T & { projeto?: string };
 export interface EventoPing {
   agora: string;
 }
 export interface EventosStream {
   ola: EventoOla;
-  mensagem: Mensagem;
-  agente: Agente;
-  tarefa: Tarefa;
-  subagente: SubAgente;
+  mensagem: ComProjeto<Mensagem>;
+  agente: ComProjeto<Agente>;
+  tarefa: ComProjeto<Tarefa>;
+  subagente: ComProjeto<SubAgente>;
   ping: EventoPing;
 }
 export type NomeEvento = keyof EventosStream;
@@ -253,6 +308,10 @@ export interface FiltroConversas extends Contexto {
 export interface FiltroSubagentes extends Contexto {
   agente?: string;
   status?: StatusSub;
+  limite?: number;
+}
+export interface FiltroGeralMensagens {
+  antes?: string;
   limite?: number;
 }
 export interface FiltroMensagens extends Contexto {

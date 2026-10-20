@@ -89,7 +89,7 @@ export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoSe
             h={n.h}
             subs={n.subs}
             subsExtra={n.subsExtra}
-            modoSubs="lado"
+            terminados={n.terminados}
             aoSelecionarSub={aoSelecionarSub}
           />
         ))}
@@ -124,7 +124,7 @@ export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoSe
               </header>
               {lista.map((a) => {
                 const abertas = tarefasAbertasDe(a.agente, tarefas);
-                const { mostradas, extra } = recortarSubs(subsDe(a));
+                const { mostradas, extra, terminados } = recortarSubs(subsDe(a));
                 return (
                   <CardAgente
                     key={a.agente}
@@ -138,7 +138,7 @@ export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoSe
                     h={a.papel === "master" ? L.altMaster : L.alt}
                     subs={mostradas}
                     subsExtra={extra}
-                    modoSubs="abaixo"
+                    terminados={terminados}
                     aoSelecionarSub={aoSelecionarSub}
                   />
                 );

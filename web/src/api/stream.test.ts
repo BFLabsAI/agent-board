@@ -21,6 +21,14 @@ describe("ConexaoStream", () => {
     c.parar();
   });
 
+  it("projeto '*' abre o stream de todos os squads, com o * sem encode", () => {
+    expect(urlStream("*")).toBe("/api/stream?projeto=*");
+    const c = new ConexaoStream({ projeto: "*", fabrica: fabricaFalsa });
+    c.iniciar();
+    expect(ultima().url).toBe("/api/stream?projeto=*");
+    c.parar();
+  });
+
   it("sem projeto usa a URL pura", () => {
     expect(urlStream(null)).toBe("/api/stream");
   });

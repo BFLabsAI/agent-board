@@ -29,6 +29,14 @@ interface Item {
 }
 
 const MAX_ATIVOS = 4;
+export interface OpcoesPulsos {
+  /** só reage a mensagens deste projeto (stream "*" do Office/Andar) */
+  projeto?: string;
+  /** pulsos simultâneos (padrão 4) */
+  maxAtivos?: number;
+  /** chamado a cada mensagem aceita da sala, antes da fila (a sala pisca) */
+  aoMensagem?: (m: Mensagem) => void;
+}
 const ESPACO_MS = 260;
 const MAX_FILA = 30;
 export const DURACAO_BALAO_MS = 4000;
@@ -38,7 +46,9 @@ export const DURACAO_BALAO_MS = 4000;
  * No máximo 4 em voo e 260 ms entre largadas, para não embolar. O balão de fala aparece
  * no remetente por 4 s; resposta com veredito rejeitado pisca a mesa de destino.
  */
-export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, reduzido: boolean) {
+export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, reduzido: boolean, opcoes: OpcoesPulsos = {}) {
+  const opRef = useRef(opcoes);
+  opRef.current = opcoes;
   const [pulsos, setPulsos] = useState<Pulso[]>([]);
   const [baloes, setBaloes] = useState<Record<string, Balao>>({});
   const [flashes, setFlashes] = useState<Record<string, string>>({});
@@ -96,7 +106,7 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
   );
 
   const drenar = useCallback(() => {
-    if (espera.current || fila.current.length === 0 || ativos.current >= MAX_ATIVOS) return;
+    if (espera.current || fila.current.length === 0 || ativos.current >= (opRef.current.maxAtivos ?? MAX_ATIVOS)) return;
     const aguardar = Math.max(0, ultimaLargada.current + ESPACO_MS - Date.now());
     espera.current = agendar(() => {
       espera.current = null;
@@ -108,6 +118,9 @@ export function usePulsos(rotaEntre: (de: string, para: string) => Rota | null, 
   drenarRef.current = drenar;
 
   useEvento("mensagem", (m) => {
+    const alvo = opRef.current.projeto;
+    if (alvo && (m as { projeto?: string }).projeto !== alvo) return;
+    opRef.current.aoMensagem?.(m);
     const rota = rotaRef.current(m.de, m.para);
     if (!rota) return;
     fila.current.push({ m, rota });

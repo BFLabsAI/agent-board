@@ -52,14 +52,53 @@ export function duracaoSub(s: SubAgente, agora: number): number | null {
   return null;
 }
 
-export const textoDuracao = (s: SubAgente, agora: number): string => {
-  const d = duracaoSub(s, agora);
-  return d === null ? "—" : formatarSegundos(d);
+/** Nome do sub-agent: `nome` do servidor; fallback pelo harness do pai (-omp → subagent-omp, senão subagent-cc). */
+export const nomeSub = (s: Pick<SubAgente, "nome" | "agente">): string =>
+  s.nome?.trim() || (s.agente?.endsWith("-omp") ? "subagent-omp" : "subagent-cc");
+
+/** Tipo (general-purpose, Explore…) só como detalhe secundário, quando existir. */
+export const tipoDetalhe = (s: Pick<SubAgente, "tipo">): string | null => s.tipo?.trim() || null;
+
+/** Descrição só se existir (texto não confiável: nunca placeholder). */
+export const descricaoSub = (s: Pick<SubAgente, "descricao">): string | null => s.descricao?.trim() || null;
+
+const hhmm = (iso: string): string => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-/** "Bash  grep -rn ..." — ferramenta e resumo da última atividade. */
-export const textoAtividade = (s: SubAgente): string =>
-  s.ultima_atividade ? `${s.ultima_atividade.ferramenta} ${s.ultima_atividade.resumo}`.trim() : "sem atividade";
+/**
+ * Duração para exibir, ou null (omitir a linha). Duração null não é "0s".
+ * Rodando com início aproximado: "há ≥ X min" (ou "desde HH:MM" passando de 1 h).
+ */
+export const textoDuracao = (s: SubAgente, agora: number): string | null => {
+  const d = duracaoSub(s, agora);
+  if (d === null) return null;
+  if (s.status === "rodando" && s.inicio_aproximado) {
+    if (d >= 3600) return `desde ${hhmm(s.inicio)}`;
+    return `há ≥ ${Math.max(1, Math.floor(d / 60))} min`;
+  }
+  return formatarSegundos(d);
+};
+
+/** "Bash  grep -rn ..." — ferramenta e resumo da última atividade; null sem atividade. */
+export const textoAtividade = (s: SubAgente): string | null =>
+  s.ultima_atividade ? `${s.ultima_atividade.ferramenta} ${s.ultima_atividade.resumo}`.trim() || null : null;
+
+/** Em destaque: rodando e perdido (âmbar). */
+export const emDestaque = (s: Pick<SubAgente, "status">): boolean => s.status === "rodando" || s.status === "perdido";
+
+/** Concluído e erro viram só o resumo compacto. */
+export const terminadosDe = (lista: SubAgente[]): SubAgente[] => ordenarSubs(lista.filter((s) => !emDestaque(s)));
+
+/** "✓ 11 concluídos · ✕ 1 erro" (null sem terminados). */
+export function resumoTerminados(lista: SubAgente[]): string | null {
+  const t = terminadosDe(lista);
+  const ok = t.filter((s) => s.status === "concluido").length;
+  const er = t.filter((s) => s.status === "erro").length;
+  const partes = [ok > 0 && `✓ ${ok} ${ok === 1 ? "concluído" : "concluídos"}`, er > 0 && `✕ ${er} ${er === 1 ? "erro" : "erros"}`].filter(Boolean);
+  return partes.length ? partes.join(" · ") : null;
+}
 
 /** Relógio de 1 s, ligado só quando `ativo` (há sub-agent rodando). Não faz requisição. */
 export function useAgora(ativo: boolean): number {

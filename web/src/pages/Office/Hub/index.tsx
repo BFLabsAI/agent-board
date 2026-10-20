@@ -1,3 +1,4 @@
+import { descricaoSub, nomeSub, tipoDetalhe } from "../subagentes";
 import { useCallback, useMemo, useState } from "react";
 import { estiloPapel, ESTILO_STATUS_AGENTE } from "../../../lib/cores";
 import { truncar } from "../../../lib/formato";
@@ -190,12 +191,13 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar, aoSel
 function TooltipSub({ p }: { p: PosSub }) {
   const { sub } = p;
   const ult = sub.ultima_atividade;
+  const linhaSec = descricaoSub(sub) ?? tipoDetalhe(sub);
   return (
     <g transform={`translate(${p.x} ${p.y - 24})`} pointerEvents="none" data-testid="tooltip-sub">
       <rect x={-112} y={-62} width={224} height={62} rx={8} fill="#2a2a3d" fillOpacity={0.97} stroke="#363650" />
-      <text x={-102} y={-45} fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(sub.tipo ?? "sub-agent", 26)}</text>
-      <text x={-102} y={-30} fontSize={10.5} fill="#9ca3af">{truncar(sub.descricao ?? "sem descrição", 38)}</text>
-      <text x={-102} y={-12} className="hub-mono" fontSize={9.5} fill="#6ee7b7">{truncar(ult ? `${ult.ferramenta} ${ult.resumo}` : "sem atividade", 40)}</text>
+      <text x={-102} y={-45} fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(nomeSub(sub), 26)}</text>
+      {linhaSec && <text x={-102} y={-30} fontSize={10.5} fill="#9ca3af">{truncar(linhaSec, 38)}</text>}
+      {ult && <text x={-102} y={-12} className="hub-mono" fontSize={9.5} fill="#6ee7b7">{truncar(`${ult.ferramenta} ${ult.resumo}`, 40)}</text>}
     </g>
   );
 }

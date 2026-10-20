@@ -28,8 +28,10 @@ export function listaSub<T>(x: T[] | null | undefined): T[] {
   return Array.isArray(x) ? x : [];
 }
 
-export function tipoSub(s: { tipo: string | null }): string {
-  return s.tipo?.trim() || "sub-agent";
+/** Rótulo do sub-agent: "subagent-cc" / "subagent-omp" (harness do pai), como no Office. O tipo é detalhe à parte. */
+export function tipoSub(s: { nome?: string; agente?: string; tipo?: string | null }, pai?: string): string {
+  if (s.nome) return s.nome;
+  return (s.agente ?? pai ?? "").endsWith("-omp") ? "subagent-omp" : "subagent-cc";
 }
 
 /** "45s", "2m 05s", "1h 12m". */

@@ -16,7 +16,7 @@ export function idCurto(id: string): string {
 }
 
 /** Linha "N sub-agents (M rodando)" com bolinhas por status e lista expansível. */
-export function SubsDaTarefa({ subs }: { subs: Tarefa["subagentes"] | undefined }) {
+export function SubsDaTarefa({ subs, pai }: { subs: Tarefa["subagentes"] | undefined; pai?: string }) {
   const [aberto, setAberto] = useState(false);
   const lista = listaSub(subs);
   if (lista.length === 0) return null;
@@ -41,7 +41,7 @@ export function SubsDaTarefa({ subs }: { subs: Tarefa["subagentes"] | undefined 
           {lista.map((x) => (
             <li key={x.id} data-status={x.status} className="flex items-center gap-1.5 text-[11px]">
               <PontoSub status={x.status} />
-              <span className={clsx("shrink-0 font-mono", estiloSub(x.status).texto)}>{tipoSub(x)}</span>
+              <span className={clsx("shrink-0 font-mono", estiloSub(x.status).texto)}>{tipoSub(x, pai)}</span>
               <span className="truncate text-texto-suave" title={x.descricao ?? undefined}>{truncar(x.descricao, 80)}</span>
             </li>
           ))}
@@ -120,7 +120,7 @@ export function CartaoTarefa({ t }: { t: Tarefa }) {
           {t.fechada_em && <span>fechada</span>}
         </div>
       </LinkPainel>
-      <SubsDaTarefa subs={t.subagentes} />
+      <SubsDaTarefa subs={t.subagentes} pai={t.para} />
     </motion.li>
   );
 }

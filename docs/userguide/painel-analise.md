@@ -51,6 +51,6 @@ Uma conversa sem issue liga o executor direto à Revisão; sem entrega, liga dir
 ## Sub-agents
 Os dados vêm do coletor dos hooks ([como funciona](painel.md#sub-agents)).
 - **Analytics:** a aba "Sub-agents" cobre os 30 dias, como o resto da tela.
-- **Workflows:** o grafo ganha a coluna **SUB-AGENTS**, com um nó por tipo (`Explore`, `general-purpose`…) e uma linha do agente até ele. O cartão **Sub-agents** conta os disparados no período.
+- **Workflows:** os sub-agents saem do fluxo principal e vão para uma **faixa própria** (SUB-AGENTS), com um nó por tipo (`Explore`, `general-purpose`…). Cada agente leva o selo `⑂ N` (quantos disparou); clicar num nó destaca quem o usa. O tooltip segue o cursor. O cartão **Sub-agents** conta os disparados no período.
 
 **Próximo:** [Office](painel-office.md)
