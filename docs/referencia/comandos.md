@@ -57,8 +57,13 @@ Estados do quadro: `aberto`, `em_andamento`, `concluido`, `atrasado`, `aguardand
 | Comando | O que faz | Flags | Quem roda |
 |---|---|---|---|
 | `servir` | Painel local só leitura com 7 telas ao vivo (Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e Office, com os sub-agents de cada agente), em `http://127.0.0.1:8765` | `--raiz` (opcional), `--porta 8765` | qualquer um |
+| `servico instalar` | Painel sempre ligado: grava o unit systemd `agent-board-painel.service` (`Restart=always`, roda `painel.py servir --porta <n>` do checkout da skill), liga o serviço e configura o `tailscale serve` (HTTPS 443 e HTTP `<porta>` para `127.0.0.1:<porta>`). Idempotente | `--porta 8765`, `--dry-run` (só imprime o unit e os comandos) | root, uma vez por VPS |
+| `servico status` | Mostra se o unit existe, se o serviço está ativo e se o `tailscale serve` está configurado. Sai com 0 só se o serviço está ativo | `--porta 8765` | qualquer um |
+| `servico remover` | Desliga o serviço, apaga o unit e desliga o `tailscale serve` | `--porta 8765`, `--dry-run` | root |
 
 **Multi-projeto:** um servidor atende todos os projetos do cadastro (`paineis.json`) cuja raiz tem `docs/agent-board/agent-board.json`. `--raiz` é opcional: o projeto dela aparece primeiro e vale quando a URL não pede outro. Sem `--raiz` e sem projeto cadastrado, o comando sai com erro; com `--raiz` sem `agent-board.json`, também. Se a porta estiver ocupada, use `--porta`.
+
+Workspaces federados: [guia](../userguide/painel-workspaces.md), [API](painel-api.md#workspaces-federados-114) e [ADR-0012](../adr/0012-workspaces-federados.md).
 
 Servidor remoto: `ssh -L 8765:127.0.0.1:8765 <servidor>`. Detalhes: [painel web](../userguide/painel.md), [API](painel-api.md), [ADR-0005](../adr/0005-painel-web-local-somente-leitura.md) e [ADR-0010](../adr/0010-painel-v2-spa-com-build-e-sse.md).
 
