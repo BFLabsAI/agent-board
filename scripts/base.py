@@ -70,6 +70,28 @@ def papel_do_nome(nome):
     return "master" if m.group("master") else m.group("papel")
 
 
+# Segredos que nunca devem ir para tela, painel ou arquivo de coleta. Compilado só no primeiro uso:
+# o hook roda a cada chamada de ferramenta e a maioria não mascara nada.
+SEGREDOS_PADRAO = (
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"  # chave privada PEM
+    r"|\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}"                                           # OpenAI/Anthropic/Stripe
+    r"|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}"     # GitHub
+    r"|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}"                        # AWS, Google
+    r"|\bxox[abposr]-[A-Za-z0-9-]{10,}|\bnpm_[A-Za-z0-9]{30,}"                        # Slack, npm
+    r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"                  # JWT
+    r"|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"
+    r"|(?i:\b[\w.-]*(?:password|passwd|senha|secret|token|api[_-]?key|apikey|authorization)[\w.-]*)\s*[=:]\s*(?:(?:Bearer|Basic)\s+)?\S+"
+)
+_segredos = []
+
+
+def mascarar(texto):
+    """Troca por [oculto] o que parece segredo (token, chave, senha, Bearer) no texto."""
+    if not _segredos:
+        _segredos.append(re.compile(SEGREDOS_PADRAO, re.S))
+    return _segredos[0].sub("[oculto]", texto)
+
+
 def agora():
     return datetime.datetime.now().astimezone()
 

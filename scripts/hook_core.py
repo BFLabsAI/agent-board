@@ -35,6 +35,7 @@ import sys
 import time
 
 import notificar
+import subagentes
 from avisos import avisar, disparar, uma_vez
 from base import (CONFIG_REL, HOME, LOG_REL, NOME_RE, PAINEIS, VERSAO, Barrado, achar_orca, agora,  # noqa: F401
                   carregar_config, carregar_paineis, eh_maestri, ler_json, master_do_projeto, meu_handle, papel_do_nome,
@@ -675,6 +676,11 @@ def main():
         print("{}")
         return
     ev = normalize(payload, dialect)
+    if subagentes.eh_evento_de_sub(ev):  # só coleta: responde {} sem passar pela política
+        print("{}")
+        sys.stdout.flush()
+        subagentes.coletar(ev)
+        return
     try:
         decision = decide(ev)
     except Exception as exc:  # a própria política quebrou
@@ -684,6 +690,10 @@ def main():
             decision = {"action": "deny",
                         "reason": f"Barrado: o hook agent-board falhou ({exc!r}); avise o master."}
     print(json.dumps(encode(ev, decision), ensure_ascii=False))
+    sys.stdout.flush()
+    if ev["event"] == "pre_tool" and not (decision and decision["action"] == "deny"):
+        # atividade de sub-agent: carona, depois da decisão (o que foi barrado não aconteceu)
+        subagentes.coletar(ev)
 
 
 if __name__ == "__main__":
