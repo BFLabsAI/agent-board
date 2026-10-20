@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.14.0 — 2026-10-20
+
+Workspaces federados. Um **Workspace** é uma máquina (VPS) com o agent-board; a hierarquia fica Workspace › Squad › Agente › Sub-agent. Não há hub: todo painel enxerga todos os Workspaces da tailnet. Tudo continua só leitura. Ver o [guia de Workspaces](docs/userguide/painel-workspaces.md) e a [ADR-0012](docs/adr/0012-workspaces-federados.md). Épico [#29](https://github.com/BFLabsAI/agent-board/issues/29) e issue [#30](https://github.com/BFLabsAI/agent-board/issues/30).
+
+### Novo
+- **Servidor** (`scripts/painel_federacao.py`, `cmd_web.py`):
+  - `GET /api/versao` (versão, contrato, identidade do Workspace e projetos);
+  - Host e Origin aceitam o endereço da tailnet do próprio nó (e `hosts_extras`);
+  - `workspace.json` opcional, com `nome`, `porta_federacao`, `hosts_extras` e `ignorar`;
+  - descoberta automática por `tailscale status --json`, com probe em `/api/versao` (cache de 30 s);
+  - `GET /api/workspaces`, com `offline_desde`;
+  - proxy `GET /api/w/<id>/api/...`, só para Workspaces descobertos (anti-SSRF; `X-AgentBoard-Federado` evita laço);
+  - stream `GET /api/stream?workspace=*`, com 1 vaga das 16 e o evento novo `workspace`. Contrato em [painel-api.md](docs/referencia/painel-api.md#workspaces-federados-114).
+- **`painel.py servico instalar|status|remover [--porta] [--dry-run]`** (`scripts/cmd_servico.py`): cria o unit systemd `agent-board-painel.service` (`Restart=always`) e o `tailscale serve` (HTTPS no 443 para o navegador e http no 8765 para os outros painéis). Idempotente.
+- **Tela Workspaces** (`/workspaces`): vira a abertura quando há mais de 1 Workspace online. Cards com versão, latência, totais e squads; offline e "atualize o agent-board" quando a versão é mais antiga.
+- **Seletor Workspace › Squad** na barra lateral. Todas as telas de squad funcionam com um Workspace remoto.
+- **Office modo Prédio** (`/office?modo=predio`): um andar por Workspace, com as salas dos squads, pulsos ao vivo e modo TV.
+- **ADR-0012** e o guia [Workspaces](docs/userguide/painel-workspaces.md).
+
+### Atualizar
+- `git pull` na pasta da skill, como sempre.
+- **Em cada VPS, uma vez:** `python3 ~/.agents/skills/agent-board/scripts/painel.py servico instalar`. Esse comando deixa o painel sempre ligado (systemd) e visível para os outros painéis na tailnet. Pré-requisitos: Tailscale na mesma tailnet e HTTPS habilitado nela (para o `tailscale serve`). Use `--dry-run` para ver antes o que será feito.
+- Pare um `painel.py servir` antigo (ex.: aberto com `nohup`) antes: ele ocupa a porta 8765.
+- Não precisa rodar o `install.sh` de novo. Sem o `servico instalar`, o painel segue funcionando como antes, só com o Workspace local.
+
+### Testes
+- **507 testes Python em 12 suítes:** `test_agent_board` 101, `test_contrato` 26, `test_docs` 2, `test_federacao` 63, `test_maestri` 35, `test_mcp` 15, `test_omp` 14, `test_politica` 35, `test_registro` 23, `test_subagentes` 25 (1 pulado), `test_time` 19 e `test_web` 149. Rode com `env -u ORCA_CLI_BIN_DIR` dentro de um terminal do Orca server.
+- **307 testes Vitest** do front, em 21 arquivos (`cd web && npx vitest run`). Em máquina carregada, 1 ou 2 testes de renderização do Office estouram os 5 s padrão; com `--testTimeout=30000` os 307 passam.
+- A CI roda 10 das 12 suítes Python; `test_omp.py` (precisa do `bun`), `test_subagentes.py` e o Vitest rodam à mão.
+
 ## 1.13.1 — 2026-10-20
 
 ### Alterado

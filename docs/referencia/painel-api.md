@@ -331,7 +331,8 @@ interface WorkspaceResumo {
 
 `GET /api/w/<workspace_id>/api/<rota>?<query>` repassa a requisição para o Workspace `<workspace_id>`. Quando o id é o local, atende localmente.
 
-- Só `GET`, só caminhos `/api/...`, sem `..`.
+- Só `GET` e só caminhos `/api/...`. Caminho ou query com espaço ou caractere de controle, ou query com mais de 2000 caracteres, dá 404; o id precisa casar `[A-Za-z0-9][A-Za-z0-9._-]{0,62}`. O destino é sempre o IP do Workspace descoberto, nunca um host da URL, e redirecionamento não é seguido (502).
+- Se as 16 vagas SSE estiverem ocupadas, o repasse do stream dá 503.
 - Timeout de 5 s; resposta limitada a 5 MB.
 - O stream (`/api/w/<id>/api/stream?...`) é repassado como SSE, linha a linha.
 - O painel que repassa manda `X-AgentBoard-Federado: 1`. Quem recebe esse cabeçalho **não federa de novo**: `/api/workspaces` responde só o local e `/api/w/` dá 404. Isso evita laço.
