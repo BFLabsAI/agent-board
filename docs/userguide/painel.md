@@ -2,7 +2,7 @@
 
 > **Em 1 minuto:** uma página local, só de leitura, que mostra ao vivo o que o time de agentes está fazendo: quem trabalha, o que está pendente ou atrasado, o que espera revisão e como o time conversa. Decisões: [ADR-0005](../adr/0005-painel-web-local-somente-leitura.md) e [ADR-0010](../adr/0010-painel-v2-spa-com-build-e-sse.md).
 
-**Páginas deste guia:** esta (abrir e usar) · [Telas: Dashboard, Kanban, Conversas e Activity Feed](painel-telas.md) · [Telas: Analytics e Workflows](painel-analise.md) · [Telas: Office](painel-office.md) · [Sub-agents](#sub-agents) (nesta página)
+**Páginas deste guia:** esta (abrir e usar) · [Telas: Dashboard, Kanban, Conversas e Activity Feed](painel-telas.md) · [Telas: Analytics e Workflows](painel-analise.md) · [Telas: Office](painel-office.md) · [Visão geral e Andar (multi-squad)](painel-geral.md) · [Sub-agents](#sub-agents) (nesta página)
 
 ## Para que serve
 Responde "o que aconteceu enquanto eu estava fora?" sem ler `avisos.log` nem rodar `jq`. Mostra também o que está acontecendo agora: quem está trabalhando, quem espera você e o que atrasou.
@@ -36,7 +36,7 @@ ssh -L 8765:127.0.0.1:8765 <servidor>
 | Item | O que faz |
 |---|---|
 | **Projeto** | Troca o projeto de todas as telas. A escolha vai para a URL (`?projeto=`) e é lembrada pelo navegador. |
-| **Menu** | As 7 telas: Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e Office. |
+| **Menu** | A **Visão geral** no topo (todos os squads, [veja](painel-geral.md)) e as 7 telas do projeto: Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e Office. |
 | **Período** | **Hoje**, **24 h** ou **7 dias**. Vale para o que é contado "no período" (mensagens, entregas, tempo de resposta, tarefas já fechadas, Workflows). Pedidos abertos, pendentes e atrasados contam o log ativo inteiro, qualquer que seja a idade. |
 | **Recolher** | Encolhe a barra para só os ícones. |
 | **Live** | Estado da conexão em tempo real, no rodapé (ver abaixo). Mostra também a versão do agent-board. |
@@ -60,16 +60,18 @@ O servidor aceita até 16 conexões ao mesmo tempo (uma por aba). A 17ª recebe 
 - **Não executa HTML do log:** tudo vindo do log é exibido como texto.
 
 ## Sub-agents
-Um **sub-agent** é um agente que o Claude Code ou o OMP lança de dentro de uma sessão (ferramenta `Agent`/`Task`). Ele não entra no cadastro nem no log de mensagens. O painel o mostra **abaixo do agente que o lançou** (o "pai"), com o tipo, a descrição, a duração e a última ação.
+Um **sub-agent** é um agente que o Claude Code ou o OMP lança de dentro de uma sessão (ferramenta `Agent`/`Task`). Ele não entra no cadastro nem no log de mensagens. O painel o mostra **abaixo do agente que o lançou** (o "pai"), com o nome, a descrição, a duração e a última ação.
+
+**Nome.** O sub-agent se chama `subagent-cc` ou `subagent-omp`, conforme o harness do pai. O tipo (`Explore`, `general-purpose`…) é só um detalhe ao lado. Se o painel não sabe quando ele começou (sessão aberta antes da 1.12), não mostra duração.
 
 **De onde vêm os dados.** Os hooks do agent-board gravam o ciclo de vida em `~/.agent-hooks/agent-board/subagentes/<projeto>/AAAA-MM-DD.jsonl`, fora do git, e o painel só lê. Apaga sozinho depois de 14 dias. Referência: [hooks](../referencia/hooks-e-limites.md#sub-agents-claude-code-e-omp) e [API](../referencia/painel-api.md#sub-agents-112-issue-20).
 
 | Onde | O que mostra |
 |---|---|
-| [Office](painel-office.md#sub-agents-no-office) | Sub-cards no Mapa, drones no Hub, resumo na Grade e lista na gaveta |
+| [Office](painel-office.md#sub-agents-no-office) | Sub-cards dos rodando no Mapa (os terminados viram uma linha de resumo), drones no Hub, resumo na Grade e, na gaveta, "Rodando" e "Terminados" |
 | [Kanban](painel-telas.md#sub-agents-no-dashboard-e-no-kanban) | Sub-agents aninhados no cartão do agente e contagem no cartão da tarefa |
 | [Dashboard](painel-telas.md#sub-agents-no-dashboard-e-no-kanban) | Cartão "Sub-agents rodando" e chips nos agentes |
-| [Analytics e Workflows](painel-analise.md#sub-agents) | Aba "Sub-agents" e coluna SUB-AGENTS no grafo |
+| [Analytics e Workflows](painel-analise.md#sub-agents) | Aba "Sub-agents" e faixa própria SUB-AGENTS, fora do fluxo principal, no grafo |
 
 | Status | Significa |
 |---|---|
@@ -80,7 +82,7 @@ Um **sub-agent** é um agente que o Claude Code ou o OMP lança de dentro de uma
 
 **Limites.**
 - Só Claude Code e OMP. **Codex e Maestri** não têm hook de ciclo de vida: nada aparece.
-- No OMP não há descrição nem tipo do sub-agent (sem `spawn` e `retorno`); aparecem como `sub-agent`.
+- No OMP não há descrição nem tipo do sub-agent (sem `spawn` e `retorno`); aparecem só como `subagent-omp`.
 - Em segundo plano (`run_in_background`), o retorno do pai só diz que o sub-agent subiu. O fim vem do evento de fim; sem ele, vira `perdido`.
 - Quem atualizou a skill precisa rodar o `install.sh` de novo para registrar os hooks novos.
 

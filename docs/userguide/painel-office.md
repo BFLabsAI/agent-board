@@ -1,11 +1,11 @@
 # Painel: Office
 
-> **Em 1 minuto:** o time visto como um escritório ao vivo, em três modos (Hub, Mapa e Grade), com a tela de cada agente numa gaveta, o feed de mensagens por cima (Live Logs) e um modo TV para deixar numa tela da sala. Voltar: [Painel do projeto](painel.md).
+> **Em 1 minuto:** o time visto como um escritório ao vivo, em quatro modos (Hub, Mapa, Grade e Andar), com a tela de cada agente numa gaveta, o feed de mensagens por cima (Live Logs) e um modo TV para deixar numa tela da sala. Voltar: [Painel do projeto](painel.md).
 
 **Antes:** o painel aberto ([Como abrir](painel.md#como-abrir)) e agentes cadastrados. Sem agentes, a tela avisa e não mostra nada.
 
-## Os três modos
-O seletor fica no topo. O modo escolhido vai para a URL (`?modo=mapa`), então o link é compartilhável. Em Hub e Mapa, o fundo é um canvas que você **arrasta** e aproxima com os botões **+**, **−**, **Ajustar à tela** e **Travar** (trava o zoom e o arraste).
+## Os quatro modos
+O seletor fica no topo. O modo escolhido vai para a URL (`?modo=mapa`), então o link é compartilhável. O **Andar** tem [página própria](painel-geral.md#office-modo-andar). Em Hub e Mapa, o fundo é um canvas que você **arrasta** e aproxima com os botões **+**, **−**, **Ajustar à tela** e **Travar** (trava o zoom e o arraste).
 
 ### Hub (padrão)
 Um escritório isométrico. O **master** fica numa sala de vidro no centro, os **managers** em mesas ao redor e os **researchers** à parte.
@@ -41,7 +41,7 @@ Os sub-agents de cada agente aparecem em todos os modos ([o que são e os limite
 | Modo | O que você vê |
 |---|---|
 | Hub | Mini-robôs (drones) em órbita da mesa do pai, um por sub-agent rodando (até o limite de lugares ao redor da mesa) |
-| Mapa | Um sub-card ao lado do pai, ligado por um conector. Rodando pulsa; `perdido` é tracejado; o que passa do limite vira um chip "+N". Clique abre a gaveta no sub-agent |
+| Mapa | Só os rodando viram sub-card, ao lado do pai e ligados por um conector. Rodando pulsa; `perdido` é tracejado; o que passa do limite vira um chip "+N". Os terminados viram uma linha de resumo; clicar nela abre a gaveta |
 | Grade | No cartão: sub-agents rodando e iniciados hoje, os últimos 7 dias e os avatares dos que rodam |
 
 ## Gaveta do agente
@@ -52,7 +52,7 @@ Clique em qualquer agente (nos três modos) para abrir uma gaveta à direita. Cl
 | Tela do terminal | A última tela do terminal, vinda do Orca, atualizada ao vivo. Pode estar vazia se o terminal estiver fechado |
 | Tarefa atual | O pedido aberto mais recente em que ele é o destino |
 | Pendentes | As mensagens que ele ainda não respondeu |
-| Sub-agents | Os que estão rodando e os terminados nas últimas 24 h: tipo, descrição, duração, última ação, tarefa de origem e a marca "em segundo plano" |
+| Sub-agents | Duas listas, **Rodando** e **Terminados** (nas últimas 24 h): nome (`subagent-cc` ou `subagent-omp`), tipo, descrição, duração, última ação, tarefa de origem e a marca "em segundo plano" |
 | Últimas mensagens | As trocas mais recentes dele |
 | Ver conversas | Abre a tela [Conversas](painel-telas.md#conversas) filtrada por ele |
 

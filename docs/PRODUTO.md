@@ -1,7 +1,7 @@
 # agent-board: base de conhecimento do produto
 
 > **Para quem é:** o CEO. Serve para entender, explicar, vender e decidir sobre o agent-board.
-> **Versão descrita:** `1.12.0`, a do release dos sub-agents no painel (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a interface web, com as sete telas) saiu na 1.11.0; a 1.12.0 acrescenta os sub-agents a ele.
+> **Versão descrita:** `1.13.0`, a do release do painel multi-squad (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a interface web, com as sete telas) saiu na 1.11.0; a 1.12.0 acrescentou os sub-agents e a 1.13.0, a Visão geral multi-squad e o Office modo Andar.
 > **Fonte de verdade:** o código em `scripts/`. Quando uma doc discorda do código, vale o código, e a diferença está na seção [14. Divergências encontradas](#14-divergências-encontradas).
 > **Estilo:** frases curtas e muitas tabelas, como em [ESTILO.md](ESTILO.md). Este arquivo passa do limite de tamanho do guia de estilo de propósito: é uma base de conhecimento, não um guia de passo a passo.
 
@@ -43,7 +43,7 @@ O agent-board é um **carteiro com regras** para times de agentes de IA. Cada ag
 | Como o CEO acompanha? | `painel.py resumo` ("o que houve enquanto eu estava fora"), `painel.py tarefas`, o painel web e as notas e decisões do time. |
 | Onde roda? | Linux (testado em CI e nesta VPS) e macOS (documentado, sem CI). Windows só por WSL, não testado. Python 3.8 ou mais novo. |
 | Quanto custa em dependências? | Zero pacotes Python. Precisa de `git`, `bash` e da CLI `orca` ou `maestri`. |
-| Em que estágio está? | Versão 1.12.0, com 414 testes Python em 11 suítes e 211 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com sete telas e os sub-agents de cada agente. |
+| Em que estágio está? | Versão 1.13.0, com 435 testes Python em 11 suítes e 254 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com a Visão geral de todos os squads, sete telas por squad e os sub-agents de cada agente. |
 | Qual o maior limite? | A trava automática só existe para Claude Code e OMP. Outros harnesses seguem o contrato por disciplina. |
 
 ---
@@ -671,10 +671,11 @@ Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.
 
 | Parte | Estado | Evidência |
 |---|---|---|
-| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (119 testes) |
+| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (140 testes) |
 | Casca da SPA | **Pronta** | Sidebar, rotas, tema escuro, seletor de projeto e de período, indicador Live, clientes da API e do SSE, componentes de UI |
-| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 211 testes Vitest no total |
+| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 254 testes Vitest no total |
 | Office: Hub, Mapa e Grade, gaveta, Live Logs e modo TV | **Prontos e integrados** | `web/src/pages/Office/` |
+| **Multi-squad** (1.13): `/api/geral`, stream `*`, Visão geral e Office modo Andar | **Prontos** | `cmd_web.geral`, `painel_stream.VigiaGeral`, `web/src/pages/Geral/`, `web/src/pages/Office/Andar/` |
 | **Sub-agents** (1.12): coletor, API, SSE e telas | **Prontos** | `subagentes.py`, `painel_subagentes.py`, `test_subagentes.py` (25 testes), `web/src/pages/Office/Subagentes.test.tsx` |
 | CSP sem script inline; `HEAD` e `OPTIONS` com 405 | **Corrigidos** (divergências 4 e 5) | `cmd_web.py` |
 | Build da SPA em `scripts/painel_web/` | Gerado e commitado no release (`npm ci && npm run build`). Sem ele, o servidor cai no painel v1 | `cmd_web._spa()` |
@@ -690,8 +691,9 @@ Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.
 | **Activity Feed** | Mensagens ao vivo, com filtros (agente, tipo, issue, datas), busca, pausa e agrupamento por conversa. Avisos e cobranças como eventos de sistema ficaram de fora |
 | **Analytics** | Últimos 30 dias: heatmap de 371 dias, mensagens e entregas por dia, tipos, horas de pico, tempo de resposta por agente, taxa de rejeição e alertas de ping-pong |
 | **Workflows** | Grafo em colunas (Master, Managers e researchers, Issues, Revisão, Resultado), grafo de comunicação e os 10 fluxos mais comuns |
-| **Sub-agents** (1.12) | Em todas as telas, abaixo do agente que os lançou: Office (sub-cards no Mapa, drones no Hub, resumo na Grade, lista na gaveta), Kanban (aninhados no agente e no cartão da tarefa), Dashboard (cartão "Sub-agents rodando"), Analytics (aba Sub-agents) e Workflows (coluna SUB-AGENTS). Status `rodando`, `concluido`, `erro` e `perdido`; agente com sub-agent rodando conta como `trabalhando` |
-| **Office** | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa sala central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma, por hierarquia ou por time) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens; o botão Live Logs abre o feed por cima |
+| **Sub-agents** (1.12) | Em todas as telas, abaixo do agente que os lançou: Office (sub-cards no Mapa, drones no Hub, resumo na Grade, lista na gaveta), Kanban (aninhados no agente e no cartão da tarefa), Dashboard (cartão "Sub-agents rodando"), Analytics (aba Sub-agents) e Workflows (coluna SUB-AGENTS). Status `rodando`, `concluido`, `erro` e `perdido`; agente com sub-agent rodando conta como `trabalhando`. Na 1.13 o sub-agent se chama `subagent-cc` ou `subagent-omp` (harness do pai), o Mapa só destaca os rodando e resume os terminados, a gaveta separa Rodando e Terminados e o Workflows os põe numa faixa própria, com o selo `⑂ N` |
+| **Visão geral** (1.13) | Fica no topo do menu e abre sozinha quando o cadastro tem mais de um projeto. Totais de todos os squads, um card por squad com selo de saúde (ok, atenção, crítico) e um feed unificado de mensagens. Guia: [painel-geral.md](userguide/painel-geral.md) |
+| **Office** | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa sala central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma, por hierarquia ou por time) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens; o botão Live Logs abre o feed por cima. Na 1.13 ganhou o modo **Andar** (`?modo=andar`): uma sala isométrica por squad, com pulsos ao vivo e modo TV |
 
 #### Rotas da API v2 (já implementadas)
 
@@ -709,7 +711,8 @@ Todas são `GET`, aceitam `?projeto=` e, quando faz sentido, `?periodo=hoje|24h|
 | `/api/analytics` | Heatmap de 371 dias, últimos 30 dias, horas, por agente, tipos, alertas |
 | `/api/workflows` | Nós, arestas, comunicação, fluxos e KPIs |
 | `/api/subagentes` | Sub-agents (1.12), com filtros `periodo`, `agente`, `status` e `limite` |
-| `/api/stream` | SSE (abaixo) |
+| `/api/geral` e `/api/geral/mensagens` | Todos os squads de uma vez (1.13): totais, saúde de cada squad e o feed unificado, paginado por `antes`. Não aceitam `?projeto=` |
+| `/api/stream` | SSE (abaixo). Com `?projeto=*` (1.13), um stream só para todos os projetos |
 
 #### Tempo real (SSE)
 
@@ -725,6 +728,8 @@ O servidor vigia o `comunicacoes.jsonl` (a cada 1 s) e o `orca terminal list` (a
 | `ping` | A cada 15 s, sem outro evento |
 
 Não há replay: ao reconectar, a página recarrega as rotas REST. Limite de **16 conexões SSE**; a 17ª recebe 503.
+
+Com `?projeto=*` (1.13) os eventos chegam com o campo extra `projeto` e o `ola` traz a lista de projetos. O servidor relê o cadastro a cada 5 s. Essa conexão também conta 1 das 16 vagas.
 
 #### Status do agente (heurística, isolada e testada)
 
@@ -759,6 +764,8 @@ A ordem de checagem no código é: `desconhecido`, `offline`, `esperando`, `trab
 | **Outro qualquer** | Não | Mesmo caminho | Precisa de terminal Orca ou Maestri e de `board.py send` |
 
 **Sub-agents no painel** (1.12): Claude Code (5 eventos) e OMP (3, sem descrição nem tipo). **Codex, Maestri e os demais não têm** coleta, porque não há hook de ciclo de vida equivalente.
+
+**Painel multi-squad** (1.13): um squad é um projeto do cadastro. O mesmo servidor atende todos eles, de qualquer harness; a Visão geral e o Andar só leem o log, o cadastro e o Orca de cada um, sem exigir nada novo dos agentes.
 
 O que um agente **sem trava** perde: o bloqueio de atalhos (`maestri ask` direto, `SendMessage`, escrita no log), o aviso digitado na tela (no Orca), a cobrança no fim do turno e a trava de subagent. O que ele **mantém**: as regras de envio, se usar `board.py send`, e o registro no log.
 
@@ -1011,6 +1018,8 @@ Fonte: [CHANGELOG.md](../CHANGELOG.md).
 
 | Versão | Data | Destaques |
 |---|---|---|
+| **1.13.0** | 2026-10-20 | **Painel multi-squad**: Visão geral, `/api/geral`, `/api/geral/mensagens`, stream `*` e Office modo Andar. Sub-agents mais claros (`subagent-cc`/`subagent-omp`, resumo dos terminados, faixa própria no Workflows). |
+| **1.12.1** | 2026-10-20 | Corrige o status piscando dos managers parados e os sub-agents sumidos em sessões abertas antes da 1.12.0. |
 | **1.12.0** | 2026-10-20 | **Sub-agents no painel** ([ADR-0011](adr/0011-subagentes-no-painel.md)): coletor nos hooks, `/api/subagentes` e evento SSE `subagente`, telas do Office, Kanban, Dashboard, Analytics e Workflows. Exige rodar o `install.sh` de novo. |
 | **1.11.0** | 2026-10-20 | **Painel v2**: sete telas, SSE, multi-projeto, build commitado ([ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md)), CSP sem script inline, `HEAD` e `OPTIONS` com 405. Esta base de conhecimento. |
 | **1.10.2** | 2026-10-14 | `achar_orca()` procura primeiro o shim do Orca server, antes do relay SSH. Corrige "no live pane bound to a Run". |
@@ -1231,6 +1240,8 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | [`docs/ESTILO.md`](ESTILO.md) | Guia de estilo da documentação |
 | [`design-system/MASTER.md`](../design-system/MASTER.md) | Tokens visuais do painel v2 (cores por papel, status, estado, tipo; animações; componentes). Há também `design-system/mockups/painel-mockup.svg`, o mockup do painel antigo (histórico) |
 | `web/` | Código-fonte da SPA do painel v2 (React, Vite, TypeScript, Tailwind). Veja [`web/README.md`](../web/README.md). O build vai para `scripts/painel_web/` e é commitado no release |
+| `web/src/pages/Geral/` | Tela Visão geral (1.13): totais, cards de squad e feed unificado |
+| `web/src/pages/Office/Andar/` | Office modo Andar (1.13): uma sala isométrica por squad |
 
 ### 13.2 Em `scripts/`
 
@@ -1253,10 +1264,10 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | [`cmd_tarefas.py`](../scripts/cmd_tarefas.py) | `tarefas`, `vigiar`, `simular` |
 | [`cmd_time.py`](../scripts/cmd_time.py) | `nota`, `notas`, `resumo` e o worktree do `cadastrar --worktree` |
 | [`cmd_maestri.py`](../scripts/cmd_maestri.py) | `eu`, `solicitar`, `solicitacoes`, `maestri conectar`, `maestri rotina` |
-| [`cmd_web.py`](../scripts/cmd_web.py) | `servir`: servidor HTTP, rotas `/api/*` e SSE |
+| [`cmd_web.py`](../scripts/cmd_web.py) | `servir`: servidor HTTP, rotas `/api/*` (inclui `/api/geral`) e SSE |
 | [`painel_estado.py`](../scripts/painel_estado.py) | Estado v1, tarefas e status do agente |
 | [`painel_dados.py`](../scripts/painel_dados.py) | Dados derivados do log para a API v2 |
-| [`painel_stream.py`](../scripts/painel_stream.py) | O vigia que gera os eventos SSE |
+| [`painel_stream.py`](../scripts/painel_stream.py) | O vigia que gera os eventos SSE (`Vigia` por projeto e `VigiaGeral` para o stream `*`) |
 | [`subagentes.py`](../scripts/subagentes.py) | Coletor de sub-agents (grava em `subagentes/`) |
 | [`painel_subagentes.py`](../scripts/painel_subagentes.py) | Leitura dos eventos de sub-agents para a API |
 | [`painel_orca.py`](../scripts/painel_orca.py) | `orca terminal list`, com cache de 2 s |
