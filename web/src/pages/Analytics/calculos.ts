@@ -11,7 +11,8 @@ export interface Kpis {
   totalAgentes: number;
 }
 
-export function calcularKpis(a: Analytics): Kpis {
+/** `cadastrados`: nomes do cadastro (/api/agentes). Sem ele, cai para quem aparece no analytics. */
+export function calcularKpis(a: Analytics, cadastrados?: string[]): Kpis {
   const dias = a.ultimos_30d;
   const soma = (f: (d: Analytics["ultimos_30d"][number]) => number) => dias.reduce((s, d) => s + f(d), 0);
   const mensagens = soma((d) => d.mensagens);
@@ -25,9 +26,42 @@ export function calcularKpis(a: Analytics): Kpis {
     aprovadas,
     rejeitadas,
     taxaAprovacao: julgadas > 0 ? aprovadas / julgadas : null,
-    ativos: a.por_agente.filter((p) => p.enviadas + p.recebidas > 0).length,
-    totalAgentes: a.por_agente.length,
+    ativos: a.por_agente.filter((p) => p.enviadas + p.recebidas > 0 && (!cadastrados || cadastrados.includes(p.agente))).length,
+    totalAgentes: cadastrados ? cadastrados.length : a.por_agente.length,
   };
+}
+
+export const CEL_MIN = 10;
+export const CEL_MAX = 16;
+export const GAP_HEAT = 3;
+
+export interface JanelaHeat {
+  /** primeira coluna exibida (colunas anteriores ficam de fora) */
+  inicio: number;
+  /** quantas colunas (semanas) aparecem */
+  visiveis: number;
+  /** lado da célula em px, entre CEL_MIN e CEL_MAX */
+  cel: number;
+  /** true se mesmo com a célula mínima não cabe e precisa rolar */
+  rola: boolean;
+}
+
+/**
+ * Escolhe quantas semanas mostrar e o tamanho da célula para o heatmap ocupar a largura útil.
+ * Parte da primeira semana com dado; se sobrar espaço com a célula máxima, mostra semanas anteriores (vazias)
+ * até preencher a largura. Se não couber nem com a célula mínima, rola na horizontal.
+ */
+export function janelaHeatmap(celulas: CelulaHeat[], colunas: number, larguraUtil: number): JanelaHeat {
+  const passoMax = CEL_MAX + GAP_HEAT;
+  const passoMin = CEL_MIN + GAP_HEAT;
+  const w = Math.max(larguraUtil, passoMin * 4);
+  const primeira = celulas.find((c) => c.n > 0)?.col ?? colunas - 1;
+  const comDado = Math.max(1, colunas - primeira);
+  const cabeMax = Math.max(1, Math.floor(w / passoMax));
+  const visiveis = Math.min(colunas, Math.max(comDado, cabeMax));
+  const cel = Math.min(CEL_MAX, Math.max(CEL_MIN, Math.floor(w / visiveis) - GAP_HEAT));
+  const rola = visiveis * (cel + GAP_HEAT) > w + 0.5;
+  return { inicio: colunas - visiveis, visiveis, cel, rola };
 }
 
 /** Mediana simples; nulos ficam de fora. */

@@ -2,12 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { analyticsFixture, resumoFixture } from "../../api/fixtures";
+import { agentesFixture, analyticsFixture, resumoFixture } from "../../api/fixtures";
 import { cliente } from "../../api/cliente";
 import type { Analytics as Dados, Mensagem } from "../../api/tipos";
 import { ProvedorPainel } from "../../context/ContextoPainel";
 import { FonteFalsa, fabricaFalsa } from "../../test/utils";
-import { aplicarMensagem, calcularKpis, montarHeatmap, nivelHeat } from "./calculos";
+import { aplicarMensagem, calcularKpis, CEL_MAX, CEL_MIN, janelaHeatmap, montarHeatmap, nivelHeat } from "./calculos";
 import Analytics, { DEBOUNCE_MS } from "./index";
 
 const AGORA = Date.parse("2026-10-20T15:00:00Z");
@@ -34,6 +34,7 @@ function msg(over: Partial<Mensagem> = {}): Mensagem {
 beforeEach(() => {
   FonteFalsa.todas = [];
   vi.spyOn(cliente, "projetos").mockResolvedValue([]);
+  vi.spyOn(cliente, "agentes").mockImplementation(async () => agentesFixture());
   vi.spyOn(cliente, "resumo").mockImplementation(async () => resumoFixture());
   vi.spyOn(cliente, "analytics").mockImplementation(async () => analyticsFixture(AGORA));
 });
@@ -42,7 +43,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("Analytics: render", () => {
   it("mostra cabeçalho, KPIs, heatmap e card dos 30 dias", async () => {
     montar();
-    expect(await screen.findByText("Atividade nas últimas 52 semanas")).toBeInTheDocument();
+    expect(await screen.findByText(/Atividade nas últimas \d+ semanas/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Analytics" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Recarregar/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Exportar/ })).toBeEnabled();
@@ -50,7 +51,9 @@ describe("Analytics: render", () => {
     const kpis = screen.getAllByTestId("kpi");
     expect(kpis).toHaveLength(5);
     expect(screen.getByText("Agentes ativos")).toBeInTheDocument();
-    expect(screen.getAllByTestId("celula-heat").length).toBe(371);
+    const nCel = screen.getAllByTestId("celula-heat").length;
+    expect(nCel).toBeGreaterThan(100);
+    expect(nCel).toBeLessThanOrEqual(371);
     expect(screen.getAllByTestId("barra-dia")).toHaveLength(30);
     expect(screen.getByText("Dia de pico")).toBeInTheDocument();
     expect(screen.getByText("Menos")).toBeInTheDocument();
@@ -123,7 +126,7 @@ describe("Analytics: exportar", () => {
 describe("Analytics: ao vivo", () => {
   it("evento mensagem incrementa o dia na hora e refaz o REST em 5 s", async () => {
     montar();
-    await screen.findByText("Atividade nas últimas 52 semanas");
+    await screen.findByText(/Atividade nas últimas \d+ semanas/);
     const antes = screen.getAllByTestId("celula-heat");
     const hoje = new Date(AGORA).toISOString().slice(0, 10);
     const nAntes = Number(antes.find((c) => c.getAttribute("data-dia") === hoje)?.getAttribute("data-n"));
@@ -143,7 +146,48 @@ describe("Analytics: ao vivo", () => {
   });
 });
 
+describe("Analytics: período fixo e agentes ativos", () => {
+  it("o subtítulo e o tooltip explicam que a tela é fixa em 30 dias", async () => {
+    montar();
+    const sub = await screen.findByTestId("subtitulo-30d");
+    expect(sub).toHaveTextContent(/fixo em 30 dias/);
+    expect(sub.getAttribute("title")).toMatch(/período/);
+  });
+
+  it("Agentes ativos usa o cadastro como denominador", async () => {
+    montar();
+    const card = (await screen.findByText("Agentes ativos")).closest("[data-testid=kpi]")!;
+    await waitFor(() => expect(card).toHaveTextContent(`de ${agentesFixture().length} cadastrados`));
+  });
+});
+
 describe("calculos", () => {
+  it("calcularKpis conta só agentes cadastrados com atividade", () => {
+    const a = analyticsFixture(AGORA);
+    const ativos = a.por_agente.filter((p) => p.enviadas + p.recebidas > 0).map((p) => p.agente);
+    const k = calcularKpis(a, [ativos[0], "fantasma-sem-painel", "outro-cadastrado"]);
+    expect(k.totalAgentes).toBe(3);
+    expect(k.ativos).toBe(1);
+  });
+
+  it("janelaHeatmap: célula entre 10 e 16 px, preenche a largura e rola só se necessário", () => {
+    const dias = Array.from({ length: 371 }, (_, i) => ({ dia: new Date(Date.UTC(2025, 9, 14) + i * 86400000).toISOString().slice(0, 10), n: i > 350 ? 3 : 0 }));
+    const g = montarHeatmap(dias);
+    const estreito = janelaHeatmap(g.celulas, g.colunas, 500);
+    expect(estreito.cel).toBeGreaterThanOrEqual(CEL_MIN);
+    expect(estreito.cel).toBeLessThanOrEqual(CEL_MAX);
+    expect(estreito.visiveis).toBeLessThan(g.colunas);
+    expect(estreito.visiveis * (estreito.cel + 3)).toBeLessThanOrEqual(500 + 1);
+    const largo = janelaHeatmap(g.celulas, g.colunas, 2000);
+    expect(largo.visiveis).toBe(g.colunas);
+    expect(largo.cel).toBe(CEL_MAX);
+    // dado antigo + largura curta: mantém o dado e rola
+    const velho = montarHeatmap(dias.map((d, i) => ({ ...d, n: i === 0 ? 5 : d.n })));
+    const r = janelaHeatmap(velho.celulas, velho.colunas, 400);
+    expect(r.visiveis).toBe(velho.colunas);
+    expect(r.rola).toBe(true);
+  });
+
   it("calcularKpis", () => {
     const a = analyticsFixture(AGORA);
     const k = calcularKpis(a);

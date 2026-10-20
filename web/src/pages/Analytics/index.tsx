@@ -29,6 +29,7 @@ export default function Analytics() {
   const { projetoExibido } = useContextoPainel();
   const api = useApi((c, s) => cliente.analytics(c, s));
   const resumo = useApi((c, s) => cliente.resumo(c, s));
+  const cadastro = useApi((c, s) => cliente.agentes(c, s));
   const [aba, setAba] = useState<Aba>("atividade");
   const [local, setLocal] = useState<DadosAnalytics | null>(null);
 
@@ -37,7 +38,8 @@ export default function Analytics() {
   const recarregarTudo = useCallback(() => {
     api.recarregar();
     resumo.recarregar();
-  }, [api.recarregar, resumo.recarregar]);
+    cadastro.recarregar();
+  }, [api.recarregar, resumo.recarregar, cadastro.recarregar]);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recarregarRef = useRef(recarregarTudo);
@@ -51,7 +53,8 @@ export default function Analytics() {
   });
 
   const dados = local;
-  const kpis = useMemo(() => (dados ? calcularKpis(dados) : null), [dados]);
+  const nomesCadastrados = useMemo(() => (cadastro.dados ? cadastro.dados.map((a) => a.agente) : undefined), [cadastro.dados]);
+  const kpis = useMemo(() => (dados ? calcularKpis(dados, nomesCadastrados) : null), [dados, nomesCadastrados]);
   const fallback = useMemo(() => (dados ? temposDosAgentes(dados) : { p50: null, p90: null }), [dados]);
   const tr = resumo.dados?.indicadores.tempo_resposta;
   const p50 = tr ? (tr.p50 ?? tr.media) : fallback.p50;

@@ -51,7 +51,13 @@ export function Cabecalho({
             </Badge>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-3">
-            <p className="text-sm text-texto-suave">Volume, tempos de resposta e rejeições do time de agentes</p>
+            <p
+              className="text-sm text-texto-suave"
+              title="Esta tela é fixa nos últimos 30 dias: o seletor de período da barra lateral não se aplica aqui."
+              data-testid="subtitulo-30d"
+            >
+              Volume, tempos e rejeições do time · fixo em 30 dias (ignora o período global)
+            </p>
             <Relogio />
           </div>
         </div>
