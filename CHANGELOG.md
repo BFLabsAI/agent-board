@@ -20,6 +20,9 @@ Painel multi-squad e sub-agents mais claros. Um **squad** é um projeto do cadas
 - **254 testes Vitest** do front, em 18 arquivos (`cd web && npx vitest run`).
 - A CI continua rodando 10 suítes Python; `test_omp.py` (precisa do `bun`) e o Vitest rodam à mão.
 
+### Corrigido
+- **Leitor de sub-agents:** um arquivo do dia apagado e recriado no mesmo caminho podia reaproveitar o inode e ser lido como continuação do antigo, misturando eventos. Agora o leitor confere o começo e o trecho logo antes de onde parou; se mudaram, relê do zero.
+
 ## 1.12.1 — 2026-10-20
 
 ### Corrigido
