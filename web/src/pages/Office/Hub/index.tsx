@@ -51,7 +51,7 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
 
   const ancoras = useMemo(() => {
     const m = new Map<string, Pt>();
-    layout.mesas.forEach((p) => m.set(p.agente.agente, [p.x + 20 * p.escala, p.y - 178 * p.escala]));
+    layout.mesas.forEach((p) => m.set(p.agente.agente, [p.x + 20 * p.escala, p.y - 140 * p.escala]));
     if (masterNome) m.set(masterNome, [0, -ALTURA_PLATAFORMA - 212]);
     return m;
   }, [layout, masterNome]);
@@ -166,7 +166,7 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
       <CamadaBaloes baloes={Object.values(baloes)} ancoras={ancoras} />
 
       {alvoTip && posTip && (
-        <g transform={`translate(${posTip.x} ${posTip.y - 168 * posTip.escala})`} pointerEvents="none" data-testid="tooltip-mesa">
+        <g transform={`translate(${posTip.x} ${posTip.y - 150 * posTip.escala})`} pointerEvents="none" data-testid="tooltip-mesa">
           <rect x={-92} y={-50} width={184} height={alvoTip.tarefa_atual ? 50 : 38} rx={8} fill="#2a2a3d" fillOpacity={0.97} stroke="#363650" />
           <text x={0} y={-33} textAnchor="middle" fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(alvoTip.agente, 28)}</text>
           <text x={0} y={-18} textAnchor="middle" fontSize={11} fill="#9ca3af">

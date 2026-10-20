@@ -29,7 +29,9 @@ function Botao({ rotulo, onClick, children, ativo }: { rotulo: string; onClick: 
  * Área com pan (arraste) e zoom (roda, pinça e botões) feitos com d3-zoom.
  * O conteúdo recebe só um transform CSS, sem re-render do React a cada quadro.
  */
-export function CanvasZoom({ children, className }: { children: ReactNode; className?: string }) {
+export function CanvasZoom({ children, className, medida }: { children: ReactNode; className?: string; /** tamanho natural informado pelo modo (ex.: Mapa); sem ele, mede o DOM */ medida?: { w: number; h: number } | null }) {
+  const medidaRef = useRef(medida);
+  medidaRef.current = medida;
   const contRef = useRef<HTMLDivElement>(null);
   const conteudoRef = useRef<HTMLDivElement>(null);
   const comportamento = useRef<ZoomBehavior<HTMLDivElement, unknown> | null>(null);
@@ -45,7 +47,9 @@ export function CanvasZoom({ children, className }: { children: ReactNode; class
   const ajustar = useCallback((animar: boolean) => {
     const cont = contRef.current, conteudo = conteudoRef.current, z = comportamento.current;
     if (!cont || !conteudo || !z) return false;
-    const [w, h, cw, ch] = [cont.clientWidth, cont.clientHeight, conteudo.offsetWidth, conteudo.offsetHeight];
+    const [w, h] = [cont.clientWidth, cont.clientHeight];
+    const cw = medidaRef.current?.w || conteudo.offsetWidth;
+    const ch = medidaRef.current?.h || conteudo.offsetHeight;
     if (!w || !h || !cw || !ch) return false;
     const escala = Math.min(Math.max(Math.min(w / cw, h / ch) * 0.97, K_MIN), 1.6);
     const t = zoomIdentity.translate((w - cw * escala) / 2, (h - ch * escala) / 2).scale(escala);
@@ -92,6 +96,10 @@ export function CanvasZoom({ children, className }: { children: ReactNode; class
       select(cont).on(".zoom", null);
     };
   }, [ajustar]);
+
+  useEffect(() => {
+    if (medida && !interagiu.current && ajustar(false)) setPronto(true);
+  }, [medida, ajustar]);
 
   const passo = (fator: number) => {
     const cont = contRef.current, z = comportamento.current;

@@ -40,6 +40,8 @@ export default function Office() {
   const apiTarefas = useApi((c, s) => cliente.tarefas(c, s));
   const [agentes, setAgentes] = useState<Agente[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [medidaMapa, setMedidaMapa] = useState<{ w: number; h: number } | null>(null);
+  const aoMedir = useCallback((w: number, h: number) => setMedidaMapa((m) => (m && m.w === w && m.h === h ? m : { w, h })), []);
   const [selecionado, setSelecionado] = useState<string | null>(null);
 
   useEffect(() => {
@@ -126,7 +128,11 @@ export default function Office() {
       </div>
     );
   } else {
-    corpo = <CanvasZoom>{modo === "hub" ? <Hub {...props} /> : <Mapa {...props} />}</CanvasZoom>;
+    corpo = (
+      <CanvasZoom key={modo} medida={modo === "mapa" ? medidaMapa : null}>
+        {modo === "hub" ? <Hub {...props} /> : <Mapa {...props} aoMedir={aoMedir} />}
+      </CanvasZoom>
+    );
   }
 
   return (
