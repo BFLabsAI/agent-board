@@ -1,6 +1,6 @@
 # O que melhorou no agent-board
 
-Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.12.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
+Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.13.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
 
 ---
 
@@ -79,15 +79,16 @@ No Claude Code, o agente pode usar ferramentas prontas (`board_send`, `board_pen
 
 **Antes:** uma página única que se atualizava a cada 5 s.
 **Agora:** o painel v2, com sete telas que se atualizam sozinhas (push por SSE, sem polling) e um indicador **Live** na barra lateral:
+- **Visão geral** (1.13): todos os squads (um squad é um projeto) numa tela só, com saúde de cada um e um feed unificado;
 - **Dashboard**: agentes trabalhando, pedidos abertos, pendentes, atrasados, revisão e tempo de resposta;
 - **Kanban**: tarefas por estado, ou agentes por status (trabalhando, esperando você, parado…);
 - **Conversas** e **Activity Feed**: cada pedido com a sua thread, e as mensagens ao vivo, com filtros e pausa;
 - **Analytics** e **Workflows**: heatmap, qualidade das entregas, tempo de resposta e por onde o trabalho passa;
-- **Office**: o time num escritório animado (Hub, Mapa e Grade), com a tela de cada agente numa gaveta e modo TV.
+- **Office**: o time num escritório animado (Hub, Mapa e Grade), com a tela de cada agente numa gaveta e modo TV, e o modo **Andar**, com uma sala por squad.
 
-Um servidor atende todos os projetos cadastrados. Continua só leitura, só em `127.0.0.1`, e quem instala não precisa de Node. Guia: [painel web](userguide/painel.md).
+Um servidor atende todos os projetos cadastrados. Continua só leitura, só em `127.0.0.1`, e quem instala não precisa de Node. Guia: [painel web](userguide/painel.md) e [Visão geral e Andar](userguide/painel-geral.md).
 
-**Sub-agents (1.12).** Cada master e manager mostra os sub-agents que lançou, abaixo dele: tipo, descrição, duração e a última ação, com status `rodando`, `concluido`, `erro` ou `perdido`. Aparecem no Office, no Kanban, no Dashboard, no Analytics e no Workflows, e um agente com sub-agent rodando conta como trabalhando. Vale para Claude Code e OMP (Codex e Maestri não). Para isso o `install.sh` registra hooks novos, que só gravam um resumo mascarado, sem o prompt (cerca de 110 ms por execução, 4 por sub-agent). Quem atualiza roda o `install.sh` de novo. Decisão: [ADR-0011](adr/0011-subagentes-no-painel.md).
+**Sub-agents (1.12).** Cada master e manager mostra os sub-agents que lançou, abaixo dele: tipo, descrição, duração e a última ação, com status `rodando`, `concluido`, `erro` ou `perdido`. Aparecem no Office, no Kanban, no Dashboard, no Analytics e no Workflows, e um agente com sub-agent rodando conta como trabalhando. Vale para Claude Code e OMP (Codex e Maestri não). Para isso o `install.sh` registra hooks novos, que só gravam um resumo mascarado, sem o prompt (cerca de 110 ms por execução, 4 por sub-agent). Quem atualiza roda o `install.sh` de novo. Na 1.13 o sub-agent passou a se chamar `subagent-cc` ou `subagent-omp`, e os terminados viram só um resumo. Decisão: [ADR-0011](adr/0011-subagentes-no-painel.md).
 
 ## 8. Memória do time
 
@@ -112,7 +113,7 @@ Achados no teste ao vivo no Maestri e na revisão das docs (todos com teste auto
 
 ## 10. Qualidade
 
-- **11 suítes de testes Python (414 testes) e 211 testes do front** (inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) A CI roda 10 das 11 suítes Python em Python 3.8 e 3.12, mais lint. A suíte do OMP (precisa do `bun`) e a do front rodam à mão.
+- **11 suítes de testes Python (435 testes) e 254 testes do front** (inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) A CI roda 10 das 11 suítes Python em Python 3.8 e 3.12, mais lint. A suíte do OMP (precisa do `bun`) e a do front rodam à mão.
 - Código dividido em módulos pequenos (antes era um arquivo de quase 800 linhas).
 - Sem nenhuma dependência nova: só a biblioteca padrão do Python.
 - Decisões importantes registradas em **11 ADRs** (`docs/adr/`).

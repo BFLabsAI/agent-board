@@ -79,7 +79,7 @@ No Claude Code, `/hooks` deve mostrar as entradas `agent-board`.
 
 ## O que mudou desde o fork
 
-A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.12.0**:
+A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.13.0**:
 
 ```mermaid
 flowchart TB
@@ -90,6 +90,7 @@ flowchart TB
     F3 --> F4["Maestri<br/>2º transporte, testado ao vivo"]
     F4 --> F5["Painel v2<br/>7 telas ao vivo"]
     F5 --> F6["Sub-agents<br/>no painel"]
+    F6 --> F7["Multi-squad<br/>Visão geral e Andar"]
 ```
 
 | Evolução | O que ganhou |
@@ -101,7 +102,8 @@ flowchart TB
 | **Ferramentas** | Servidor MCP (sem erro de aspas), notas e decisões do time, resumo do período. |
 | **Painel web v2** | Sete telas ao vivo (Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e Office), só leitura. Veja [abaixo](#painel-web-v2). |
 | **Sub-agents no painel** | Cada master e manager mostra os sub-agents que lançou (Claude Code e OMP), com status e o que estão fazendo, em todas as telas. Veja [abaixo](#painel-web-v2). |
-| **Qualidade** | 414 testes em 11 suítes Python (inclusive os links da documentação e o contrato de cada interface) e 211 testes do front (Vitest). A CI roda 10 das 11 suítes Python, em Python 3.8 e 3.12; o OMP e o front rodam à mão. Código em módulos pequenos, 11 ADRs. |
+| **Painel multi-squad** | A **Visão geral** mostra todos os squads (projetos) de uma vez, com saúde de cada um e um feed unificado; o Office ganhou o modo **Andar**, uma sala por squad. Veja [abaixo](#painel-web-v2). |
+| **Qualidade** | 435 testes em 11 suítes Python (inclusive os links da documentação e o contrato de cada interface) e 254 testes do front (Vitest). A CI roda 10 das 11 suítes Python, em Python 3.8 e 3.12; o OMP e o front rodam à mão. Código em módulos pequenos, 11 ADRs. |
 
 Detalhes em linguagem simples: [MELHORIAS.md](docs/MELHORIAS.md) · Histórico completo: [CHANGELOG.md](CHANGELOG.md) · Decisões: [docs/adr/](docs/adr/)
 
@@ -109,7 +111,7 @@ Detalhes em linguagem simples: [MELHORIAS.md](docs/MELHORIAS.md) · Histórico c
 
 ## Painel web v2
 
-Uma página local, só de leitura, para acompanhar o time ao vivo: Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e o Office (o time como um escritório animado). Funciona com vários projetos e atualiza por SSE, sem recarregar. Desde a 1.12, mostra também os **sub-agents** de cada agente (Claude Code e OMP). Quem atualiza precisa rodar o `install.sh` de novo para registrar os hooks novos: [Sub-agents no painel](docs/userguide/painel.md#sub-agents).
+Uma página local, só de leitura, para acompanhar o time ao vivo: Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e o Office (o time como um escritório animado). Funciona com vários projetos (a **Visão geral**, desde a 1.13, mostra todos os squads juntos, e o Office tem o modo **Andar**: [guia](docs/userguide/painel-geral.md)) e atualiza por SSE, sem recarregar. Desde a 1.12, mostra também os **sub-agents** de cada agente (Claude Code e OMP). Quem atualiza precisa rodar o `install.sh` de novo para registrar os hooks novos: [Sub-agents no painel](docs/userguide/painel.md#sub-agents).
 
 ```bash
 python3 ~/.agents/skills/agent-board/scripts/painel.py servir   # http://127.0.0.1:8765

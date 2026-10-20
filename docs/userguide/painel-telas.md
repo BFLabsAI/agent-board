@@ -70,7 +70,7 @@ Como depende do formato do título e da tela, uma versão nova do Orca ou do age
 
 ### Sub-agents no Dashboard e no Kanban
 Detalhes e limites: [Sub-agents](painel.md#sub-agents).
-- **Dashboard:** o cartão **Sub-agents rodando** soma todos os agentes e diz em quantos eles estão. No cartão de cada agente, um chip por sub-agent rodando, com tipo e duração.
+- **Dashboard:** o cartão **Sub-agents rodando** soma todos os agentes e diz em quantos eles estão. No cartão de cada agente, um chip por sub-agent rodando, com o nome (`subagent-cc` ou `subagent-omp`) e a duração.
 - **Kanban, modo Agentes:** os sub-agents ficam aninhados sob o agente (3 visíveis, "+N" expande).
 - **Kanban, modo Tarefas:** o cartão mostra "N sub-agents (M rodando)" e uma lista expansível. O vínculo é a tarefa que o pai tinha aberta quando o sub-agent começou.
 

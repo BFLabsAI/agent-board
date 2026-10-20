@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.13.0 — 2026-10-20
+
+Painel multi-squad e sub-agents mais claros. Um **squad** é um projeto do cadastro. Ver o [guia da Visão geral e do Andar](docs/userguide/painel-geral.md). Issues [#20](https://github.com/BFLabsAI/agent-board/issues/20) e [#25](https://github.com/BFLabsAI/agent-board/issues/25) a [#28](https://github.com/BFLabsAI/agent-board/issues/28).
+
+### Novo
+- **Visão geral** (`/geral`, #27): fica no topo do menu e abre sozinha quando o cadastro tem mais de um projeto. Mostra os totais de todos os squads, um card por squad com selo de saúde (ok, atenção ou crítico) e um feed unificado de mensagens.
+- **Office modo Andar** (`/office?modo=andar`, #28): uma sala isométrica por squad, com pulsos ao vivo e modo TV. Clicar na placa entra no Office do squad.
+- **API multi-squad** (#26): `GET /api/geral`, `GET /api/geral/mensagens` e `GET /api/stream?projeto=*` (todos os projetos numa conexão, 1 vaga das 16). Um projeto que não dá para ler entra como `critico`, com `erro`, sem derrubar os outros. Contrato em [painel-api.md](docs/referencia/painel-api.md#visão-geral-e-multi-squad-113).
+
+### Alterado
+- **Sub-agents (#20):** o sub-agent se chama `subagent-cc` ou `subagent-omp`, conforme o harness do pai, e o `tipo` virou detalhe secundário. A API ganhou `nome` e `inicio_aproximado`; sub-agent sem início conhecido não mostra duração.
+- **Office, Mapa:** só os sub-agents rodando viram card; os terminados viram uma linha de resumo e o layout ficou equilibrado. A gaveta separa **Rodando** e **Terminados**.
+- **Workflows:** os sub-agents saem do fluxo principal e vão para uma faixa própria, com o selo `⑂ N` por agente. O contador tem espaço fixo e o tooltip segue o cursor.
+- **Dashboard e Kanban** usam o novo nome do sub-agent.
+
+### Testes
+- **435 testes Python em 11 suítes:** `test_agent_board` 101, `test_contrato` 26, `test_docs` 2, `test_maestri` 35, `test_mcp` 15, `test_omp` 14, `test_politica` 35, `test_registro` 23, `test_subagentes` 25 (1 pulado), `test_time` 19 e `test_web` 140. Rode com `env -u ORCA_CLI_BIN_DIR` dentro de um terminal do Orca server.
+- **254 testes Vitest** do front, em 18 arquivos (`cd web && npx vitest run`).
+- A CI continua rodando 10 suítes Python; `test_omp.py` (precisa do `bun`) e o Vitest rodam à mão.
+
 ## 1.12.1 — 2026-10-20
 
 ### Corrigido
