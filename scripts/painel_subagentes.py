@@ -26,6 +26,7 @@ MAX_ARQUIVO = 32 * 1024 * 1024    # arquivo maior que isto: só o final
 MAX_TEXTO, MAX_DESCRICAO, MAX_RESUMO = 200, 300, 300
 EVENTOS = ("spawn", "inicio", "atividade", "fim", "retorno")
 NOME_ARQUIVO = re.compile(r"^(\d{4}-\d{2}-\d{2})\.jsonl$")
+ISSUE_RE = re.compile(r"#(\d{1,6})\b")
 STATUS = ("rodando", "concluido", "erro", "perdido")
 
 _lock = threading.RLock()
@@ -214,7 +215,7 @@ def _status(reg, agora):
 
 
 def _tarefa_de(reg, tars_do_pai):
-    """A tarefa aberta mais recente do pai (ele é `para`) no momento do inicio."""
+    """A tarefa aberta mais recente do pai (ele é `para`) no momento do inicio (a Tarefa inteira, ou None)."""
     melhor = None
     for t in tars_do_pai:
         ts = _ts(t.get("ts"))
@@ -225,20 +226,32 @@ def _tarefa_de(reg, tars_do_pai):
             continue
         if melhor is None or ts > melhor[0]:
             melhor = (ts, t)
-    return {"id": melhor[1]["id"], "assunto": melhor[1]["assunto"]} if melhor else None
+    return melhor[1] if melhor else None
 
 
-def publico(reg, agora, tars_do_pai=()):
+def _issues_de(descricao, tarefa):
+    """#NNN da descrição + issues da tarefa ligada, sem repetir, em ordem crescente."""
+    achadas = {int(n) for n in ISSUE_RE.findall(descricao or "")}
+    for i in (tarefa or {}).get("issues") or []:
+        if isinstance(i, int) and not isinstance(i, bool):
+            achadas.add(i)
+    return sorted(achadas)
+
+
+def publico(reg, agora, tars_do_pai=(), tars_enviadas=()):
     """O SubAgente do contrato, com a máscara de segredos em descricao e ultima_atividade.resumo."""
     ult = reg["ultima"]
     dur = round(max(0.0, (reg["fim"] - reg["inicio"]).total_seconds()), 1) if reg["fim"] and not reg["aprox"] else None
     desc = reg["descricao"]
+    tarefa = _tarefa_de(reg, tars_do_pai) or _tarefa_de(reg, tars_enviadas)  # sem recebida: o pedido que ele enviou (master)
     return {"id": reg["id"], "agente": reg["agente"], "nome": nome_de(reg["agente"]), "tipo": reg["tipo"],
             "descricao": mascarar(desc) if desc is not None else None,
             "status": _status(reg, agora), "fundo": reg["fundo"], "inicio": reg["inicio_ts"], "fim": reg["fim_ts"],
             "inicio_aproximado": reg["aprox"], "duracao_s": dur,
             "ultima_atividade": dict(ult, resumo=mascarar(ult["resumo"])) if ult else None,
-            "n_atividades": reg["n"], "tarefa": _tarefa_de(reg, tars_do_pai)}
+            "n_atividades": reg["n"],
+            "tarefa": {"id": tarefa["id"], "assunto": tarefa["assunto"]} if tarefa else None,
+            "issues": _issues_de(desc, tarefa)}
 
 
 def nome_de(pai):
@@ -266,7 +279,11 @@ def listar(projeto, agora=None, tars=None, dias=DIAS_LEITURA):
     for t in tars or []:
         if t.get("para"):
             por_pai.setdefault(t["para"], []).append(t)
-    out = [publico(r, agora, por_pai.get(r["agente"], ())) for r in regs]
+    por_de = {}
+    for t in tars or []:
+        if t.get("de"):
+            por_de.setdefault(t["de"], []).append(t)
+    out = [publico(r, agora, por_pai.get(r["agente"], ()), por_de.get(r["agente"], ())) for r in regs]
     out.sort(key=lambda s: (_ts(s["inicio"]) or agora), reverse=True)
     return out
 
