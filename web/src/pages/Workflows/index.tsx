@@ -108,8 +108,11 @@ export default function Workflows() {
             <Kpi rotulo="Agentes envolvidos" icone={Users} tom="text-orange-400" carregando={!dados} dica="Agentes (master, managers e researchers) que aparecem em alguma conversa do período.">
               {formatarNumero(agentesEnvolvidos)}
             </Kpi>
-            <Kpi rotulo="Sub-agents" icone={Workflow} tom="text-pink-400" carregando={!dados} dica="Sub-agents (Agent/Task) disparados pelos agentes no período.">
+            <Kpi rotulo="Sub-agents" icone={Workflow} tom="text-pink-400" carregando={!dados} dica="Sub-agents (Agent/Task) disparados pelos agentes no período e a parte deles ligada a alguma issue.">
               {formatarNumero(k?.subagentes ?? 0)}
+              {k?.subagentes_com_issue != null && (
+                <span className="ml-2 text-xs font-normal text-texto-suave" data-testid="kpi-sub-issue">{formatarPercentual(k.subagentes_com_issue)} em issues</span>
+              )}
             </Kpi>
           </div>
 
