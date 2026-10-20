@@ -318,6 +318,7 @@ Sem `tailscale` instalado, só existe o Workspace local. A descoberta nunca bloq
 interface WorkspaceResumo {
   id: string; nome: string; local: boolean
   online: boolean; versao: string | null; desatualizado: boolean   // versao < a do painel que responde
+  offline_desde: string | null   // ISO de quando este painel viu o Workspace offline pela 1ª vez; null se online (só em memória, zera ao reiniciar)
   latencia_ms: number | null; erro?: string
   saude: "ok" | "atencao" | "critico" | "offline"                  // pior saúde entre os squads; offline se não respondeu
   totais: Geral["totais"] | null
@@ -342,7 +343,7 @@ interface WorkspaceResumo {
 
 - Junta o stream `projeto=*` local e um cliente SSE por Workspace remoto, com reconexão e backoff.
 - Os eventos `mensagem`, `agente`, `tarefa` e `subagente` chegam com `workspace` e `projeto` no `data`.
-- Eventos novos `workspace` (data: `WorkspaceResumo`) quando um Workspace entra, sai ou muda de online/saúde.
+- Eventos novos `workspace` (data: `WorkspaceResumo`, com `offline_desde`) quando um Workspace entra, sai ou muda de online/saúde.
 - O `ola` traz `{workspace: "*", workspaces: string[], agora}`.
 
 ### Front
