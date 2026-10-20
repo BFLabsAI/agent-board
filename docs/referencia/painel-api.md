@@ -126,3 +126,19 @@ Em ordem de prioridade:
 4. `pendente`: o agente tem `pendentes > 0`.
 5. `parado`: os demais casos.
 6. `desconhecido`: o Orca não respondeu, ou o agente é do Maestri.
+
+## Notas da implementação (#2)
+
+- `tela`: últimas 12 linhas não vazias da preview do Orca, separadas por `\n`. O `esperando` olha as últimas 15.
+- `harness`: o sufixo `-cc`/`-omp` do nome vale primeiro, depois o `agentIdentity` do Orca.
+- `heatmap`, `ultimos_30d` e `atividade_14d` vêm em ordem cronológica **crescente**.
+- `taxa_aprovacao` é uma fração entre 0 e 1.
+- Ids dos nós de workflows:
+  - agentes pelo nome;
+  - issues como `#412`;
+  - a revisão como `revisao`;
+  - resultados como `aprovado`, `rejeitado`, `concluido`, `em_aberto` ou `atrasado`.
+- Arestas de workflows: conversa sem entrega liga o executor direto ao resultado, e conversa sem issue liga o executor direto a `revisao`.
+- `fluxos` junta tipos repetidos em sequência.
+- Conversas: a raiz é um `pedido` ou `entrega` sem pai no log; a lista usa só o log ativo.
+- Caminhos com `..` respondem 404.
