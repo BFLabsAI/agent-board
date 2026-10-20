@@ -14,6 +14,16 @@
 //     depois da primeira continuação; { decision: "block", reason } não tem teto no OMP, então
 //     quem para o laço é o contador do core (MAX_COBRANCAS).
 //   - ctx.agent.kind === "sub" identifica subagent (o core entende como agent_id).
+//
+// Coleta de sub-agents (ADR 0011). O OMP não tem evento "subagent_start/stop" em pi.on; o que há:
+//   - as extensões são religadas a cada sub-sessão, então tool_call/agent_start/agent_end chegam com
+//     ctx.agent.kind === "sub" (id = ctx.agent.id, tipo = ctx.agent.name). O advisor (id "advisor") fica de fora;
+//   - inicio: agent_start do sub, ou a primeira ação vista dele (o que vier antes), uma vez por id;
+//   - atividade: carona no tool_call de bash/edit/write do sub (o core grava só com agent_id);
+//   - fim: agent_end do sub sem continuação, ou o tool_result da ferramenta "task" no pai, que traz
+//     details.results[].id de cada sub-agent terminado (cobre o caso de agent_end não disparar). Uma vez por id.
+// Limite: spawn e retorno (eventos do pai) não são emitidos no OMP; o painel liga o sub-agent ao pai pelo handle
+// do terminal. A coleta nunca bloqueia: erro do core é ignorado.
 import { spawnSync } from "node:child_process";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
@@ -99,10 +109,53 @@ function identidade(ctx: any): Record<string, unknown> {
   return a && a.kind === "sub" ? { agent_id: String(a.id ?? "sub"), agent_type: a.name } : {};
 }
 
+const iniciados = new Set<string>();
+const encerrados = new Set<string>();
+
+function ehSub(ctx: any): boolean {
+  return ctx?.agent?.kind === "sub" && ctx.agent.id !== "advisor";
+}
+
+// Evento de ciclo de vida para o coletor; a resposta do core é ignorada.
+function coletar(hook: string, ctx: any, extra: Record<string, unknown>): void {
+  runCore({ hook_event_name: hook, cwd: ctx?.cwd, ...extra });
+}
+
+function iniciar(ctx: any): void {
+  if (!ehSub(ctx)) return;
+  const id = String(ctx.agent.id ?? "sub");
+  if (iniciados.has(id)) return;
+  iniciados.add(id);
+  coletar("SubagentStart", ctx, identidade(ctx));
+}
+
+function encerrar(ctx: any, id: string, tipo?: string): void {
+  if (encerrados.has(id)) return;
+  encerrados.add(id);
+  coletar("SubagentStop", ctx, { agent_id: id, agent_type: tipo });
+}
+
 export default function agentBoard(pi: ExtensionAPI) {
+  pi.on("agent_start", (_event, ctx) => {
+    iniciar(ctx);
+    return undefined;
+  });
+
+  pi.on("agent_end", (event, ctx) => {
+    if (ehSub(ctx) && !(event as any).willContinue) encerrar(ctx, String(ctx.agent.id ?? "sub"), ctx.agent.name);
+    return undefined;
+  });
+
   pi.on("tool_call", (event, ctx) => {
+    iniciar(ctx);
     const t = traduzir(event.toolName, event.input);
-    if (!t) return undefined;
+    if (!t) {
+      // bash comum de um sub-agent: o core não opina, mas a atividade pega carona (só grava, nunca bloqueia)
+      if (ehSub(ctx) && event.toolName === "bash") {
+        coletar("PreToolUse", ctx, { tool_name: "Bash", tool_input: event.input, ...identidade(ctx) });
+      }
+      return undefined;
+    }
     const out = runCore({
       hook_event_name: "PreToolUse",
       tool_name: t.tool_name,
@@ -128,6 +181,13 @@ export default function agentBoard(pi: ExtensionAPI) {
 
   // O aviso digitado na tela do destino nasce aqui: o core lê o resultado do envio.
   pi.on("tool_result", (event, ctx) => {
+    if (event.toolName === "task") {
+      // o pai recebe a lista dos sub-agents terminados: fecha cada um que o agent_end não fechou
+      for (const r of (event as any).details?.results ?? []) {
+        if (r && r.id) encerrar(ctx, String(r.id), typeof r.agent === "string" ? r.agent.toLowerCase() : undefined);
+      }
+      return undefined;
+    }
     if (event.toolName !== "bash" || !ORCA_ENVIO.test(comando(event.input))) return undefined;
     let resposta = textoDe((event as any).content);
     if ((event as any).isError && !/\berror\b/i.test(resposta)) resposta = `error: ${resposta}`;

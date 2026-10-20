@@ -1,0 +1,24 @@
+# 0011. Sub-agents no painel: coletor de ciclo de vida
+
+- **Status:** aceita (CEO, 2026-10-20)
+- **Data:** 2026-10-20
+- **Substitui em parte:** [ADR-0010](0010-painel-v2-spa-com-build-e-sse.md) (só o item 4, "Sem telemetria nova")
+
+## Contexto
+O CEO quer ver no painel os sub-agents de cada master e manager, abaixo do agente pai, com o que estão fazendo. O log de mensagens não sabe nada disso: sub-agent não fala com o time (o hook barra), então não deixa rastro. Sem um coletor, o painel não tem de onde ler.
+
+## Decisão
+1. **Reabre em parte "sem telemetria nova".** A 0010 dizia nenhum hook novo e nada de transcript. Isso muda só para o **ciclo de vida de sub-agents**: início, fim, o que o pai lançou e o que ele recebeu de volta, mais uma linha curta de atividade. Continua valendo para o resto: nada de transcript, nada de saída de ferramenta, nada de prompt.
+2. **Arquivo fora do repo e sem cadeia de hash.** Os eventos vão para `$AGENT_BOARD_HOME/subagentes/<projeto>/AAAA-MM-DD.jsonl` (arquivo `600`, só append, uma linha por evento, dia no fuso local). É telemetria descartável, não auditoria: não entra no `comunicacoes.jsonl` nem na cadeia da [ADR-0002](0002-cadeia-de-hash-no-log.md), e a retenção é de 14 dias (limpeza no máximo 1 vez por dia, marcada em `subagentes/.limpeza`). O contrato dos campos está em [`painel-api.md`](../referencia/painel-api.md#sub-agents-112-issue-20).
+3. **O hook roda no terminal do pai.** O handle do terminal (`base.meu_handle()`) acha projeto e agente pai no cadastro. Terminal sem cadastro não grava nada.
+4. **Custo: 4 execuções de hook por sub-agent, e por que não `PreToolUse *`.** Os eventos são `spawn` (PreToolUse `Agent|Task`), `inicio` (SubagentStart), `fim` (SubagentStop) e `retorno` (PostToolUse e PostToolUseFailure `Agent|Task`). A **atividade** (`Bash`, `Edit`, `Write`) pega carona nos PreToolUse que o `hook_core` já recebe, só quando o payload traz `agent_id`: custo zero de execução. Registrar `PreToolUse *` faria o Python subir a cada leitura, busca e listagem de toda sessão, em troca de dado que o painel não usa. Medido: a gravação leva cerca de 0,1 ms depois do boot, bem abaixo do orçamento de 20 ms.
+5. **Nunca bloqueia, nunca quebra.** Os eventos só de coleta respondem `{}` e saem com 0. A gravação roda **depois** de a decisão ser impressa, dentro de um `try/except` largo: erro de I/O não muda a decisão da política nem derruba o agente. Chamada barrada pela política não vira atividade.
+6. **Privacidade.** O prompt do sub-agent nunca é gravado, nem saída de ferramenta, nem a última mensagem do `SubagentStop`. `descricao` (até 120 caracteres) e `resumo` (até 160; comando do Bash ou `file_path` de Edit/Write) passam pela máscara de segredos (`sk-`, `ghp_`, `github_pat_`, `AKIA`, `AIza`, `xox`, JWT, `Bearer`, `password=`/`senha=`/`token=`/`secret=`/`api_key=`) e têm as quebras de linha achatadas. A máscara vive em `base.mascarar`, compilada só no primeiro uso para não pesar no boot do hook.
+7. **Status do `retorno`.** `ok=false` quando o evento é `PostToolUseFailure` ou quando o `tool_response` indica erro: objeto com `is_error`/`isError` verdadeiro, `error` preenchido ou `status` de falha (`error`, `failed`...); texto começando com `Error`/`Erro`/`Failed`. Qualquer outra coisa é `ok=true`. Limite conhecido: com `run_in_background`, o PostToolUse do Agent dispara no lançamento (`status: "async_launched"`), então o `retorno` de um sub-agent em segundo plano diz que ele subiu, não que terminou bem. O fim real é o `fim`.
+8. **Harnesses cobertos: Claude Code e OMP.** No Claude Code vale o que está acima. No OMP não há evento de início ou fim de sub-agent em `pi.on`; as extensões são religadas a cada sub-sessão, então o adaptador emite `inicio` no `agent_start` do sub (ou na primeira ação vista, o que vier antes), `atividade` no `tool_call` e `fim` no `agent_end` do sub ou no `tool_result` da ferramenta `task` do pai (que lista os ids terminados). Não emite `spawn` nem `retorno` (a ferramenta `task` não tem `description` nem `subagent_type`). O advisor fica de fora. **Codex e Maestri ficam de fora**: sem hook equivalente de ciclo de vida.
+
+## Consequências
+- Cada sub-agent custa 4 execuções de hook no Claude Code (cada uma um boot do Python, cerca de 100 ms, fora do caminho crítico do modelo).
+- `install.sh` ganha `SubagentStart`, `SubagentStop`, `PostToolUseFailure` e as entradas `Agent|Task` em `PreToolUse` e `PostToolUse`. Como ele troca todas as entradas do agent-board a cada execução, rodar de novo numa instalação 1.11 adiciona só as novas e preserva hooks alheios.
+- O leitor (painel) precisa tolerar linhas faltando: terminal sem cadastro, hook que falhou e retenção apagam pontas do ciclo. Ligação spawn → sub-agent e status `perdido` são problema da leitura.
+- O painel passa a mostrar, mascaradas, linhas de comando e caminhos que antes só existiam no terminal do agente.
