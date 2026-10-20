@@ -100,8 +100,11 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             if caminho == "/api" or caminho.startswith("/api/"):
                 return self._api(caminho, {k: v[0] for k, v in qs.items()})
             if caminho.startswith("/assets/"):
-                return self._asset(caminho[1:])
+                return self._asset(caminho[1:], "assets")
             if "." in caminho.rsplit("/", 1)[-1]:
+                # arquivos da raiz do build (favicon.svg etc.); subpastas só via /assets/
+                if caminho.count("/") == 1 and os.path.splitext(caminho)[1].lower() in (".svg", ".png", ".ico"):
+                    return self._asset(caminho[1:], "")
                 return self._enviar(404, "não encontrado", TEXTO)
             return self._spa()
 
@@ -112,8 +115,8 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
                         return self._enviar(200, f.read(), TIPOS[".html"])
             return self._enviar(404, "painel sem página", TEXTO)
 
-        def _asset(self, rel):
-            base = os.path.normpath(os.path.join(DIR_WEB, "assets"))
+        def _asset(self, rel, pasta):
+            base = os.path.normpath(os.path.join(DIR_WEB, pasta))
             alvo = os.path.normpath(os.path.join(DIR_WEB, rel))
             if not alvo.startswith(base + os.sep) or not os.path.isfile(alvo):
                 return self._enviar(404, "não encontrado", TEXTO)

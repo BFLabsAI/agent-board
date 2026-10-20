@@ -195,7 +195,7 @@ class Servidor(Base):
         self.assertEqual(r.status, 200)
         self.assertIn("default-src 'self'", r.getheader("Content-Security-Policy"))
         self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
-        self.assertIn("<title>agent-board · painel</title>", corpo)
+        self.assertIn("<title>agent-board", corpo)  # v1 ou build da SPA
         self.assertNotIn("innerHTML", corpo)
 
     def test_api_estado_entrega_texto_do_log_como_dado(self):
@@ -705,6 +705,8 @@ class ApiV2(Cenario):
                 f.write(conteudo)
         with open(os.path.join(d, "segredo.txt"), "w") as f:
             f.write("segredo")
+        with open(os.path.join(d, "favicon.svg"), "w") as f:
+            f.write("<svg/>")
         velho = cmd_web.DIR_WEB
         cmd_web.DIR_WEB = d
         self.addCleanup(setattr, cmd_web, "DIR_WEB", velho)
@@ -724,6 +726,9 @@ class ApiV2(Cenario):
             self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
         self.assertEqual(self.get("/assets/nao.js")[0].status, 404)
         self.assertEqual(self.get("/foo.js")[0].status, 404)
+        self.assertEqual(self.get("/favicon.svg")[0].status, 200)  # ícones da raiz do build
+        self.assertEqual(self.get("/segredo.txt")[0].status, 404)
+        self.assertEqual(self.get("/index.html")[0].status, 404)
         self.assertEqual(self.get("/api/nada")[0].status, 404)  # /api nunca cai na SPA
 
     def test_assets_sem_path_traversal(self):

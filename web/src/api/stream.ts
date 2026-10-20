@@ -57,6 +57,8 @@ export class ConexaoStream {
       falhasParaOffline: 3,
       ...opcoes,
     };
+    // opcoes.fabrica pode vir como undefined explícito (ProvedorPainel fora do modo fixtures)
+    this.o.fabrica = opcoes.fabrica ?? ((url) => new EventSource(url) as unknown as FonteEventos);
   }
 
   iniciar(): void {
