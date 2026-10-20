@@ -226,12 +226,18 @@ def publico(reg, agora, tars_do_pai=()):
     ult = reg["ultima"]
     dur = round(max(0.0, (reg["fim"] - reg["inicio"]).total_seconds()), 1) if reg["fim"] and not reg["aprox"] else None
     desc = reg["descricao"]
-    return {"id": reg["id"], "agente": reg["agente"], "tipo": reg["tipo"],
+    return {"id": reg["id"], "agente": reg["agente"], "nome": nome_de(reg["agente"]), "tipo": reg["tipo"],
             "descricao": mascarar(desc) if desc is not None else None,
             "status": _status(reg, agora), "fundo": reg["fundo"], "inicio": reg["inicio_ts"], "fim": reg["fim_ts"],
             "inicio_aproximado": reg["aprox"], "duracao_s": dur,
             "ultima_atividade": dict(ult, resumo=mascarar(ult["resumo"])) if ult else None,
             "n_atividades": reg["n"], "tarefa": _tarefa_de(reg, tars_do_pai)}
+
+
+def nome_de(pai):
+    """Nome do sub-agent no painel, no padrão dos agentes: subagent-cc ou subagent-omp (harness do pai).
+    O coletor só existe no Claude Code e no OMP; pai sem sufixo (o master) é Claude Code."""
+    return "subagent-omp" if str(pai or "").endswith("-omp") else "subagent-cc"
 
 
 def listar(projeto, agora=None, tars=None, dias=DIAS_LEITURA):

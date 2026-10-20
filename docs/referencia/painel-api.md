@@ -190,6 +190,7 @@ interface SubAgente {
   status: StatusSub; fundo: boolean
   inicio: string; fim: string | null; duracao_s: number | null
   inicio_aproximado: boolean   // 1.12.2: visto sem `inicio`; duracao_s fica null
+  nome: string                 // 1.12.2: "subagent-cc" | "subagent-omp" (harness do pai); é o rótulo do sub-agent no painel
   ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null
   n_atividades: number
   tarefa: { id: string; assunto: string } | null   // tarefa_atual do pai no momento do inicio
@@ -206,7 +207,7 @@ interface SubAgente {
 |---|---|
 | `GET /api/subagentes?periodo&agente&status&limite=200` | `SubAgente[]`, mais recente primeiro. `periodo` filtra pelo `inicio`; os `rodando` entram sempre |
 | `GET /api/analytics` | ganha `subagentes: { por_agente: {agente, n, rodando, erro, duracao_media_s}[], por_tipo: {tipo, n, duracao_media_s}[], por_dia_30: {dia, n}[] }` (30 d, `por_dia_30` crescente) |
-| `GET /api/workflows?periodo` | ganha nós `coluna: "subagente"` (id `sub:<tipo>`, um por tipo) com arestas agente → `sub:<tipo>`, e `kpis.subagentes: number` |
+| `GET /api/workflows?periodo` | ganha nós `coluna: "subagente"` (id `sub:<nome>`, um por harness: `sub:subagent-cc`, `sub:subagent-omp`; 1.12.2) com arestas agente → `sub:<tipo>`, e `kpis.subagentes: number` |
 | `GET /api/stream` | evento novo `subagente` (data: `SubAgente`), emitido quando um sub-agent nasce, muda de status ou tem atividade nova (no máximo 1 por sub-agent a cada 2 s). O servidor vigia o arquivo do dia a cada 1 s |
 
 ### Notas da implementação (#22)

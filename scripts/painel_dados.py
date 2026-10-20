@@ -313,7 +313,7 @@ def analytics_subagentes(subs, agora):
         if d in dias:
             dias[d] += 1
         a = ag.setdefault(s["agente"], {"n": 0, "rodando": 0, "erro": 0, "d": []})
-        k = tp.setdefault(s.get("tipo") or "sem tipo", {"n": 0, "d": []})
+        k = tp.setdefault(s.get("tipo") or s.get("nome") or "subagent-cc", {"n": 0, "d": []})
         a["n"] += 1
         k["n"] += 1
         a["rodando"] += s["status"] == "rodando"
@@ -419,7 +419,7 @@ def workflows(msgs, convs, periodo, agora, papeis, estados, subs=None):
             aresta(m["de"], m["para"])
     sel_subs = [s for s in subs or [] if s["status"] == "rodando" or (_ts(s["inicio"]) or agora) >= desde]
     for sb in sel_subs:  # agente -> sub:<tipo>, um nó por tipo
-        no = "sub:" + (sb.get("tipo") or "sem tipo")
+        no = "sub:" + (sb.get("nome") or "subagent-cc")  # agrupado por harness: subagent-cc / subagent-omp
         agente(sb["agente"], "manager")
         colunas[no], rotulos[no] = "subagente", no[4:]
         aresta(sb["agente"], no)

@@ -1419,10 +1419,12 @@ class CamposDeSubagentes(SubBase):
         w = painel_dados.workflows(msgs, painel_dados.conversas(msgs, agora, tars), "7d", agora, {}, {t["id"]: t for t in tars},
                                    self.listar())
         nos = {n["id"]: n for n in w["nos"]}
-        self.assertEqual((nos["sub:Explore"]["coluna"], nos["sub:Explore"]["rotulo"], nos["sub:Explore"]["n"]), ("subagente", "Explore", 3))
-        self.assertEqual(nos["sub:Plan"]["n"], 1)
+        # agrupado por harness do pai (subagent-cc / subagent-omp), não pelo tipo
+        self.assertEqual((nos["sub:subagent-cc"]["coluna"], nos["sub:subagent-cc"]["rotulo"], nos["sub:subagent-cc"]["n"]),
+                         ("subagente", "subagent-cc", 4))
+        self.assertNotIn("sub:Explore", nos)
         ar = {(a["de"], a["para"]): a["n"] for a in w["arestas"]}
-        self.assertEqual((ar[(G, "sub:Explore")], ar[(R, "sub:Explore")], ar[(G, "sub:Plan")]), (2, 1, 1))
+        self.assertEqual((ar[(G, "sub:subagent-cc")], ar[(R, "sub:subagent-cc")]), (3, 1))
         self.assertEqual(w["kpis"]["subagentes"], 4)
         self.assertEqual(nos[G]["coluna"], "manager")
         ordem = [n["coluna"] for n in w["nos"]]
@@ -1493,7 +1495,7 @@ class ApiDeSubagentes(SubBase):
         self.cenario()
         todos = self.api("/api/subagentes")
         self.assertEqual([s["id"] for s in todos], ["r1", "p1", "e2", "e1"])  # hoje: o de 3 dias atrás fica fora
-        self.assertEqual({k for k in todos[0]}, {"id", "agente", "tipo", "descricao", "status", "fundo", "inicio", "fim", "inicio_aproximado",
+        self.assertEqual({k for k in todos[0]}, {"id", "agente", "tipo", "descricao", "status", "fundo", "inicio", "fim", "inicio_aproximado", "nome",
                                                   "duracao_s", "ultima_atividade", "n_atividades", "tarefa"})
         self.assertEqual([s["id"] for s in self.api("/api/subagentes?periodo=7d")][-1], "tres")
         self.assertEqual([s["id"] for s in self.api(f"/api/subagentes?agente={R}")], ["r1"])
@@ -1547,7 +1549,7 @@ class ApiDeSubagentes(SubBase):
         self.assertEqual(an["por_dia_30"][-1]["n"], 4)
         w = self.api("/api/workflows?periodo=7d")
         self.assertEqual(w["kpis"]["subagentes"], 5)
-        self.assertIn({"id": "sub:Plan", "coluna": "subagente", "rotulo": "Plan", "n": 2}, w["nos"])
+        self.assertIn({"id": "sub:subagent-cc", "coluna": "subagente", "rotulo": "subagent-cc", "n": 5}, w["nos"])
 
     def test_todos_os_endpoints_com_arquivo_torto(self):
         self.cenario()

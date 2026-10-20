@@ -40,6 +40,8 @@ export interface SubAgente {
   id: string;
   /** nome do agente pai no cadastro */
   agente: string;
+  /** rótulo do sub-agent no painel: "subagent-cc" ou "subagent-omp" (harness do pai). Use no lugar do tipo. */
+  nome?: string;
   tipo: string | null;
   /** texto não confiável (descrição que o pai passou) */
   descricao: string | null;
