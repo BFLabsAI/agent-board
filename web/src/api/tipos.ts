@@ -47,6 +47,8 @@ export interface SubAgente {
   fundo: boolean;
   inicio: string;
   fim: string | null;
+  /** true quando o sub-agent foi visto sem o evento de início (sessão antiga): inicio é só o 1º evento visto */
+  inicio_aproximado?: boolean;
   duracao_s: number | null;
   /** resumo é texto não confiável, já mascarado no servidor */
   ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null;

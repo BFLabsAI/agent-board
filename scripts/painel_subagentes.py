@@ -182,7 +182,9 @@ def _novo(pai, e):
     reg = {"id": e["id"], "agente": e["agente"], "tipo": e["tipo"] or (sp["e"]["tipo"] if sp else None),
            "descricao": sp["e"]["descricao"] if sp else None, "fundo": bool(sp and sp["e"]["fundo"]),
            "inicio": e["t"], "inicio_ts": e["ts"], "fim": None, "fim_ts": None, "ultima": None,
-           "n": 0, "ok": None, "ultimo_evento": e["t"]}
+           "n": 0, "ok": None, "ultimo_evento": e["t"],
+           # nasceu sem `inicio`: o começo real é desconhecido (sessão anterior aos hooks novos)
+           "aprox": e["ev"] != "inicio"}
     if sp:
         sp["dono"] = True
     pai["subs"][e["id"]] = reg
@@ -222,12 +224,12 @@ def _tarefa_de(reg, tars_do_pai):
 def publico(reg, agora, tars_do_pai=()):
     """O SubAgente do contrato, com a máscara de segredos em descricao e ultima_atividade.resumo."""
     ult = reg["ultima"]
-    dur = round(max(0.0, (reg["fim"] - reg["inicio"]).total_seconds()), 1) if reg["fim"] else None
+    dur = round(max(0.0, (reg["fim"] - reg["inicio"]).total_seconds()), 1) if reg["fim"] and not reg["aprox"] else None
     desc = reg["descricao"]
     return {"id": reg["id"], "agente": reg["agente"], "tipo": reg["tipo"],
             "descricao": mascarar(desc) if desc is not None else None,
             "status": _status(reg, agora), "fundo": reg["fundo"], "inicio": reg["inicio_ts"], "fim": reg["fim_ts"],
-            "duracao_s": dur,
+            "inicio_aproximado": reg["aprox"], "duracao_s": dur,
             "ultima_atividade": dict(ult, resumo=mascarar(ult["resumo"])) if ult else None,
             "n_atividades": reg["n"], "tarefa": _tarefa_de(reg, tars_do_pai)}
 

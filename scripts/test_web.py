@@ -1169,6 +1169,8 @@ class LeitorDeSubagentes(SubBase):
         d = {s["id"]: s for s in self.listar()}
         self.assertEqual((d["a1"]["status"], d["a1"]["tipo"], d["a1"]["n_atividades"]), ("concluido", "general-purpose", 1))
         self.assertEqual((d["a2"]["status"], d["a2"]["tipo"]), ("concluido", None))
+        # sem inicio: o começo é desconhecido, então não há duração (era 0 s)
+        self.assertEqual((d["a2"]["inicio_aproximado"], d["a2"]["duracao_s"]), (True, None))
         self.assertEqual((d["a3"]["status"], d["a3"]["tipo"]), ("rodando", "Explore"))
 
     def test_inicio_sem_spawn(self):
@@ -1491,7 +1493,7 @@ class ApiDeSubagentes(SubBase):
         self.cenario()
         todos = self.api("/api/subagentes")
         self.assertEqual([s["id"] for s in todos], ["r1", "p1", "e2", "e1"])  # hoje: o de 3 dias atrás fica fora
-        self.assertEqual({k for k in todos[0]}, {"id", "agente", "tipo", "descricao", "status", "fundo", "inicio", "fim",
+        self.assertEqual({k for k in todos[0]}, {"id", "agente", "tipo", "descricao", "status", "fundo", "inicio", "fim", "inicio_aproximado",
                                                   "duracao_s", "ultima_atividade", "n_atividades", "tarefa"})
         self.assertEqual([s["id"] for s in self.api("/api/subagentes?periodo=7d")][-1], "tres")
         self.assertEqual([s["id"] for s in self.api(f"/api/subagentes?agente={R}")], ["r1"])

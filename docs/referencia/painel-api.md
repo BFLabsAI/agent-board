@@ -189,6 +189,7 @@ interface SubAgente {
   id: string; agente: string /* pai */; tipo: string | null; descricao: string | null
   status: StatusSub; fundo: boolean
   inicio: string; fim: string | null; duracao_s: number | null
+  inicio_aproximado: boolean   // 1.12.2: visto sem `inicio`; duracao_s fica null
   ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null
   n_atividades: number
   tarefa: { id: string; assunto: string } | null   // tarefa_atual do pai no momento do inicio
