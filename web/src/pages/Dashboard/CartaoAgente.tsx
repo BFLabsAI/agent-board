@@ -1,15 +1,40 @@
 import clsx from "clsx";
-import { Clock, GitBranch, Inbox, Terminal } from "lucide-react";
+import { Clock, GitBranch, Inbox, Terminal, Workflow } from "lucide-react";
 import type { Agente } from "../../api/tipos";
 import { AgentAvatar, Badge, StatusBadge, TempoRelativo } from "../../components/ui";
+import { duracaoSub, formatarSegundos, tipoSub, useRelogio } from "../../lib/subStatus";
 import { estiloPapel } from "../../lib/cores";
-import { nomeCurto } from "../../lib/formato";
+import { nomeCurto, truncar } from "../../lib/formato";
 import { linhasDaTela } from "./dados";
 
 const BORDA: Partial<Record<Agente["status"], string>> = {
   trabalhando: "border-status-trabalhando/30",
   esperando: "border-status-esperando/50 shadow-[0_0_0_1px_rgba(251,191,36,0.15)]",
 };
+
+/** Chips dos sub-agents rodando, aninhados abaixo da tarefa do pai. */
+function ChipsSub({ agente }: { agente: Agente }) {
+  const rodando = (agente.subagentes ?? []).filter((x) => x.status === "rodando");
+  const agora = useRelogio(rodando.length > 0);
+  if (rodando.length === 0) return null;
+  return (
+    <ul aria-label="Sub-agents rodando" data-subs-rodando className="mt-2 flex flex-wrap gap-1.5 border-l border-border-light pl-3">
+      {rodando.map((s) => (
+        <li
+          key={s.id}
+          data-sub={s.id}
+          title={`${tipoSub(s)}: ${s.descricao ?? ""}`}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px]"
+        >
+          <Workflow className="h-3 w-3 shrink-0 animate-pulse-dot text-emerald-300" aria-hidden="true" />
+          <span className="shrink-0 font-mono text-emerald-300">{tipoSub(s)}</span>
+          <span className="min-w-0 truncate text-texto-suave">{truncar(s.descricao, 36)}</span>
+          <span className="shrink-0 font-mono tabular-nums text-texto-fraco">{formatarSegundos(duracaoSub(s, agora))}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 const HARNESS: Record<string, string> = { cc: "Claude Code", omp: "OMP", maestri: "Maestri" };
 
@@ -64,6 +89,7 @@ export function CartaoAgente({ agente: a }: { agente: Agente }) {
           <span className="text-texto-fraco">Sem tarefa em andamento</span>
         )}
       </p>
+      <ChipsSub agente={a} />
 
       <div
         tabIndex={0}

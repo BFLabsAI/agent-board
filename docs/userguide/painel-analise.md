@@ -18,12 +18,13 @@ Números dos **últimos 30 dias**, de **todo** o histórico (log ativo mais arqu
 
 **Heatmap:** um quadrado por dia, mais intenso quanto mais mensagens. O tom vai de 0 a 4 pela fração do dia mais movimentado (acima de 75%, 50%, 25%). Uma linha por dia da semana, uma coluna por semana.
 
-**Três abas:**
+**Quatro abas:**
 | Aba | Gráficos |
 |---|---|
 | **Atividade** | Mensagens e entregas por dia; tipos de mensagem; mensagens por hora do dia (mostra o horário de pico). |
 | **Agentes** | Mensagens por agente (enviadas, recebidas, entregas); ranking de tempo de resposta pela mediana (p50), com o p90 marcado; tabela de detalhe por agente. |
 | **Qualidade** | Taxa de rejeição por agente (rejeitadas ÷ julgadas; a barra fica amarela a partir de 15% e vermelha a partir de 30%); alertas de ping-pong; aprovadas × rejeitadas por dia. |
+| **Sub-agents** | Sub-agents por agente (total, rodando, com erro e duração média), por tipo e por dia nos 30 dias |
 
 A rejeição conta no agente que **recebeu** o veredito, isto é, o manager que fez a entrega. O botão **Exportar** baixa os dados da tela em JSON.
 
@@ -46,5 +47,10 @@ Por onde o trabalho passa no período escolhido. Cada **conversa** é um pedido 
 3. **Fluxos mais comuns:** os 10 caminhos mais repetidos, por exemplo `pedido → andamento → entrega → resposta:aprovado`, com uma barra comparada ao mais frequente. Tipos repetidos em sequência viram um só.
 
 Uma conversa sem issue liga o executor direto à Revisão; sem entrega, liga direto ao Resultado.
+
+## Sub-agents
+Os dados vêm do coletor dos hooks ([como funciona](painel.md#sub-agents)).
+- **Analytics:** a aba "Sub-agents" cobre os 30 dias, como o resto da tela.
+- **Workflows:** o grafo ganha a coluna **SUB-AGENTS**, com um nó por tipo (`Explore`, `general-purpose`…) e uma linha do agente até ele. O cartão **Sub-agents** conta os disparados no período.
 
 **Próximo:** [Office](painel-office.md)

@@ -3,7 +3,7 @@ import { AlertTriangle, Bot, Columns3, ListChecks, RefreshCw, Search } from "luc
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cliente } from "../../api/cliente";
-import type { Agente, EstadoTarefa, Tarefa } from "../../api/tipos";
+import type { Agente, EstadoTarefa, SubAgente, Tarefa } from "../../api/tipos";
 import { useApi } from "../../api/useApi";
 import { useEvento } from "../../api/useStream";
 import { RolagemX } from "../../components/RolagemX";
@@ -28,6 +28,10 @@ function upsert<T>(lista: T[], item: T, chave: (x: T) => string): T[] {
   const n = lista.slice();
   n[i] = item;
   return n;
+}
+
+function upsertSub(lista: SubAgente[] | undefined, s: SubAgente): SubAgente[] {
+  return upsert(lista ?? [], s, (x) => x.id);
 }
 
 const FECHADAS: EstadoTarefa[] = ["aprovado", "rejeitado", "concluido"];
@@ -133,7 +137,23 @@ export default function Kanban() {
     if (antes && antes !== t.estado) revelar(t.estado);
     setTarefas((l) => upsert(l, t, (x) => x.id));
   });
-  useEvento("agente", (a) => setAgentes((l) => upsert(l, a, (x) => x.agente)));
+  useEvento("agente", (a) =>
+    setAgentes((l) => {
+      // o servidor pode omitir `subagentes` no evento: mantém os que a tela já tem
+      const antes = l.find((x) => x.agente === a.agente);
+      return upsert(l, { ...a, subagentes: a.subagentes ?? antes?.subagentes ?? [] }, (x) => x.agente);
+    }));
+  useEvento("subagente", (s: SubAgente) => {
+    setAgentes((l) => l.map((a) => (a.agente === s.agente ? { ...a, subagentes: upsertSub(a.subagentes, s) } : a)));
+    setTarefas((l) =>
+      l.map((t) => {
+        const tem = (t.subagentes ?? []).some((x) => x.id === s.id);
+        if (s.tarefa?.id !== t.id && !tem) return t;
+        const resumo = { id: s.id, tipo: s.tipo, descricao: s.descricao, status: s.status };
+        return { ...t, subagentes: tem ? t.subagentes.map((x) => (x.id === s.id ? resumo : x)) : [...(t.subagentes ?? []), resumo] };
+      }),
+    );
+  });
 
   const nomes = useMemo(() => {
     const s = new Set<string>(agentes.map((a) => a.agente));

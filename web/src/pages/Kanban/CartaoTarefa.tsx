@@ -1,15 +1,54 @@
 import clsx from "clsx";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Clock, GitBranch, MessageSquareText } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, Clock, Bot, GitBranch, MessageSquareText } from "lucide-react";
 import type { Tarefa } from "../../api/tipos";
 import { LinkPainel } from "../../components/LinkPainel";
 import { AgentAvatar, TempoRelativo, TipoMsgBadge, useAgora } from "../../components/ui";
-import { nomeCurto, tempoRelativo } from "../../lib/formato";
+import { nomeCurto, tempoRelativo, truncar } from "../../lib/formato";
+import { estiloSub, listaSub, tipoSub } from "../../lib/subStatus";
+import { PontoSub } from "../../components/SubLinha";
 
 const ABERTAS = ["aberto", "em_andamento", "atrasado"];
 
 export function idCurto(id: string): string {
   return id.length > 10 ? id.slice(-8) : id;
+}
+
+/** Linha "N sub-agents (M rodando)" com bolinhas por status e lista expansível. */
+export function SubsDaTarefa({ subs }: { subs: Tarefa["subagentes"] | undefined }) {
+  const [aberto, setAberto] = useState(false);
+  const lista = listaSub(subs);
+  if (lista.length === 0) return null;
+  const rodando = lista.filter((x) => x.status === "rodando").length;
+  return (
+    <div className="border-t border-border px-3.5 pb-2.5 pt-2" data-subs-tarefa>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded text-left text-xs text-texto-suave hover:text-texto focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        <Bot className="h-3 w-3 shrink-0 text-accent-hover" aria-hidden="true" />
+        <span className="whitespace-nowrap">{lista.length} {lista.length === 1 ? "sub-agent" : "sub-agents"}{rodando > 0 && <span className="text-emerald-300"> ({rodando} rodando)</span>}</span>
+        <span className="ml-auto flex items-center gap-1">
+          {lista.map((x) => <PontoSub key={x.id} status={x.status} />)}
+          {aberto ? <ChevronUp className="ml-1 h-3 w-3" aria-hidden="true" /> : <ChevronDown className="ml-1 h-3 w-3" aria-hidden="true" />}
+        </span>
+      </button>
+      {aberto && (
+        <ul className="mt-1.5 space-y-1 border-l border-border-light pl-2.5" aria-label="Sub-agents da tarefa">
+          {lista.map((x) => (
+            <li key={x.id} data-status={x.status} className="flex items-center gap-1.5 text-[11px]">
+              <PontoSub status={x.status} />
+              <span className={clsx("shrink-0 font-mono", estiloSub(x.status).texto)}>{tipoSub(x)}</span>
+              <span className="truncate text-texto-suave" title={x.descricao ?? undefined}>{truncar(x.descricao, 80)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function CartaoTarefa({ t }: { t: Tarefa }) {
@@ -24,13 +63,14 @@ export function CartaoTarefa({ t }: { t: Tarefa }) {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 38 }}
       data-tarefa={t.id}
+      className={clsx(
+        "rounded-xl border bg-surface-3 shadow-card transition-colors hover:border-border-light hover:bg-surface-4",
+        t.estado === "atrasado" ? "border-red-500/40" : "border-border",
+      )}
     >
       <LinkPainel
         to={`/conversas/${encodeURIComponent(t.id)}`}
-        className={clsx(
-          "group block space-y-2.5 rounded-xl border bg-surface-3 p-3.5 shadow-card transition-colors hover:border-border-light hover:bg-surface-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent",
-          t.estado === "atrasado" ? "border-red-500/40" : "border-border",
-        )}
+        className="group block space-y-2.5 rounded-xl p-3.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
       >
         <div className="flex items-start gap-2">
           <TipoMsgBadge mensagem={{ tipo: t.tipo }} className="!px-2 !py-0.5" />
@@ -80,6 +120,7 @@ export function CartaoTarefa({ t }: { t: Tarefa }) {
           {t.fechada_em && <span>fechada</span>}
         </div>
       </LinkPainel>
+      <SubsDaTarefa subs={t.subagentes} />
     </motion.li>
   );
 }

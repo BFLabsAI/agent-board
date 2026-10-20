@@ -6,4 +6,6 @@ export interface PropsModoOffice {
   tarefas: Tarefa[];
   selecionado: string | null;
   aoSelecionar: (agente: string) => void;
+  /** abre a gaveta do pai já rolada até o sub-agent */
+  aoSelecionarSub?: (agente: string, subId: string) => void;
 }

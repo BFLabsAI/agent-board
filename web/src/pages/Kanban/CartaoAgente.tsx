@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Cpu, Inbox, ListTodo, Terminal } from "lucide-react";
 import type { Agente } from "../../api/tipos";
 import { AgentAvatar, Badge, StatusBadge, TempoRelativo } from "../../components/ui";
+import { SubLista } from "../../components/SubLinha";
 import { estiloPapel } from "../../lib/cores";
 import { nomeCurto, truncar } from "../../lib/formato";
 
@@ -53,6 +54,8 @@ export function CartaoAgente({ a }: { a: Agente }) {
           <StatusBadge status={a.tarefa_atual.estado} className="ml-auto !px-1.5 !py-0 text-[10px]" />
         </div>
       )}
+
+      <SubLista subs={a.subagentes} />
 
       <div className="flex items-center justify-between text-[11px] text-texto-fraco">
         <span>Última saída</span>

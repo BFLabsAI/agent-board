@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, ClipboardList, ExternalLink, ListChecks, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
+import { ArrowRight, Bot, ClipboardList, ExternalLink, ListChecks, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Agente, Mensagem, Tarefa } from "../../api/tipos";
+import type { Agente, Mensagem, SubAgente, Tarefa } from "../../api/tipos";
 import { cliente } from "../../api/cliente";
 import { useApi } from "../../api/useApi";
 import { useEvento } from "../../api/useStream";
@@ -9,10 +9,13 @@ import { LinkPainel } from "../../components/LinkPainel";
 import { AgentAvatar, Badge, Skeleton, StatusBadge, TempoRelativo, TipoMsgBadge } from "../../components/ui";
 import { estiloPapel, ESTILO_ESTADO_TAREFA } from "../../lib/cores";
 import { nomeCurto, truncar } from "../../lib/formato";
+import { DuracaoSub } from "./DuracaoSub";
+import { ESTILO_SUB, mesclarSub, ordenarSubs, subsDe, textoAtividade } from "./subagentes";
 import { useReduzirMovimento } from "./useReduzirMovimento";
 
 const ABERTAS = new Set(["aberto", "em_andamento", "atrasado", "aguardando_revisao"]);
 const LINHAS_TELA = 40;
+const SUBS_VISIVEIS = 5;
 
 /** Texto do terminal sem escapes ANSI e só o final (a parte que importa). */
 export function limparTela(tela: string | null | undefined): string {
@@ -106,8 +109,82 @@ function UltimasMensagens({ agente }: { agente: string }) {
   );
 }
 
+function ItemSub({ sub, foco }: { sub: SubAgente; foco: boolean }) {
+  const e = ESTILO_SUB[sub.status];
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (foco) ref.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [foco]);
+  return (
+    <li
+      ref={ref}
+      data-testid="sub-item"
+      data-sub={sub.id}
+      data-status={sub.status}
+      data-foco={foco || undefined}
+      className={`rounded-lg border bg-surface-2 px-3 py-2 ${foco ? "border-accent ring-1 ring-accent/60" : sub.status === "erro" ? "border-red-400/40" : sub.status === "perdido" ? "border-dashed border-amber-400/40" : "border-border"}`}
+    >
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${sub.status === "rodando" ? "animate-pulse-dot" : ""}`} style={{ background: e.hex }} aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-semibold text-texto">{sub.tipo ?? "sub-agent"}</span>
+        {sub.fundo && (
+          <span data-testid="sub-fundo" className="rounded border border-border-light px-1 py-px text-[9px] uppercase tracking-wider text-texto-fraco">em segundo plano</span>
+        )}
+        <span className={e.texto}>{e.rotulo}</span>
+        <DuracaoSub sub={sub} className="font-mono tabular-nums text-texto-suave" />
+      </div>
+      <p className="mt-1 text-[13px] leading-snug text-texto">{truncar(sub.descricao, 140) || "sem descrição"}</p>
+      <p className="mt-1 truncate font-mono text-[10.5px] text-texto-fraco" title={textoAtividade(sub)}>{textoAtividade(sub)}</p>
+      {sub.tarefa && (
+        <LinkPainel to={`/conversas/${encodeURIComponent(sub.tarefa.id)}`} className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] text-accent-hover hover:underline" title={sub.tarefa.assunto}>
+          <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{sub.tarefa.id} · {truncar(sub.tarefa.assunto, 48)}</span>
+        </LinkPainel>
+      )}
+    </li>
+  );
+}
+
+function SecaoSubs({ agente, foco }: { agente: Agente; foco: string | null }) {
+  const locais = useMemo(() => ordenarSubs(subsDe(agente)), [agente]);
+  const [todos, setTodos] = useState(false);
+  useEffect(() => {
+    setTodos(false);
+  }, [agente.agente]);
+  const api = useApi((c, s) => (todos ? cliente.subagentes({ projeto: c.projeto, agente: agente.agente, periodo: "24h" }, s) : Promise.resolve<SubAgente[]>([])), [todos, agente.agente]);
+  const lista = useMemo(() => {
+    if (!todos) return locais;
+    // eventos ao vivo (locais) prevalecem sobre a listagem carregada
+    let m = api.dados ?? [];
+    for (const l of locais) m = mesclarSub(m, l);
+    return ordenarSubs(m);
+  }, [todos, api.dados, locais]);
+  const focoFora = foco !== null && lista.findIndex((s) => s.id === foco) >= SUBS_VISIVEIS;
+  const visiveis = todos || focoFora ? lista : lista.slice(0, SUBS_VISIVEIS);
+  const rodando = locais.filter((s) => s.status === "rodando").length;
+  return (
+    <Secao icone={Bot} titulo="Sub-agents" extra={<span className="font-semibold text-texto" data-testid="subs-rodando">{rodando} rodando</span>}>
+      {lista.length === 0 ? (
+        <p className="text-sm text-texto-fraco">Nenhum sub-agent nas últimas 24 h.</p>
+      ) : (
+        <ul className="space-y-1.5" data-testid="subs-gaveta">
+          {visiveis.map((s) => (
+            <ItemSub key={s.id} sub={s} foco={foco === s.id} />
+          ))}
+        </ul>
+      )}
+      {todos && api.carregando && <Skeleton className="mt-2 h-10 w-full" />}
+      {!todos && locais.length > SUBS_VISIVEIS && (
+        <button type="button" onClick={() => setTodos(true)} className="mt-2 text-[12px] text-accent-hover hover:underline">
+          ver todos ({locais.length}+)
+        </button>
+      )}
+    </Secao>
+  );
+}
+
 /** Gaveta lateral com o trabalho do agente selecionado. */
-export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void }) {
+export function Gaveta({ agente, tarefas, aoFechar, subFoco = null }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void; subFoco?: string | null }) {
   const reduzido = useReduzirMovimento();
   useEffect(() => {
     if (!agente) return;
@@ -185,6 +262,8 @@ export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; t
               <p className="text-sm text-texto-fraco">Sem tarefa em andamento.</p>
             )}
           </Secao>
+
+          <SecaoSubs agente={agente} foco={subFoco} />
 
           <Secao icone={Inbox} titulo="Mensagens sem resposta" extra={<span className="font-semibold text-texto" data-testid="sem-resposta">{agente.pendentes}</span>}>
             <p className="text-sm text-texto-fraco">

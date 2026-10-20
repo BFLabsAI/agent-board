@@ -40,7 +40,7 @@ export function StreamProvider({
     const offs = [
       c.aoMudar(setStatus),
       c.aoVoltar(() => barramento.current.recarregar.forEach((f) => f())),
-      ...(["ola", "mensagem", "agente", "tarefa", "ping"] as NomeEvento[]).map((n) =>
+      ...(["ola", "mensagem", "agente", "tarefa", "subagente", "ping"] as NomeEvento[]).map((n) =>
         c.assinar(n, (d) => barramento.current.ouvintes.get(n)?.forEach((f) => (f as (x: unknown) => void)(d))),
       ),
     ];

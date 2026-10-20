@@ -11,13 +11,20 @@ import time
 
 import painel_dados
 import painel_estado
+import painel_subagentes
 from base import LOG_REL
 
-INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0}
+INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0, "sub": 2.0}  # sub: mínimo entre dois eventos do mesmo sub-agent
 
 
 def _assinatura(a):
-    return (a["status"], a["tela"], a["pendentes"], json.dumps(a["tarefa_atual"], sort_keys=True))
+    subs = tuple((x["id"], x["status"]) for x in a.get("subagentes", []))
+    return (a["status"], a["tela"], a["pendentes"], json.dumps(a["tarefa_atual"], sort_keys=True), subs)
+
+
+def _assinatura_sub(s):
+    ult = s["ultima_atividade"]
+    return (s["status"], s["n_atividades"], ult and ult["ts"])
 
 
 class Vigia:
@@ -29,6 +36,9 @@ class Vigia:
         self.pos, self.visto = self._tamanho(), self._marca()
         self.ult_orca = self.ult_evento = self.relogio()
         self.tarefas, self.agentes = {}, {}
+        self.tars_lista, self.subs = [], []
+        self.sig_subs = painel_subagentes.assinatura(projeto, datetime.datetime.now().astimezone())
+        self.subs_vistos, self.subs_pendentes, self.subs_emitido = {}, {}, {}
         self.pronto = False
         self._atualizar([])  # linha de base: o que já existe não vira evento
         self.pronto = True
@@ -77,7 +87,9 @@ class Vigia:
         agora = datetime.datetime.now().astimezone()
         msgs = painel_estado.ler_log(self.raiz)
         tars = painel_estado.tarefas(msgs, agora)
-        ags = painel_dados.agentes(self.projeto, self.paineis(), msgs, self.terminais(), agora, tars)
+        self._subs(tars, agora)
+        ags = painel_dados.agentes(self.projeto, self.paineis(), msgs, self.terminais(), agora, tars, self.subs)
+        tars = painel_subagentes.anexar_tarefas(tars, self.subs)
         for t in tars:
             if self.tarefas.get(t["id"]) != t["estado"] and self.pronto:
                 eventos.append(("tarefa", t))
@@ -87,15 +99,47 @@ class Vigia:
         self.tarefas = {t["id"]: t["estado"] for t in tars}
         self.agentes = {a["agente"]: _assinatura(a) for a in ags}
 
+    def _subs(self, tars, agora):
+        """Relê os sub-agents (cache incremental), marca como pendente quem nasceu, mudou de status ou teve
+        atividade, e devolve True se o conjunto (id, status) mudou. O baseline do início não vira evento."""
+        self.tars_lista = tars
+        self.subs = painel_subagentes.listar(self.projeto, agora, tars)
+        estrutura = False
+        for s in self.subs:
+            chave, ass = (s["agente"], s["id"]), _assinatura_sub(s)
+            antigo = self.subs_vistos.get(chave)
+            if antigo != ass and self.pronto:
+                self.subs_pendentes[chave] = s
+                estrutura = estrutura or antigo is None or antigo[0] != ass[0]
+            self.subs_vistos[chave] = ass
+        return estrutura
+
+    def _emitir_subs(self, eventos):
+        """No máximo 1 evento `subagente` por sub-agent a cada `sub` s; o que sobra espera e sai com o estado mais recente."""
+        agora = self.relogio()
+        for chave, s in list(self.subs_pendentes.items()):
+            if agora - self.subs_emitido.get(chave, -1e9) >= self.iv["sub"]:
+                eventos.append(("subagente", s))
+                self.subs_emitido[chave] = agora
+                del self.subs_pendentes[chave]
+
     def passo(self):
         agora = self.relogio()
         eventos = [("mensagem", m) for m in self._linhas_novas()]
         marca = self._marca()
         mudou = marca != self.visto
         self.visto = marca
-        if mudou or agora - self.ult_orca >= self.iv["orca"]:
+        hora = datetime.datetime.now().astimezone()
+        sig = painel_subagentes.assinatura(self.projeto, hora)  # arquivo de hoje e de ontem; a virada do dia troca os nomes
+        tic_orca = agora - self.ult_orca >= self.iv["orca"]
+        estrutura = False
+        if sig != self.sig_subs or tic_orca:
+            self.sig_subs = sig
+            estrutura = self._subs(self.tars_lista, hora)
+        if mudou or tic_orca or estrutura:
             self.ult_orca = agora
             self._atualizar(eventos)
+        self._emitir_subs(eventos)
         if eventos:
             self.ult_evento = agora
         elif agora - self.ult_evento >= self.iv["ping"]:

@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 HOME_TESTE = tempfile.mkdtemp(prefix="agent-board-web-")
@@ -23,6 +24,7 @@ import painel_dados  # noqa: E402
 import painel_estado  # noqa: E402
 import painel_orca  # noqa: E402
 import painel_stream  # noqa: E402
+import painel_subagentes  # noqa: E402
 import registro  # noqa: E402
 
 CONFIG = os.path.join(AQUI, "..", "templates", "agent-board.json")
@@ -239,6 +241,11 @@ class StatusAgente(unittest.TestCase):
         self.assertEqual(painel_estado.status_agente(None, 3, self.AGORA_MS), "offline")
         self.assertEqual(painel_estado.status_agente({"title": "⠋ x"}, 0, self.AGORA_MS, orca_ok=False), "desconhecido")
         self.assertEqual(painel_estado.status_agente({"title": "x"}, 0, self.AGORA_MS, maestri=True), "desconhecido")
+        # pai parado na tela esperando o sub-agent conta como trabalhando; offline continua offline
+        self.assertEqual(painel_estado.status_agente({"title": "✳ x"}, 2, self.AGORA_MS, subs_rodando=1), "trabalhando")
+        self.assertEqual(painel_estado.status_agente(None, 0, self.AGORA_MS, subs_rodando=1), "offline")
+        self.assertEqual(painel_estado.status_agente({"title": "x", "preview": "Do you want to proceed?"}, 0,
+                                                     self.AGORA_MS, subs_rodando=1), "esperando")
         # esperando vence trabalhando
         self.assertEqual(self.st("⠋ x", "Do you want to proceed?\n❯ 1. Yes\n  2. No"), "esperando")
         for tela in ("Continue? [y/n]", "Allow this tool?", "Needs permission to run"):
@@ -482,7 +489,7 @@ class Dados(Cenario):
         w = painel_dados.workflows([], [], "hoje", agora_local(), {}, {})
         self.assertEqual((w["nos"], w["arestas"], w["fluxos"]), ([], [], []))
         self.assertEqual(w["kpis"], {"conversas": 0, "taxa_aprovacao": None, "tempo_ate_entrega_p50_min": None,
-                                     "fluxo_mais_comum": None, "msgs_por_conversa": None})
+                                     "fluxo_mais_comum": None, "msgs_por_conversa": None, "subagentes": 0})
 
 
 
@@ -634,7 +641,7 @@ class ApiV2(Cenario):
         ags = self.api("/api/agentes")
         self.assertEqual([(a["agente"], a["status"]) for a in ags], [(M, "parado"), (G, "trabalhando"), (R, "offline")])
         self.assertEqual(set(ags[0]), {"agente", "papel", "handle", "harness", "worktree", "branch", "status", "tela",
-                                       "ultima_saida", "pendentes", "tarefa_atual", "stats"})
+                                       "ultima_saida", "pendentes", "tarefa_atual", "stats", "subagentes"})
         self.assertEqual(ags[2]["handle"], "term_r")
 
     def test_agentes_com_orca_mudo(self):
@@ -648,7 +655,7 @@ class ApiV2(Cenario):
         self.assertNotIn("p3", estados)  # fechada há 3 dias
         self.assertEqual(self.api("/api/tarefas?periodo=7d")[-1]["id"], "p3")
         self.assertEqual(set(ts_[0]), {"id", "ts", "tipo", "de", "para", "assunto", "estado", "prazo", "issues", "branch",
-                                       "andamento", "andamento_ts", "fechada_em"})
+                                       "andamento", "andamento_ts", "fechada_em", "subagentes"})
 
     def test_conversas_e_filtros(self):
         cs = self.api("/api/conversas?periodo=7d")
@@ -837,7 +844,7 @@ class ApiV2(Cenario):
 # ---------------------------------------------------------------------------
 # Segurança (issue #12): log, terminal e rede são entrada não confiável
 # ---------------------------------------------------------------------------
-ENDPOINTS = ("estado", "resumo", "agentes", "tarefas", "conversas", "mensagens", "analytics", "workflows",
+ENDPOINTS = ("estado", "resumo", "agentes", "tarefas", "conversas", "mensagens", "analytics", "workflows", "subagentes",
              "conversas/p1", "conversas/torto")
 LINHAS_TORTAS = ['"id"', "[1, 2]", "42", "null", "{", '{"id": 5, "ts": "x"}', '{"id": ["a"], "tipo": "pedido"}',
                  '{"id": "t1", "tipo": "pedido"}',
@@ -1095,6 +1102,564 @@ class Seguranca(Cenario):
         m_ = next(a for a in json.loads(self.get("/api/agentes")[1]) if a["agente"] == M)
         self.assertNotIn("sk-abc", m_["tela"])
         self.assertIn("rodando", m_["tela"])
+
+
+# ---------------------------------------------------------------------------
+# Sub-agents (issue #20): leitor, ligação, campos novos, rota e SSE
+# ---------------------------------------------------------------------------
+def quando(minutos=0):
+    return agora_local() - datetime.timedelta(minutes=minutos)
+
+
+def ev(ev_, minutos, agente=G, **extra):
+    base_ = {"ts": quando(minutos).isoformat(timespec="seconds"), "ev": ev_, "agente": agente, "sessao": "s1",
+             "id": None, "tipo": None}
+    return dict(base_, **extra)
+
+
+class SubBase(Cenario):
+    def setUp(self):
+        super().setUp()
+        self.pasta_sub = os.path.join(HOME_TESTE, "subagentes", "alpha")
+        shutil.rmtree(os.path.join(HOME_TESTE, "subagentes"), ignore_errors=True)
+        self.addCleanup(shutil.rmtree, os.path.join(HOME_TESTE, "subagentes"), True)
+
+    def arquivo(self, dia=None):
+        dia = dia or agora_local().date()
+        return os.path.join(self.pasta_sub, dia.isoformat() + ".jsonl")
+
+    def sub_cru(self, *linhas, dia=None):
+        os.makedirs(self.pasta_sub, exist_ok=True)
+        with open(self.arquivo(dia), "a") as f:
+            for l in linhas:
+                f.write((l if isinstance(l, str) else json.dumps(l)) + "\n")
+
+    def sub_gravar(self, *eventos):
+        for e in eventos:  # cada evento vai para o arquivo do dia do seu ts, como faz o coletor
+            self.sub_cru(e, dia=painel_estado._ts(e["ts"]).date())
+
+    def listar(self, **kw):
+        agora = agora_local()
+        tars = painel_estado.tarefas(painel_estado.ler_log(self.raiz), agora)
+        return painel_subagentes.listar("alpha", agora, tars, **kw)
+
+    def um(self, **kw):
+        subs = self.listar(**kw)
+        self.assertEqual(len(subs), 1, subs)
+        return subs[0]
+
+
+class LeitorDeSubagentes(SubBase):
+    def test_spawn_sem_inicio_nao_vira_subagent(self):
+        self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="x"))
+        self.assertEqual(self.listar(), [])
+
+    def test_inicio_sem_spawn(self):
+        self.sub_gravar(ev("inicio", 5, id="a1", tipo="Explore"))
+        s = self.um()
+        self.assertEqual((s["id"], s["agente"], s["tipo"], s["descricao"], s["fundo"], s["status"]),
+                         ("a1", G, "Explore", None, False, "rodando"))
+        self.assertEqual((s["fim"], s["duracao_s"], s["n_atividades"], s["ultima_atividade"], s["tarefa"]),
+                         (None, None, 0, None, None))
+
+    def test_spawn_alimenta_descricao_e_fundo(self):
+        self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="mapear o painel", fundo=True),
+                        ev("inicio", 4.9, id="a1", tipo="Explore"))
+        s = self.um()
+        self.assertEqual((s["descricao"], s["fundo"]), ("mapear o painel", True))
+
+    def test_dois_spawns_do_mesmo_tipo_consumidos_na_ordem(self):
+        self.sub_gravar(ev("spawn", 10, tipo="Explore", descricao="A"), ev("spawn", 9.9, tipo="Explore", descricao="B"),
+                        ev("inicio", 9.8, id="a1", tipo="Explore"), ev("inicio", 9.7, id="a2", tipo="Explore"))
+        d = {s["id"]: s["descricao"] for s in self.listar()}
+        self.assertEqual(d, {"a1": "A", "a2": "B"})
+
+    def test_spawn_do_mesmo_tipo_tem_preferencia_e_sem_tipo_igual_vale_qualquer_um(self):
+        self.sub_gravar(ev("spawn", 10, tipo="Explore", descricao="E"), ev("spawn", 9.9, tipo="general-purpose", descricao="G"),
+                        ev("inicio", 9.8, id="a1", tipo="general-purpose"), ev("inicio", 9.7, id="a2", tipo="Plan"))
+        d = {s["id"]: s["descricao"] for s in self.listar()}
+        self.assertEqual(d, {"a1": "G", "a2": "E"})
+
+    def test_spawn_com_mais_de_60s_nao_e_consumido(self):
+        self.sub_gravar(ev("spawn", 10, tipo="Explore", descricao="velho"), ev("inicio", 8.5, id="a1", tipo="Explore"))
+        self.assertIsNone(self.um()["descricao"])
+
+    def test_spawns_de_pais_diferentes_nao_se_misturam(self):
+        self.sub_gravar(ev("spawn", 5, agente=R, tipo="Explore", descricao="do R"), ev("inicio", 4.9, id="a1", tipo="Explore"))
+        self.assertIsNone(self.um()["descricao"])
+
+    def test_fim_define_duracao_e_atividade_atualiza(self):
+        self.sub_gravar(ev("inicio", 10, id="a1", tipo="Explore"),
+                        ev("atividade", 8, id="a1", ferramenta="Bash", resumo="ls"),
+                        ev("atividade", 6, id="a1", ferramenta="Edit", resumo="/x/y.py"),
+                        ev("fim", 5, id="a1", tipo="Explore"))
+        s = self.um()
+        self.assertEqual((s["status"], s["duracao_s"], s["n_atividades"]), ("concluido", 300.0, 2))
+        self.assertEqual(s["ultima_atividade"]["ferramenta"], "Edit")
+        self.assertEqual(s["ultima_atividade"]["resumo"], "/x/y.py")
+        self.assertEqual(s["fim"], ev("fim", 5)["ts"])
+
+    def test_retorno_com_erro_e_ordem(self):
+        self.sub_gravar(ev("inicio", 10, id="a1", tipo="Explore"), ev("inicio", 9, id="a2", tipo="Explore"),
+                        ev("inicio", 8, id="b1", tipo="Plan"),
+                        ev("fim", 7, id="a1"), ev("fim", 6, id="a2"), ev("fim", 5, id="b1"),
+                        ev("retorno", 4, tipo="Explore", ok=False), ev("retorno", 3, tipo="Explore", ok=True),
+                        ev("retorno", 2, tipo="Plan"))
+        st = {s["id"]: s["status"] for s in self.listar()}
+        self.assertEqual(st, {"a1": "erro", "a2": "concluido", "b1": "concluido"})
+
+    def test_erro_vale_mesmo_sem_fim(self):
+        self.sub_gravar(ev("inicio", 10, id="a1", tipo="Explore"), ev("retorno", 9, tipo="Explore", ok=False))
+        self.assertEqual(self.um()["status"], "erro")
+
+    def test_perdido_e_rodando(self):
+        self.sub_gravar(ev("inicio", 200, id="velho", tipo="Explore"),
+                        ev("inicio", 300, id="ativo", tipo="Explore"), ev("atividade", 30, id="ativo", ferramenta="Bash", resumo="x"),
+                        ev("inicio", 130, id="quase", tipo="Explore"), ev("fim", 100, id="quase"),
+                        ev("inicio", 119, id="limite", tipo="Explore"))
+        st = {s["id"]: s["status"] for s in self.listar()}
+        self.assertEqual(st, {"velho": "perdido", "ativo": "rodando", "quase": "concluido", "limite": "rodando"})
+
+    def test_tarefa_e_a_aberta_mais_recente_do_pai_no_inicio(self):
+        # cenario: p2 (R, 20 min atrás, aberta); p1 (G, 60 min atrás, entrega e1 aprovada em r1, 30 min atrás)
+        self.sub_gravar(ev("inicio", 5, agente=R, id="r1", tipo="Explore"),
+                        ev("inicio", 30, agente=R, id="r0", tipo="Explore"),
+                        ev("inicio", 55, id="g1", tipo="Explore"), ev("inicio", 2, id="g2", tipo="Explore"))
+        t = {s["id"]: s["tarefa"] for s in self.listar()}
+        self.assertEqual(t["r1"], {"id": "p2", "assunto": "p2"})
+        self.assertIsNone(t["r0"])  # p2 só chegou depois
+        self.assertEqual(t["g1"], {"id": "p1", "assunto": "p1"})
+        self.assertIsNone(t["g2"])  # p1 já estava fechada quando g2 nasceu
+
+    def test_ordem_mais_recente_primeiro(self):
+        self.sub_gravar(ev("inicio", 30, id="a1"), ev("inicio", 10, id="a2"), ev("inicio", 20, id="a3"))
+        self.assertEqual([s["id"] for s in self.listar()], ["a2", "a3", "a1"])
+
+    def test_leitura_incremental_so_le_o_que_cresceu(self):
+        self.sub_gravar(ev("inicio", 10, id="a1", tipo="Explore"))
+        self.assertEqual(len(self.listar()), 1)
+        self.sub_gravar(ev("atividade", 9, id="a1", ferramenta="Bash", resumo="ls"), ev("inicio", 8, id="a2"))
+        with mock.patch.object(painel_subagentes, "sanear", wraps=painel_subagentes.sanear) as lido:
+            subs = self.listar()
+            self.assertEqual(lido.call_count, 2)  # só as 2 linhas novas
+            self.listar()
+            self.assertEqual(lido.call_count, 2)  # nada novo: nem abre o parser
+        self.assertEqual({s["id"]: s["n_atividades"] for s in subs}, {"a1": 1, "a2": 0})
+
+    def test_linha_incompleta_espera_o_fim(self):
+        self.sub_gravar(ev("inicio", 10, id="a1"))
+        linha = json.dumps(ev("inicio", 9, id="a2"))
+        with open(self.arquivo(), "a") as f:
+            f.write(linha[:30])
+        self.assertEqual(len(self.listar()), 1)
+        with open(self.arquivo(), "a") as f:
+            f.write(linha[30:] + "\n")
+        self.assertEqual(len(self.listar()), 2)
+
+    def test_arquivo_trocado_e_relido(self):
+        self.sub_gravar(ev("inicio", 10, id="a1"), ev("inicio", 9, id="a2"), ev("inicio", 8, id="a3"))
+        self.assertEqual(len(self.listar()), 3)
+        os.remove(self.arquivo())
+        self.sub_gravar(ev("inicio", 7, id="b1"))
+        self.assertEqual([s["id"] for s in self.listar()], ["b1"])
+        # reescrito com mais bytes que antes: o começo diferente denuncia
+        os.remove(self.arquivo())
+        self.sub_gravar(*[ev("inicio", 7 - i / 10, id=f"c{i}") for i in range(6)])
+        self.assertEqual(len(self.listar()), 6)
+
+    def test_virada_do_dia_liga_eventos_de_arquivos_diferentes(self):
+        ontem = (agora_local() - datetime.timedelta(days=1)).replace(hour=23, minute=58, second=0, microsecond=0)
+        hoje = ontem + datetime.timedelta(minutes=5)
+        fmt = lambda t: t.isoformat(timespec="seconds")  # noqa: E731
+        self.sub_gravar({"ts": fmt(ontem - datetime.timedelta(seconds=5)), "ev": "spawn", "agente": G, "tipo": "Explore",
+                         "descricao": "atravessa a meia-noite"},
+                        {"ts": fmt(ontem), "ev": "inicio", "agente": G, "id": "a1", "tipo": "Explore"},
+                        {"ts": fmt(hoje), "ev": "atividade", "agente": G, "id": "a1", "ferramenta": "Bash", "resumo": "ls"},
+                        {"ts": fmt(hoje + datetime.timedelta(minutes=1)), "ev": "fim", "agente": G, "id": "a1"})
+        self.assertEqual(len(os.listdir(self.pasta_sub)), 2)
+        s = self.um()
+        self.assertEqual((s["descricao"], s["status"], s["n_atividades"], s["duracao_s"]),
+                         ("atravessa a meia-noite", "concluido", 1, 360.0))
+
+    def test_linhas_tortas_sao_ignoradas_e_nada_e_escrito(self):
+        avisos = os.path.join(HOME_TESTE, "avisos.log")
+        antes_ = os.path.getsize(avisos) if os.path.exists(avisos) else 0
+        self.sub_cru("{", "lixo", "[1,2]", "42", "null", '"ev"', '{"ev": "inicio"}', '{"ev": "xpto", "ts": "2026-10-12T10:00:00Z"}',
+                     '{"ev": "inicio", "ts": "ontem", "agente": "a", "id": "x"}',
+                     '{"ev": "inicio", "ts": "0001-01-01T00:00:00", "agente": "a", "id": "x"}',
+                     '{"ev": "inicio", "ts": 5, "agente": "a", "id": "x"}', "x" * 20000, "[" * 5000,
+                     json.dumps(ev("inicio", 3, id=["lista"], tipo={"x": 1})),
+                     json.dumps(ev("inicio", 2, id="ok1", tipo=5, descricao=7, ferramenta=[], ok="sim", fundo="sim")))
+        s = self.um()
+        self.assertEqual((s["id"], s["tipo"], s["descricao"], s["fundo"]), ("ok1", None, None, False))
+        self.assertEqual(os.path.getsize(avisos) if os.path.exists(avisos) else 0, antes_)
+
+    def test_textos_limitados(self):
+        self.sub_gravar(ev("spawn", 5, tipo="T" * 500, descricao="D" * 5000), ev("inicio", 4.9, id="a1", tipo="T" * 500),
+                        ev("atividade", 4, id="a1", ferramenta="F" * 500, resumo="R" * 5000))
+        s = self.um()
+        self.assertLessEqual(len(s["tipo"]), 100)
+        self.assertLessEqual(len(s["descricao"]), 300)
+        self.assertLessEqual(len(s["ultima_atividade"]["resumo"]), 300)
+        self.assertLessEqual(len(s["ultima_atividade"]["ferramenta"]), 60)
+
+    def test_projeto_sem_diretorio_ou_com_nome_malicioso(self):
+        self.assertEqual(self.listar(), [])
+        for nome in ("..", ".", "a/b", "..\\x", "", None, "a\0b", "../../etc"):
+            self.assertEqual(painel_subagentes.listar(nome), [], nome)
+        self.assertEqual(painel_subagentes.assinatura("zzz", agora_local()),
+                         tuple((n, 0, 0) for n, _, _ in painel_subagentes.assinatura("zzz", agora_local())))
+
+    def test_mascara_na_saida(self):
+        self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="usar token=abc123segredo na API"),
+                        ev("inicio", 4.9, id="a1", tipo="Explore"),
+                        ev("atividade", 4, id="a1", ferramenta="Bash",
+                           resumo="curl -H 'Authorization: Bearer abc.def-1234567890' x; OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx"))
+        saida = json.dumps(self.um())
+        for segredo in ("abc123segredo", "abc.def-1234567890", "sk-abcdefghijkl"):
+            self.assertNotIn(segredo, saida)
+        self.assertIn("[oculto]", saida)
+
+    def test_arquivos_fora_da_janela_ou_com_nome_estranho_nao_entram(self):
+        antigo = agora_local().date() - datetime.timedelta(days=40)
+        self.sub_cru(ev("inicio", 5, id="velho"), dia=antigo)
+        os.makedirs(self.pasta_sub, exist_ok=True)
+        for nome in ("lixo.jsonl", "2026-10-12.jsonl.bak", "x2026-10-12.jsonl"):
+            with open(os.path.join(self.pasta_sub, nome), "w") as f:
+                f.write(json.dumps(ev("inicio", 5, id="estranho")) + "\n")
+        self.assertEqual(self.listar(), [])
+
+
+class CamposDeSubagentes(SubBase):
+    """Agente, Tarefa, Indicadores, Analytics e Workflows com sub-agents (funções puras)."""
+
+    def setUp(self):
+        super().setUp()
+        self.sub_gravar(
+            ev("spawn", 100, tipo="Explore", descricao="mapear"), ev("inicio", 99.9, id="e1", tipo="Explore"),
+            ev("fim", 90, id="e1"), ev("retorno", 89, tipo="Explore", ok=True),
+            ev("inicio", 50, id="e2", tipo="Explore"), ev("retorno", 49, tipo="Explore", ok=False),
+            ev("inicio", 10, id="p1", tipo="Plan"), ev("atividade", 9, id="p1", ferramenta="Bash", resumo="ls"),
+            ev("inicio", 8, agente=R, id="r1", tipo="Explore"), ev("fim", 7, agente=R, id="r1"))
+
+    def test_agente_subagentes_e_stats(self):
+        subs = self.listar()
+        ags = {a["agente"]: a for a in painel_dados.agentes("alpha", carregar(), registro.ler_log(self.raiz), self.terminais,
+                                                           agora_local(), None, subs)}
+        self.assertEqual([s["id"] for s in ags[G]["subagentes"]], ["p1", "e2", "e1"])
+        self.assertEqual(ags[G]["stats"]["subagentes_7d"], 3)
+        self.assertEqual([s["id"] for s in ags[R]["subagentes"]], ["r1"])
+        self.assertEqual(ags[M]["subagentes"], [])
+        self.assertEqual(ags[M]["stats"]["subagentes_7d"], 0)
+
+    def test_agente_sem_coleta(self):
+        for a in painel_dados.agentes("alpha", carregar(), registro.ler_log(self.raiz), self.terminais, agora_local()):
+            self.assertEqual((a["subagentes"], a["stats"]["subagentes_7d"]), ([], 0))
+
+    def test_agente_todos_rodando_mais_5_terminados_das_ultimas_24h(self):
+        shutil.rmtree(self.pasta_sub)
+        eventos = [ev("inicio", 30 + i, id=f"run{i}") for i in range(3)]
+        for i in range(8):
+            eventos += [ev("inicio", 200 + i * 10, id=f"fim{i}"), ev("fim", 190 + i * 10, id=f"fim{i}")]
+        eventos += [ev("inicio", 60 * 30, id="antigo"), ev("fim", 60 * 30 - 1, id="antigo")]  # 30 h atrás
+        self.sub_gravar(*eventos)
+        a = next(a for a in painel_dados.agentes("alpha", carregar(), [], self.terminais, agora_local(), None, self.listar())
+                 if a["agente"] == G)
+        ids = [s["id"] for s in a["subagentes"]]
+        self.assertEqual(sorted(i for i in ids if i.startswith("run")), ["run0", "run1", "run2"])
+        self.assertEqual(sorted(i for i in ids if i.startswith("fim")), [f"fim{i}" for i in range(5)])
+        self.assertNotIn("antigo", ids)
+        self.assertEqual(a["stats"]["subagentes_7d"], 3 + 8 + 1)
+
+    def test_tarefa_tem_os_subagentes_ligados(self):
+        self.sub_gravar(ev("inicio", 5, agente=R, id="r9", tipo="Explore", ))
+        subs = self.listar()
+        tars = painel_subagentes.anexar_tarefas(painel_estado.tarefas(registro.ler_log(self.raiz), agora_local()), subs)
+        p2 = next(t for t in tars if t["id"] == "p2")
+        self.assertEqual(p2["subagentes"], [{"id": "r9", "tipo": "Explore", "descricao": None, "status": "rodando"},
+                                            {"id": "r1", "tipo": "Explore", "descricao": None, "status": "concluido"}])
+        self.assertTrue(all("subagentes" in t for t in tars))
+
+    def test_analytics(self):
+        a = painel_dados.analytics_subagentes(self.listar(), agora_local())
+        self.assertEqual(a["por_agente"][0], {"agente": G, "n": 3, "rodando": 1, "erro": 1,
+                                              "duracao_media_s": 594.0})
+        self.assertEqual(a["por_agente"][1]["agente"], R)
+        self.assertEqual({t["tipo"]: t["n"] for t in a["por_tipo"]}, {"Explore": 3, "Plan": 1})
+        self.assertEqual(len(a["por_dia_30"]), 30)
+        self.assertEqual([d["dia"] for d in a["por_dia_30"]], sorted(d["dia"] for d in a["por_dia_30"]))
+        self.assertEqual(a["por_dia_30"][-1]["dia"], agora_local().date().isoformat())
+        self.assertEqual(sum(d["n"] for d in a["por_dia_30"]), 4)
+        vazio = painel_dados.analytics_subagentes([], agora_local())
+        self.assertEqual((vazio["por_agente"], vazio["por_tipo"], len(vazio["por_dia_30"])), ([], [], 30))
+
+    def test_workflows(self):
+        msgs = registro.ler_log(self.raiz)
+        agora = agora_local()
+        tars = painel_estado.tarefas(msgs, agora)
+        w = painel_dados.workflows(msgs, painel_dados.conversas(msgs, agora, tars), "7d", agora, {}, {t["id"]: t for t in tars},
+                                   self.listar())
+        nos = {n["id"]: n for n in w["nos"]}
+        self.assertEqual((nos["sub:Explore"]["coluna"], nos["sub:Explore"]["rotulo"], nos["sub:Explore"]["n"]), ("subagente", "Explore", 3))
+        self.assertEqual(nos["sub:Plan"]["n"], 1)
+        ar = {(a["de"], a["para"]): a["n"] for a in w["arestas"]}
+        self.assertEqual((ar[(G, "sub:Explore")], ar[(R, "sub:Explore")], ar[(G, "sub:Plan")]), (2, 1, 1))
+        self.assertEqual(w["kpis"]["subagentes"], 4)
+        self.assertEqual(nos[G]["coluna"], "manager")
+        ordem = [n["coluna"] for n in w["nos"]]
+        self.assertLess(ordem.index("manager"), ordem.index("subagente"))
+        self.assertLess(ordem.index("subagente"), ordem.index("issue") if "issue" in ordem else 99)
+
+    def test_workflows_periodo_hoje_deixa_de_fora_os_de_ontem_exceto_rodando(self):
+        shutil.rmtree(self.pasta_sub)
+        ontem = agora_local() - datetime.timedelta(days=1, hours=1)
+        self.sub_gravar({"ts": ontem.isoformat(timespec="seconds"), "ev": "inicio", "agente": G, "id": "o1", "tipo": "Explore"},
+                        {"ts": ontem.isoformat(timespec="seconds"), "ev": "fim", "agente": G, "id": "o1"})
+        w = painel_dados.workflows([], [], "hoje", agora_local(), {}, {}, self.listar())
+        self.assertEqual((w["nos"], w["kpis"]["subagentes"]), ([], 0))
+
+
+class ApiDeSubagentes(SubBase):
+    INTERVALOS = {"log": 0.05, "orca": 0.1, "ping": 0.4, "sub": 0.0}
+
+    def setUp(self):
+        super().setUp()
+        self.conexoes = []
+        self.srv = cmd_web.servidor(self.raiz, 0, terminais=lambda: self.terminais, intervalos=self.INTERVALOS)
+        self.porta = self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(self._parar)
+
+    def _parar(self):
+        for c in self.conexoes:
+            c.close()
+            c.sock = None
+        self.srv.shutdown()
+        self.srv.server_close()
+
+    def get(self, caminho, host=None, cab=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+        c.request("GET", caminho, headers=dict({"Host": host or f"127.0.0.1:{self.porta}"}, **(cab or {})))
+        r = c.getresponse()
+        corpo = r.read()
+        c.close()
+        return r, corpo
+
+    def api(self, caminho):
+        r, corpo = self.get(caminho)
+        self.assertEqual(r.status, 200, corpo)
+        return json.loads(corpo)
+
+    def cenario(self):
+        self.sub_gravar(
+            ev("inicio", 100, id="e1", tipo="Explore"), ev("fim", 90, id="e1"), ev("retorno", 89, tipo="Explore", ok=True),
+            ev("inicio", 50, id="e2", tipo="Explore"), ev("retorno", 49, tipo="Explore", ok=False),
+            ev("inicio", 10, id="p1", tipo="Plan"), ev("atividade", 9, id="p1", ferramenta="Bash", resumo="ls"),
+            ev("inicio", 8, agente=R, id="r1", tipo="Explore"), ev("fim", 7, agente=R, id="r1"))
+        d = agora_local() - datetime.timedelta(days=3)
+        self.sub_cru({"ts": d.isoformat(timespec="seconds"), "ev": "inicio", "agente": G, "id": "tres", "tipo": "Plan"}, dia=d.date())
+
+    def test_sem_coleta_tudo_vazio(self):
+        self.assertEqual(self.api("/api/subagentes"), [])
+        self.assertEqual(self.api("/api/subagentes?projeto=beta"), [])
+        self.assertTrue(all(a["subagentes"] == [] and a["stats"]["subagentes_7d"] == 0 for a in self.api("/api/agentes")))
+        self.assertTrue(all(t["subagentes"] == [] for t in self.api("/api/tarefas")))
+        self.assertEqual(self.api("/api/resumo")["indicadores"]["subagentes_rodando"], 0)
+        self.assertEqual(self.api("/api/estado")["indicadores"]["subagentes_rodando"], 0)
+        sub = self.api("/api/analytics")["subagentes"]
+        self.assertEqual((sub["por_agente"], sub["por_tipo"], len(sub["por_dia_30"])), ([], [], 30))
+        self.assertEqual(self.api("/api/workflows")["kpis"]["subagentes"], 0)
+
+    def test_rota_subagentes_filtros_e_limites(self):
+        self.cenario()
+        todos = self.api("/api/subagentes")
+        self.assertEqual([s["id"] for s in todos], ["r1", "p1", "e2", "e1"])  # hoje: o de 3 dias atrás fica fora
+        self.assertEqual({k for k in todos[0]}, {"id", "agente", "tipo", "descricao", "status", "fundo", "inicio", "fim",
+                                                  "duracao_s", "ultima_atividade", "n_atividades", "tarefa"})
+        self.assertEqual([s["id"] for s in self.api("/api/subagentes?periodo=7d")][-1], "tres")
+        self.assertEqual([s["id"] for s in self.api(f"/api/subagentes?agente={R}")], ["r1"])
+        self.assertEqual([s["id"] for s in self.api("/api/subagentes?status=erro")], ["e2"])
+        self.assertEqual([s["id"] for s in self.api("/api/subagentes?status=rodando&periodo=7d")], ["p1"])
+        self.assertEqual([s["id"] for s in self.api("/api/subagentes?status=perdido&periodo=7d")], ["tres"])
+        self.assertEqual(self.api("/api/subagentes?status=xpto"), [])
+        self.assertEqual(len(self.api("/api/subagentes?limite=2")), 2)
+        self.assertEqual(len(self.api("/api/subagentes?limite=0")), 1)    # mínimo 1
+        self.assertEqual(len(self.api("/api/subagentes?limite=-5")), 1)
+        self.assertEqual(len(self.api("/api/subagentes?limite=abc&periodo=7d")), 5)  # padrão 200
+        self.assertEqual(len(self.api("/api/subagentes?limite=999999&periodo=7d")), 5)  # máximo 1000
+        self.assertEqual(len(self.api("/api/subagentes?periodo=xyz")), 4)  # período inválido = hoje
+
+    def test_rodando_entra_mesmo_fora_do_periodo(self):
+        d = agora_local() - datetime.timedelta(days=2)
+        self.sub_cru({"ts": d.isoformat(timespec="seconds"), "ev": "inicio", "agente": G, "id": "ontem", "tipo": "Plan"},
+                     {"ts": (d + datetime.timedelta(minutes=1)).isoformat(timespec="seconds"), "ev": "atividade", "agente": G,
+                      "id": "ontem", "ferramenta": "Bash", "resumo": "x"}, dia=d.date())
+        # 2 dias sem evento: perdido, não rodando -> fora de "hoje"
+        self.assertEqual(self.api("/api/subagentes"), [])
+        self.assertEqual([s["status"] for s in self.api("/api/subagentes?periodo=7d")], ["perdido"])
+
+    def test_guardas_de_host_origem_e_projeto(self):
+        self.cenario()
+        self.assertEqual(self.get("/api/subagentes", host="evil.example:80")[0].status, 403)
+        self.assertEqual(self.get("/api/subagentes", cab={"Origin": "http://evil.example"})[0].status, 403)
+        self.assertEqual(self.get("/api/subagentes", cab={"Sec-Fetch-Site": "cross-site"})[0].status, 403)
+        r, corpo = self.get("/api/subagentes?projeto=zzz")
+        self.assertEqual((r.status, json.loads(corpo)), (404, {"erro": "projeto desconhecido"}))
+        r, corpo = self.get("/api/subagentes?projeto=..")
+        self.assertEqual(r.status, 404)
+        c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+        c.request("POST", "/api/subagentes", headers={"Host": f"127.0.0.1:{self.porta}"})
+        self.assertEqual(c.getresponse().status, 405)
+        c.close()
+
+    def test_campos_novos_nas_rotas(self):
+        self.cenario()
+        ags = {a["agente"]: a for a in self.api("/api/agentes")}
+        self.assertEqual([s["id"] for s in ags[G]["subagentes"]], ["p1", "e2", "e1"])
+        self.assertEqual(ags[G]["stats"]["subagentes_7d"], 4)
+        self.assertEqual(self.api("/api/resumo")["indicadores"]["subagentes_rodando"], 1)  # só o p1; e2 (erro), r1 (concluído) e tres (perdido) não contam
+        self.assertEqual(self.api("/api/estado")["indicadores"]["subagentes_rodando"], 1)
+        p2 = next(t for t in self.api("/api/tarefas") if t["id"] == "p2")
+        self.assertEqual([s["id"] for s in p2["subagentes"]], ["r1"])
+        self.assertEqual([s["id"] for s in next(t for t in self.api("/api/estado")["tarefas"] if t["id"] == "p2")["subagentes"]], ["r1"])
+        an = self.api("/api/analytics")["subagentes"]
+        self.assertEqual(an["por_agente"][0]["agente"], G)
+        self.assertEqual(an["por_agente"][0]["n"], 4)
+        self.assertEqual(an["por_dia_30"][-1]["n"], 4)
+        w = self.api("/api/workflows?periodo=7d")
+        self.assertEqual(w["kpis"]["subagentes"], 5)
+        self.assertIn({"id": "sub:Plan", "coluna": "subagente", "rotulo": "Plan", "n": 2}, w["nos"])
+
+    def test_todos_os_endpoints_com_arquivo_torto(self):
+        self.cenario()
+        self.sub_cru("{", "lixo", "[1]", '{"ev":"inicio","ts":"x"}', "\x00\x01", "x" * 30000)
+        for ep in ("estado", "resumo", "agentes", "tarefas", "analytics", "workflows", "subagentes"):
+            r, corpo = self.get(f"/api/{ep}?periodo=7d")
+            self.assertEqual(r.status, 200, ep)
+            json.loads(corpo, parse_constant=lambda c: self.fail(c))
+
+    def test_mascara_na_api(self):
+        self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="senha=hunter2 aqui"), ev("inicio", 4.9, id="a1", tipo="Explore"),
+                        ev("atividade", 4, id="a1", ferramenta="Bash", resumo="export API_KEY=sk-abcdefghijklmnopqrstuvwxyz"))
+        for rota in ("/api/subagentes", "/api/agentes"):
+            corpo = self.get(rota)[1].decode()
+            self.assertNotIn("hunter2", corpo)
+            self.assertNotIn("sk-abcdef", corpo)
+            self.assertIn("[oculto]", corpo)
+
+    # --- SSE
+    def stream(self):
+        c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+        c.request("GET", "/api/stream?projeto=alpha", headers={"Host": f"127.0.0.1:{self.porta}"})
+        self.conexoes.append(c)
+        return c.getresponse()
+
+    def test_stream_emite_subagente_ao_gravar_no_arquivo(self):
+        r = self.stream()
+        self.assertEqual(ApiV2.evento(r)[0], "ola")
+        self.sub_gravar(ev("inicio", 0, id="ao-vivo", tipo="Explore"))
+        while True:
+            nome, d = ApiV2.evento(r)
+            if nome == "subagente":
+                break
+        self.assertEqual((d["id"], d["agente"], d["status"]), ("ao-vivo", G, "rodando"))
+        self.sub_gravar(ev("fim", 0, id="ao-vivo"))
+        while True:
+            nome, d = ApiV2.evento(r)
+            if nome == "subagente" and d["status"] == "concluido":
+                break
+        self.assertIsNotNone(d["duracao_s"])
+
+
+class VigiaDeSubagentes(SubBase):
+    def setUp(self):
+        super().setUp()
+        self.t = [100.0]
+        self.vigia = painel_stream.Vigia(self.raiz, "alpha", carregar, lambda: self.terminais,
+                                         {"orca": 2.0, "ping": 99.0, "sub": 2.0}, relogio=lambda: self.t[0])
+
+    def passo(self, avanca=0.0):
+        self.t[0] += avanca
+        return self.vigia.passo()
+
+    def subs(self, evs):
+        return [d for e, d in evs if e == "subagente"]
+
+    def test_baseline_nao_vira_evento(self):
+        shutil.rmtree(self.pasta_sub, ignore_errors=True)
+        self.sub_gravar(ev("inicio", 5, id="velho", tipo="Explore"))
+        v = painel_stream.Vigia(self.raiz, "alpha", carregar, lambda: self.terminais, {"sub": 0.0}, relogio=lambda: self.t[0])
+        self.assertEqual(v.passo(), [])
+
+    def test_nasce_atividade_e_muda_de_status(self):
+        self.sub_gravar(ev("inicio", 0, id="a1", tipo="Explore"))
+        evs = self.passo(1)
+        self.assertEqual([(d["id"], d["status"], d["n_atividades"]) for d in self.subs(evs)], [("a1", "rodando", 0)])
+        ag = [d for e, d in evs if e == "agente" and d["agente"] == G]
+        self.assertEqual([s["id"] for s in ag[0]["subagentes"]], ["a1"])  # o agente reflete o sub-agent novo
+        self.sub_gravar(ev("atividade", 0, id="a1", ferramenta="Bash", resumo="ls"))
+        evs = self.passo(2)
+        self.assertEqual([(d["n_atividades"], d["ultima_atividade"]["resumo"]) for d in self.subs(evs)], [(1, "ls")])
+        self.sub_gravar(ev("fim", 0, id="a1"))
+        evs = self.passo(2)
+        self.assertEqual([d["status"] for d in self.subs(evs)], ["concluido"])
+        self.assertEqual([d["subagentes"][0]["status"] for e, d in evs if e == "agente" and d["agente"] == G], ["concluido"])
+        self.assertEqual(self.subs(self.passo(2)), [])
+
+    def test_atividade_so_nao_gera_evento_de_agente(self):
+        self.sub_gravar(ev("inicio", 0, id="a1"))
+        self.passo(1)
+        self.sub_gravar(ev("atividade", 0, id="a1", ferramenta="Bash", resumo="x"))
+        evs = self.passo(2)
+        self.assertEqual(len(self.subs(evs)), 1)
+        self.assertEqual([e for e, _ in evs if e == "agente"], [])
+
+    def test_rate_limit_de_2s_sem_perder_o_estado_final(self):
+        self.sub_gravar(ev("inicio", 0, id="a1"))
+        self.assertEqual(len(self.subs(self.passo(1))), 1)           # t=101: emite
+        self.sub_gravar(ev("atividade", 0, id="a1", ferramenta="Bash", resumo="um"))
+        self.assertEqual(self.subs(self.passo(0.5)), [])             # t=101.5: segurado
+        self.sub_gravar(ev("atividade", 0, id="a1", ferramenta="Bash", resumo="dois"),
+                        ev("fim", 0, id="a1"))
+        self.assertEqual(self.subs(self.passo(0.5)), [])             # t=102: ainda < 2 s
+        final = self.subs(self.passo(1.1))                           # t=103.1: sai o estado mais recente
+        self.assertEqual([(d["status"], d["n_atividades"], d["ultima_atividade"]["resumo"]) for d in final],
+                         [("concluido", 2, "dois")])
+        self.assertEqual(self.subs(self.passo(5)), [])
+
+    def test_rate_limit_e_por_subagent(self):
+        self.sub_gravar(ev("inicio", 0, id="a1"), ev("inicio", 0, id="a2"))
+        self.assertEqual(sorted(d["id"] for d in self.subs(self.passo(1))), ["a1", "a2"])
+        self.sub_gravar(ev("atividade", 0, id="a1", ferramenta="Bash", resumo="x"), ev("inicio", 0, id="a3"))
+        self.assertEqual(sorted(d["id"] for d in self.subs(self.passo(0.5))), ["a3"])  # a3 é novo; a1 espera
+
+    def test_perdido_por_passagem_do_tempo(self):
+        self.sub_gravar(ev("inicio", 119, id="a1"))
+        self.passo(1)
+        with mock.patch.object(painel_subagentes, "PERDIDO_S", 60):
+            evs = self.passo(3)
+        self.assertEqual([(d["id"], d["status"]) for d in self.subs(evs)], [("a1", "perdido")])
+
+    def test_mascara_no_evento(self):
+        self.sub_gravar(ev("inicio", 0, id="a1"), ev("atividade", 0, id="a1", ferramenta="Bash", resumo="token=segredo123 x"))
+        corpo = json.dumps(self.subs(self.passo(1)))
+        self.assertNotIn("segredo123", corpo)
+
+    def test_virada_do_dia_muda_os_arquivos_vigiados(self):
+        hoje = agora_local()
+        amanha = hoje + datetime.timedelta(days=1)
+        a = painel_subagentes.assinatura("alpha", hoje)
+        b = painel_subagentes.assinatura("alpha", amanha)
+        self.assertEqual(a[0][0], hoje.date().isoformat() + ".jsonl")
+        self.assertEqual(b[0][0], amanha.date().isoformat() + ".jsonl")
+        self.assertEqual(b[1][0], a[0][0])  # ontem de amanhã = hoje: o arquivo anterior continua vigiado
+        self.sub_gravar(ev("inicio", 0, id="a1"))
+        self.assertNotEqual(painel_subagentes.assinatura("alpha", hoje), a)
+
+    def test_vigia_sobrevive_a_arquivo_torto_e_sem_diretorio(self):
+        self.assertEqual(self.subs(self.passo(3)), [])
+        self.sub_cru("{", "lixo", "[]")
+        self.assertEqual(self.subs(self.passo(3)), [])
 
 
 if __name__ == "__main__":

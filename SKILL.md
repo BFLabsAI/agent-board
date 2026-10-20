@@ -20,7 +20,8 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 
 | Peça | Onde | Papel |
 |---|---|---|
-| [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta) |
+| [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta). Também chama o coletor de sub-agents |
+| [`scripts/subagentes.py`](scripts/subagentes.py) | skill | Coletor do ciclo de vida dos sub-agents (Claude Code e OMP) para o painel, em `~/.agent-hooks/agent-board/subagentes/`. Nunca bloqueia |
 | [`scripts/omp-agent-board.ts`](scripts/omp-agent-board.ts) | skill | Adaptador do OMP para o mesmo core |
 | [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar`, `tarefas`, `vigiar`, `simular`, `nota`, `notas`, `resumo`, `servir`, `eu`, `solicitar`, `solicitacoes`, `maestri` |
 | [`scripts/politica.py`](scripts/politica.py) | skill | Regras de envio sem I/O (`validar_envio`), usadas pelo hook, pelo MCP e pelo `simular` |
@@ -32,7 +33,7 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 | [`scripts/contrato.py`](scripts/contrato.py) | skill | A interface do projeto (Orca ou Maestri) e o `CONTRATO.md` adaptado a ela |
 | [`scripts/envio.py`](scripts/envio.py), [`scripts/maestri.py`](scripts/maestri.py) | skill | Envio pelo transporte do destino (usado por `board.py` e MCP) e a CLI do Maestri |
 | [`scripts/cmd_log.py`](scripts/cmd_log.py), [`cmd_tarefas.py`](scripts/cmd_tarefas.py), [`cmd_time.py`](scripts/cmd_time.py), [`cmd_web.py`](scripts/cmd_web.py) | skill | Subcomandos do `painel.py` (log, tarefas/vigiar/simular, nota/resumo/worktree, servir) |
-| [`scripts/painel_estado.py`](scripts/painel_estado.py), [`painel_dados.py`](scripts/painel_dados.py), [`painel_orca.py`](scripts/painel_orca.py), [`painel_stream.py`](scripts/painel_stream.py), `scripts/painel_web/` | skill | Painel web v2 (`painel.py servir`, só leitura, 7 telas ao vivo, vários projetos): dados, terminais do Orca, SSE e a SPA já compilada. Código-fonte em [`web/`](web/README.md); guia em [docs/userguide/painel.md](docs/userguide/painel.md). `painel_web.html` é a página antiga, usada só sem o build |
+| [`scripts/painel_estado.py`](scripts/painel_estado.py), [`painel_dados.py`](scripts/painel_dados.py), [`painel_subagentes.py`](scripts/painel_subagentes.py), [`painel_orca.py`](scripts/painel_orca.py), [`painel_stream.py`](scripts/painel_stream.py), `scripts/painel_web/` | skill | Painel web v2 (`painel.py servir`, só leitura, 7 telas ao vivo, vários projetos, com os sub-agents de cada agente): dados, terminais do Orca, SSE e a SPA já compilada. Código-fonte em [`web/`](web/README.md); guia em [docs/userguide/painel.md](docs/userguide/painel.md). `painel_web.html` é a página antiga, usada só sem o build |
 | `scripts/mcp_ferramentas.py`, `base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Ferramentas MCP e módulos do core |
 | `scripts/test_*.py` | skill | Testes a seco, sem envio real |
 | [`scripts/VERSION`](scripts/VERSION) | skill | Versão do pacote |
@@ -51,7 +52,7 @@ bash $S/install.sh && python3 $S/test_agent_board.py
 ```
 
 Os testes precisam passar todos. Depois confira:
-- no Claude Code, a lista de hooks deve mostrar as entradas `agent-board` em PreToolUse (Bash, Edit/Write/MultiEdit/NotebookEdit, SendMessage e `mcp__agent-board__board_send`), PostToolUse (Bash) e Stop;
+- no Claude Code, a lista de hooks deve mostrar as entradas `agent-board` em PreToolUse (Bash, Edit/Write/MultiEdit/NotebookEdit, SendMessage e `mcp__agent-board__board_send`), PostToolUse (Bash), Stop e, para os sub-agents do painel, `Agent|Task` (Pre e PostToolUse), PostToolUseFailure, SubagentStart e SubagentStop. Quem atualiza da 1.11 para a 1.12 roda o `install.sh` de novo para registrá-los;
 - no OMP, a lista de extensões de uma sessão nova deve trazer o `agent-board`;
 - `claude mcp get agent-board` deve mostrar o `mcp_server.py`. Sem o `claude` no PATH, o `install.sh` imprime o comando de registro.
 

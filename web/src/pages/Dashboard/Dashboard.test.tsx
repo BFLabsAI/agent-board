@@ -102,6 +102,46 @@ describe("Dashboard", () => {
   });
 });
 
+describe("Dashboard: sub-agents", () => {
+  it("KPI de sub-agents rodando e chips aninhados no card do pai", async () => {
+    preparar();
+    renderPainel("/");
+    const kpi = (await screen.findByText("Sub-agents rodando")).closest("div")!.parentElement as HTMLElement;
+    const rodando = agentesFixture().flatMap((a) => a.subagentes).filter((x) => x.status === "rodando").length;
+    expect(await within(kpi).findByText(String(rodando))).toBeInTheDocument();
+    expect(within(kpi).getByText(/em 3 agentes/)).toBeInTheDocument();
+    const card = await screen.findByLabelText("Agente r7one-manager01-cc");
+    const chips = within(card).getByRole("list", { name: "Sub-agents rodando" });
+    expect(within(chips).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(chips).getByText(/Backoff exponencial/)).toBeInTheDocument();
+    // concluídos e com erro não viram chip
+    const card2 = await screen.findByLabelText("Agente r7one-manager02-omp");
+    expect(within(card2).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("SSE subagente atualiza chips e KPI", async () => {
+    preparar();
+    renderPainel("/");
+    await screen.findByText("Sub-agents rodando");
+    await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
+    const base = agentesFixture().find((a) => a.agente === MASTER)!.subagentes[0];
+    act(() => FonteFalsa.todas[FonteFalsa.todas.length - 1].emitir("subagente", { ...base, id: "live9", descricao: "Chip ao vivo", status: "rodando", fim: null, duracao_s: null }));
+    expect(await screen.findByText(/Chip ao vivo/)).toBeInTheDocument();
+    act(() => FonteFalsa.todas[FonteFalsa.todas.length - 1].emitir("subagente", { ...base, id: "live9", descricao: "Chip ao vivo", status: "concluido", duracao_s: 12 }));
+    await waitFor(() => expect(screen.queryByText(/Chip ao vivo/)).not.toBeInTheDocument());
+  });
+
+  it("tolera agentes sem o campo subagentes", async () => {
+    const sem = agentesFixture().map((a) => { const x = { ...a } as Partial<typeof a>; delete x.subagentes; return x as typeof a; });
+    preparar({ agentes: sem });
+    renderPainel("/");
+    const kpi = (await screen.findByText("Sub-agents rodando")).closest("div")!.parentElement as HTMLElement;
+    expect(await within(kpi).findByText("0")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Agente r7one-manager01-cc")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Sub-agents rodando" })).not.toBeInTheDocument();
+  });
+});
+
 describe("helpers", () => {
   it("linhasDaTela tira ANSI e linhas vazias das pontas", () => {
     expect(linhasDaTela(`\n${ESC}[1mA${ESC}[0m\n\nB\n\n`)).toEqual(["A", "", "B"]);

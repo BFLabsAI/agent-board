@@ -1,4 +1,6 @@
 import type { Agente, Tarefa } from "../../../api/tipos";
+import type { SubAgente } from "../../../api/tipos";
+import { ordenarSubs, subsDe } from "../subagentes";
 import { tarefasAbertasDe } from "./dados";
 
 export const L = {
@@ -15,7 +17,25 @@ export const L = {
   tarefaIndent: 14,
   maxTarefas: 3,
   maisAlt: 22,
+  subW: 176,
+  subAlt: 92,
+  subGap: 8,
+  /** faixa dos conectores entre o card do pai e a coluna de sub-cards */
+  subGapX: 30,
+  maxSubs: 4,
 } as const;
+
+/** Sub-agents que cabem sob o pai (rodando primeiro) e quantos viram "+N". */
+export function recortarSubs(subs: SubAgente[]): { mostradas: SubAgente[]; extra: number } {
+  const ord = ordenarSubs(subs);
+  return { mostradas: ord.slice(0, L.maxSubs), extra: Math.max(0, ord.length - L.maxSubs) };
+}
+
+/** Altura do bloco de sub-cards (0 sem sub-agents). */
+export function alturaSubs(mostradas: number, extra: number): number {
+  if (mostradas === 0) return 0;
+  return 8 + mostradas * (L.subAlt + L.subGap) + (extra > 0 ? L.maisAlt : 0);
+}
 
 export interface NoMapa {
   agente: Agente;
@@ -23,6 +43,10 @@ export interface NoMapa {
   y: number;
   w: number;
   h: number;
+  /** largura ocupada na fila: card + coluna de sub-cards, quando há */
+  largTotal: number;
+  subs: SubAgente[];
+  subsExtra: number;
   tarefas: Tarefa[];
   /** quantas tarefas cabem; o resto vira "+N" */
   visiveis: number;
@@ -84,10 +108,22 @@ export function calcularLayout(agentes: Agente[], tarefas: Tarefa[]): LayoutMapa
       const lista = tarefasAbertasDe(agente.agente, tarefas);
       const { visiveis, h } = alturaPendurada(lista.length);
       const eMaster = agente.papel === "master";
-      return { agente, tarefas: lista, visiveis, pendurado: h, w: eMaster ? L.largMaster : L.larg, h: eMaster ? L.altMaster : L.alt };
+      const { mostradas, extra } = recortarSubs(subsDe(agente));
+      const w = eMaster ? L.largMaster : L.larg;
+      return {
+        agente,
+        tarefas: lista,
+        visiveis,
+        pendurado: Math.max(h, alturaSubs(mostradas.length, extra) > 0 ? alturaSubs(mostradas.length, extra) : 0),
+        w,
+        h: eMaster ? L.altMaster : L.alt,
+        largTotal: mostradas.length > 0 ? w + L.subGapX + L.subW : w,
+        subs: mostradas,
+        subsExtra: extra,
+      };
     }),
   );
-  const largFila = medidas.map((f) => f.reduce((s, n) => s + n.w, 0) + (f.length - 1) * L.gapX);
+  const largFila = medidas.map((f) => f.reduce((s, n) => s + n.largTotal, 0) + (f.length - 1) * L.gapX);
   const largura = Math.max(L.larg, ...largFila) + L.pad * 2;
 
   const nos: NoMapa[] = [];
@@ -100,7 +136,7 @@ export function calcularLayout(agentes: Agente[], tarefas: Tarefa[]): LayoutMapa
     let maior = 0;
     for (const m of fila) {
       nos.push({ ...m, x, y });
-      x += m.w + L.gapX;
+      x += m.largTotal + L.gapX;
       maior = Math.max(maior, m.h + m.pendurado);
     }
     baseFila.push(y + maior);

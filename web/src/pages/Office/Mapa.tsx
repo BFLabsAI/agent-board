@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, Segmented } from "../../components/ui";
 import { CardAgente } from "./Mapa/CardAgente";
 import { corDoAgente, nomeWorktree, rotuloHarness, tarefasAbertasDe } from "./Mapa/dados";
-import { calcularLayout, L } from "./Mapa/layout";
+import { calcularLayout, L, recortarSubs } from "./Mapa/layout";
+import { subsDe } from "./subagentes";
 import type { PropsModoOffice } from "./tipos";
 
 type Visao = "hierarquia" | "times";
@@ -23,7 +24,7 @@ const AGRUPAMENTOS = [
   { valor: "worktree", rotulo: "Worktree" },
 ] as const;
 
-export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoMedir }: PropsMapa) {
+export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoSelecionarSub, aoMedir }: PropsMapa) {
   const [visao, setVisao] = useState<Visao>("hierarquia");
   const [agrupar, setAgrupar] = useState<Agrupar>("harness");
   const raiz = useRef<HTMLDivElement>(null);
@@ -86,6 +87,10 @@ export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoMe
             estilo={{ position: "absolute", left: n.x, top: n.y }}
             w={n.w}
             h={n.h}
+            subs={n.subs}
+            subsExtra={n.subsExtra}
+            modoSubs="lado"
+            aoSelecionarSub={aoSelecionarSub}
           />
         ))}
       </div>
@@ -119,6 +124,7 @@ export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoMe
               </header>
               {lista.map((a) => {
                 const abertas = tarefasAbertasDe(a.agente, tarefas);
+                const { mostradas, extra } = recortarSubs(subsDe(a));
                 return (
                   <CardAgente
                     key={a.agente}
@@ -130,6 +136,10 @@ export default function Mapa({ agentes, tarefas, selecionado, aoSelecionar, aoMe
                     aoSelecionar={aoSelecionar}
                     w={L.larg}
                     h={a.papel === "master" ? L.altMaster : L.alt}
+                    subs={mostradas}
+                    subsExtra={extra}
+                    modoSubs="abaixo"
+                    aoSelecionarSub={aoSelecionarSub}
                   />
                 );
               })}

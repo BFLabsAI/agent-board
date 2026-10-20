@@ -5,13 +5,16 @@ import { useId, useMemo, useState } from "react";
 import { formatarNumero, truncar } from "../../lib/formato";
 import {
   ALT_NO,
-  COLUNAS_GRAFO,
   ID_MAIS,
   LARGURA,
   LARG_NO,
   TOPO,
   agruparIssues,
+  agentesDoSub,
   caminhoDe,
+  colunasDoGrafo,
+  COR_SUBAGENTE,
+  ehSub,
   chaveAresta,
   ehAgente,
   layoutGrafo,
@@ -24,6 +27,7 @@ const DESCRICAO: Record<string, string> = {
   master: "Quem distribui o trabalho. As arestas saem para os agentes que receberam pedidos.",
   manager: "Agente que executa pedidos do master. Cada aresta à direita é uma issue que ele tocou.",
   researcher: "Agente de pesquisa. Recebe pedidos do master como os managers.",
+  subagente: "Tipo de sub-agent (Agent/Task) que os agentes dispararam. As arestas tracejadas ligam o agente ao tipo; clicar destaca quem o usa.",
   issue: "Issue do GitHub citada nas conversas. Segue para a revisão do master.",
   revisao: "Entregas que passaram pela revisão do master, antes do resultado.",
   resultado: "Como as conversas terminaram no período.",
@@ -32,6 +36,7 @@ const NOME_COLUNA: Record<string, string> = {
   master: "MASTER",
   manager: "MANAGER",
   researcher: "RESEARCHER",
+  subagente: "SUB-AGENT",
   issue: "ISSUE",
   revisao: "REVISÃO",
   resultado: "RESULTADO",
@@ -55,6 +60,9 @@ export function GrafoOrquestracao({
   const porId = useMemo(() => new Map(pos.map((p) => [p.id, p])), [pos]);
   const maxN = Math.max(1, ...agrupado.arestas.map((a) => a.n));
   const largura = useMemo(() => scaleSqrt().domain([0, maxN]).range([1.5, 16]), [maxN]);
+  const larguraSub = useMemo(() => scaleSqrt().domain([0, maxN]).range([0.8, 3.5]), [maxN]);
+  const colunas = useMemo(() => colunasDoGrafo(agrupado.nos), [agrupado.nos]);
+  const ehArestaSub = (a: Aresta) => porId.get(a.para)?.coluna === "subagente";
   const gerador = useMemo(
     () =>
       linkHorizontal<{ s: [number, number]; t: [number, number] }, [number, number]>()
@@ -64,12 +72,20 @@ export function GrafoOrquestracao({
   );
 
   const ativo = hover ?? selecionado;
-  const caminho = useMemo(() => (ativo ? caminhoDe(ativo, agrupado.arestas) : null), [ativo, agrupado.arestas]);
+  const caminho = useMemo(() => {
+    if (!ativo) return null;
+    const no = porId.get(ativo);
+    return no && ehSub(no.coluna) ? agentesDoSub(ativo, agrupado.arestas) : caminhoDe(ativo, agrupado.arestas);
+  }, [ativo, agrupado.arestas, porId]);
+  const usadoPor = useMemo(
+    () => (selecionado && porId.get(selecionado)?.coluna === "subagente" ? agrupado.arestas.filter((a) => a.para === selecionado).sort((a, b) => b.n - a.n) : []),
+    [selecionado, porId, agrupado.arestas],
+  );
   const sel = selecionado ? porId.get(selecionado) : undefined;
 
   return (
     <div className="flex flex-col">
-      <RolagemX rotulo="Grafo de orquestração (rolagem horizontal)"><svg viewBox={`0 0 ${LARGURA} ${altura}`} className="block w-full min-w-[760px]" role="group" aria-label="Grafo de orquestração" data-testid="grafo-orquestracao">
+      <RolagemX rotulo="Grafo de orquestração (rolagem horizontal)"><svg viewBox={`0 0 ${LARGURA} ${altura}`} className="block w-full min-w-[900px]" role="group" aria-label="Grafo de orquestração" data-testid="grafo-orquestracao">
         <defs>
           {agrupado.arestas.map((a, i) => {
             const s = porId.get(a.de);
@@ -84,8 +100,8 @@ export function GrafoOrquestracao({
           })}
         </defs>
 
-        {COLUNAS_GRAFO.map((c, i) => {
-          const passoX = (LARGURA - 56 - LARG_NO) / (COLUNAS_GRAFO.length - 1);
+        {colunas.map((c, i) => {
+          const passoX = (LARGURA - 56 - LARG_NO) / (colunas.length - 1);
           return (
             <g key={c.titulo}>
               {i > 0 && <line x1={28 + i * passoX - 24} x2={28 + i * passoX - 24} y1={TOPO - 8} y2={altura - 12} stroke="#2a2a3d" strokeDasharray="2 6" opacity="0.5" />}
@@ -103,12 +119,15 @@ export function GrafoOrquestracao({
             if (!s || !t) return null;
             const d = gerador({ s: [s.x + s.w, s.y + s.h / 2], t: [t.x, t.y + t.h / 2] });
             const dentro = !caminho || caminho.arestas.has(chaveAresta(a));
+            const sub = ehArestaSub(a);
             return (
               <path
                 key={chaveAresta(a)}
                 d={d ?? ""}
                 stroke={`url(#${uid}-g${i})`}
-                strokeWidth={largura(a.n)}
+                strokeWidth={sub ? larguraSub(a.n) : largura(a.n)}
+                strokeDasharray={sub ? "5 4" : undefined}
+                data-tipo-aresta={sub ? "subagente" : undefined}
                 strokeLinecap="round"
                 opacity={dentro ? (caminho ? 0.85 : 0.5) : 0.07}
                 style={{ transition: "opacity 160ms" }}
@@ -143,6 +162,19 @@ export function GrafoOrquestracao({
             <Linha k="Recebe de" v={formatarNumero(agrupado.arestas.filter((a) => a.para === sel.id).reduce((s, a) => s + a.n, 0))} />
             <Linha k="Envia para" v={formatarNumero(agrupado.arestas.filter((a) => a.de === sel.id).reduce((s, a) => s + a.n, 0))} />
           </dl>
+          {usadoPor.length > 0 && (
+            <div className="min-w-[10rem] text-xs" data-testid="usado-por">
+              <p className="text-texto-suave">Usado por</p>
+              <ul className="mt-0.5 space-y-0.5">
+                {usadoPor.map((a) => (
+                  <li key={a.de} className="flex items-center gap-2 text-texto">
+                    <span className="truncate" title={a.de}>{a.de.replace(/^[^-]+-(?=(master|manager|researcher))/i, "")}</span>
+                    <span className="ml-auto font-mono text-texto-suave">{a.n}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p className="min-w-[14rem] flex-1 text-xs leading-relaxed text-texto-suave">
             {sel.id === ID_MAIS ? "Issues menores agrupadas para não poluir o grafo." : DESCRICAO[sel.coluna]}
             <span className="mt-1 block text-[11px] text-texto-fraco">As outras seções estão filtradas por este nó.</span>
@@ -159,6 +191,7 @@ export function GrafoOrquestracao({
           ["Master", "#f59e0b"],
           ["Manager", "#6366f1"],
           ["Researcher", "#10b981"],
+          ["Sub-agent", COR_SUBAGENTE],
           ["Issue", "#38bdf8"],
           ["Revisão", "#a78bfa"],
           ["Aprovado", "#34d399"],
@@ -174,6 +207,10 @@ export function GrafoOrquestracao({
         <li className="inline-flex items-center gap-1.5">
           <span className="h-1 w-6 rounded-full bg-gradient-to-r from-indigo-500 to-sky-400" />
           Espessura da aresta = volume
+        </li>
+        <li className="inline-flex items-center gap-1.5">
+          <svg width="28" height="4" aria-hidden="true"><line x1="0" y1="2" x2="28" y2="2" stroke={COR_SUBAGENTE} strokeWidth="1.2" strokeDasharray="5 4" /></svg>
+          Tracejada = agente → sub-agent
         </li>
       </ul>
     </div>
@@ -202,9 +239,11 @@ function Retangulo({
   onHover: (id: string | null) => void;
   onClique: () => void;
 }) {
-  const rotulo = truncar(ehAgente(p.coluna) ? p.rotulo.replace(/^[^-]+-(?=(master|manager|researcher))/i, "") : p.rotulo, 15);
   const nTxt = formatarNumero(p.n);
   const pill = Math.max(26, nTxt.length * 7 + 12);
+  // o rótulo nunca invade a pílula da contagem
+  const maxChars = Math.max(6, Math.floor((p.w - pill - 24) / 6.6));
+  const rotulo = truncar(ehAgente(p.coluna) ? p.rotulo.replace(/^[^-]+-(?=(master|manager|researcher))/i, "") : p.rotulo, maxChars);
   return (
     <g
       transform={`translate(${p.x} ${p.y})`}

@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cliente } from "../../api/cliente";
-import { agentesFixture, tarefasFixture } from "../../api/fixtures";
+import { MASTER, agentesFixture, tarefasFixture } from "../../api/fixtures";
 import { FonteFalsa, mockarCliente, renderPainel } from "../../test/utils";
 
 import { configure } from "@testing-library/react";
@@ -132,5 +132,67 @@ describe("Kanban: agentes", () => {
     vi.spyOn(cliente, "agentes").mockResolvedValue([]);
     renderPainel("/kanban?modo=agentes");
     expect(await screen.findByText("Nenhum agente cadastrado")).toBeInTheDocument();
+  });
+});
+
+describe("Kanban: sub-agents", () => {
+  it("modo Agentes aninha os sub-agents abaixo do pai, com +N expansível", async () => {
+    renderPainel("/kanban?modo=agentes");
+    await screen.findAllByText("manager01-cc");
+    const card = document.querySelector('[data-agente="r7one-manager01-cc"]') as HTMLElement;
+    expect(within(card).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(card).getByText("Backoff exponencial no cliente")).toBeInTheDocument();
+    expect(within(card).getAllByText(/^(general-purpose|Explore)$/).length).toBeGreaterThan(0);
+    expect(within(card).getAllByText(/^Bash$|^Edit$/).length).toBeGreaterThan(0);
+  });
+
+  it("+N expande a lista quando há mais de 3", async () => {
+    const base = agentesFixture().find((x) => x.agente === MASTER)!;
+    const subs = Array.from({ length: 5 }, (_, i) => ({ ...base.subagentes[0], id: `z${i}`, descricao: `sub ${i}`, status: "concluido" as const, inicio: new Date(Date.now() - i * 60000).toISOString(), duracao_s: 10 }));
+    vi.spyOn(cliente, "agentes").mockResolvedValue([{ ...base, subagentes: subs }]);
+    renderPainel("/kanban?modo=agentes");
+    const mais = await screen.findByRole("button", { name: /\+2/ });
+    expect(screen.getAllByText(/^sub \d$/)).toHaveLength(3);
+    await userEvent.click(mais);
+    expect(screen.getAllByText(/^sub \d$/)).toHaveLength(5);
+  });
+
+  it("tolera subagentes ausente no JSON real", async () => {
+    const sem = agentesFixture().map((a) => { const x = { ...a } as Partial<typeof a>; delete x.subagentes; return x as typeof a; });
+    vi.spyOn(cliente, "agentes").mockResolvedValue(sem);
+    const t = tarefasFixture().map((x) => { const y = { ...x } as Partial<typeof x>; delete y.subagentes; return y as typeof x; });
+    vi.spyOn(cliente, "tarefas").mockResolvedValue(t);
+    renderPainel("/kanban?modo=agentes");
+    expect(await screen.findAllByText("manager01-cc")).not.toHaveLength(0);
+    expect(document.querySelector("[data-sublista]")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "Tarefas" }));
+    expect(await screen.findByText("SSE no lugar de polling na tela de conversas")).toBeInTheDocument();
+    expect(document.querySelector("[data-subs-tarefa]")).toBeNull();
+  });
+
+  it("o evento subagente atualiza o card do pai", async () => {
+    renderPainel("/kanban?modo=agentes");
+    await screen.findAllByText("manager01-cc");
+    await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
+    const s = agentesFixture().find((x) => x.agente === "r7one-researcher01-cc")!.subagentes[0];
+    act(() => {
+      fonte().abrir();
+      fonte().emitir("subagente", { ...s, id: "novo1", descricao: "Sub recém-criado", status: "rodando", fim: null, duracao_s: null });
+    });
+    expect(await screen.findByText("Sub recém-criado")).toBeInTheDocument();
+    act(() => fonte().emitir("subagente", { ...s, id: "novo1", descricao: "Sub recém-criado", status: "erro" }));
+    await waitFor(() => expect(document.querySelector('[data-sub="novo1"]')).toHaveAttribute("data-status", "erro"));
+  });
+
+  it("modo Tarefas mostra 'N sub-agents (M rodando)' e expande a lista", async () => {
+    renderPainel("/kanban");
+    await screen.findByText("SSE no lugar de polling na tela de conversas");
+    const card = document.querySelector('[data-tarefa="p-0145"]') as HTMLElement;
+    const botao = within(card).getByRole("button", { name: /sub-agents/ });
+    expect(botao.textContent).toMatch(/\d+ sub-agents \(\d+ rodando\)/);
+    expect(botao).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(botao);
+    expect(within(card).getByRole("list", { name: "Sub-agents da tarefa" })).toBeInTheDocument();
+    expect(within(card).getByText("Backoff exponencial no cliente")).toBeInTheDocument();
   });
 });

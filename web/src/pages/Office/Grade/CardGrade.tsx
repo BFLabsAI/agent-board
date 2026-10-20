@@ -1,10 +1,11 @@
 import clsx from "clsx";
 import { Clock, GitBranch, ListTodo, Terminal } from "lucide-react";
 import type { Agente } from "../../../api/tipos";
-import { AgentAvatar, StatusDot, TempoRelativo } from "../../../components/ui";
+import { AgentAvatar, StatusDot, TempoRelativo, Tooltip } from "../../../components/ui";
 import { estiloPapel, estiloStatus } from "../../../lib/cores";
 import { formatarDuracaoMin, formatarPercentual, nomeCurto } from "../../../lib/formato";
 import { rotuloHarness } from "../Mapa/dados";
+import { rodandoDe, subsDe } from "../subagentes";
 import { Atividade } from "./Atividade";
 import { HEX_STATUS, somaAtividade, taxaAprovacao } from "./dados";
 
@@ -12,6 +13,14 @@ function corTaxa(t: number): { hex: string; texto: string } {
   if (t >= 0.8) return { hex: "#34d399", texto: "text-emerald-300" };
   if (t >= 0.5) return { hex: "#fbbf24", texto: "text-amber-300" };
   return { hex: "#f87171", texto: "text-red-300" };
+}
+
+const MAX_AVATARES = 6;
+
+function inicioDeHoje(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
 }
 
 const ROTULO = "text-[10px] font-semibold uppercase tracking-[0.14em] text-texto-fraco";
@@ -26,6 +35,10 @@ export function CardGrade({ agente, selecionado, aoSelecionar }: { agente: Agent
   const s = agente.stats;
   const atual = agente.tarefa_atual;
   const ea = atual ? estiloStatus(atual.estado) : null;
+  const subs = subsDe(agente);
+  const rodando = rodandoDe(subs);
+  const hoje0 = inicioDeHoje();
+  const subsHoje = subs.filter((x) => Date.parse(x.inicio) >= hoje0).length;
 
   return (
     <article
@@ -126,7 +139,32 @@ export function CardGrade({ agente, selecionado, aoSelecionar }: { agente: Agent
             <TempoRelativo iso={agente.ultima_saida} />
           </p>
         </div>
+        <div className="col-span-2 rounded-lg bg-surface-2 px-3 py-2">
+          <span className={ROTULO}>Sub-agents · 7d</span>
+          <p className="mt-0.5 font-semibold tabular-nums text-texto" data-testid="subs-7d">
+            {s.subagentes_7d ?? 0}
+          </p>
+        </div>
       </div>
+
+      <section data-testid="subs-grade" className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <span className={ROTULO}>Sub-agents</span>
+        <span className="text-xs tabular-nums text-texto-suave" data-testid="subs-resumo">
+          <b className="font-semibold text-texto">{rodando.length}</b> rodando · <b className="font-semibold text-texto">{subsHoje}</b> hoje
+        </span>
+        {rodando.length > 0 && (
+          <span className="ml-auto flex items-center -space-x-1.5" data-testid="subs-avatares">
+            {rodando.slice(0, MAX_AVATARES).map((x) => (
+              <Tooltip key={x.id} texto={`${x.tipo ?? "sub-agent"}: ${x.descricao ?? "sem descrição"}`} lado="cima">
+                <span data-sub={x.id} className="relative rounded-lg ring-2 ring-surface-3 animate-pulse-dot">
+                  <AgentAvatar nome={x.id} papel={agente.papel} tamanho={22} />
+                </span>
+              </Tooltip>
+            ))}
+            {rodando.length > MAX_AVATARES && <span className="pl-2.5 text-[11px] text-texto-fraco">+{rodando.length - MAX_AVATARES}</span>}
+          </span>
+        )}
+      </section>
 
       <section className="min-h-[44px]">
         <span className={ROTULO}>Tarefa atual</span>

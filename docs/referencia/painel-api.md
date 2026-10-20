@@ -122,7 +122,7 @@ Em ordem de prioridade:
 
 1. `offline`: o handle não está aberto no Orca.
 2. `esperando`: a `tela` pede ação humana (`Do you want`, `[y/n]`, `Allow`, `permission`, `❯ 1.`).
-3. `trabalhando`: o título começa com spinner (caracteres braille `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, `◐◓◑◒` ou `✻✽✶·` que não seja o `✳` ocioso do Claude) **ou** houve saída do terminal há menos de 10 s.
+3. `trabalhando`: o título começa com spinner (caracteres braille `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, `◐◓◑◒` ou `✻✽✶·` que não seja o `✳` ocioso do Claude) **ou** houve saída do terminal há menos de 10 s **ou** (1.12) o agente tem sub-agent rodando.
 4. `pendente`: o agente tem `pendentes > 0`.
 5. `parado`: os demais casos.
 6. `desconhecido`: o Orca não respondeu, ou o agente é do Maestri.
@@ -143,3 +143,77 @@ Em ordem de prioridade:
 - Conversas: a raiz é um `pedido` ou `entrega` sem pai no log; a lista usa só o log ativo.
 - Caminhos com `..` respondem 404.
 - `indicadores.tempo_resposta` (resumo e estado): `{media, p50, p90}` em minutos.
+
+## Sub-agents (1.12, issue #20)
+
+Os sub-agents (Agent/Task do Claude Code, `kind: "sub"` do OMP) não entram no cadastro nem no log de mensagens. Um coletor leve grava o ciclo de vida deles fora do repositório, e o painel mostra cada sub-agent **abaixo do agente que o criou** (o "pai"). Decisão: ADR 0011.
+
+### Arquivo do coletor
+
+`~/.agent-hooks/agent-board/subagentes/<projeto>/AAAA-MM-DD.jsonl`, com uma linha por evento, só append e retenção de 14 dias. O arquivo não tem cadeia de hash e não é versionado.
+
+```ts
+interface EventoSub {
+  ts: string                  // ISO com fuso
+  ev: "spawn" | "inicio" | "atividade" | "fim" | "retorno"
+  agente: string              // nome do PAI no cadastro (resolvido pelo handle do terminal); linha sem cadastro não é gravada
+  sessao: string | null       // session_id do harness
+  id: string | null           // agent_id do sub-agent (null em spawn e retorno, que rodam no pai)
+  tipo: string | null         // agent_type / subagent_type (ex.: "general-purpose", "Explore")
+  descricao?: string          // spawn: tool_input.description (até 120 caracteres)
+  fundo?: boolean             // spawn: run_in_background
+  ferramenta?: string         // atividade: "Bash" | "Edit" | "Write" | ...
+  resumo?: string             // atividade: comando ou caminho, até 160 caracteres, com segredos mascarados
+  ok?: boolean                // retorno: false se o PostToolUse/PostToolUseFailure do Agent indicou erro
+}
+```
+
+| `ev` | De onde vem | Custo |
+|---|---|---|
+| `spawn` | `PreToolUse` com matcher `Agent\|Task`, no pai | 1 execução de hook por sub-agent |
+| `inicio` | `SubagentStart` | 1 por sub-agent |
+| `atividade` | carona no `PreToolUse` de `Bash`/`Edit`/`Write` que o `hook_core` **já** recebe, quando há `agent_id` | 0 execução extra |
+| `fim` | `SubagentStop` | 1 por sub-agent |
+| `retorno` | `PostToolUse`/`PostToolUseFailure` com matcher `Agent\|Task`, no pai | 1 por sub-agent |
+
+O coletor nunca bloqueia e sempre sai com 0, gastando menos de 20 ms além do boot do Python. No OMP, o adaptador emite `inicio`, `atividade` e `fim` com o que o ctx expõe.
+
+**Ligação spawn → sub-agent:** por agente pai, cada `inicio` consome o `spawn` mais antigo ainda sem dono com o mesmo `tipo` (ou qualquer um, se nenhum casar) até 60 s antes. O `retorno` do pai fecha, pela mesma ordem, o sub-agent mais antigo daquele tipo ainda sem `ok`.
+
+### Tipos novos na API
+
+```ts
+type StatusSub = "rodando" | "concluido" | "erro" | "perdido"   // perdido: rodando sem nenhum evento há > 2 h
+
+interface SubAgente {
+  id: string; agente: string /* pai */; tipo: string | null; descricao: string | null
+  status: StatusSub; fundo: boolean
+  inicio: string; fim: string | null; duracao_s: number | null
+  ultima_atividade: { ts: string; ferramenta: string; resumo: string } | null
+  n_atividades: number
+  tarefa: { id: string; assunto: string } | null   // tarefa_atual do pai no momento do inicio
+}
+```
+
+- `Agente` ganha `subagentes: SubAgente[]` (todos os `rodando` + os 5 terminados mais recentes, nas últimas 24 h) e `stats.subagentes_7d: number`.
+- `Tarefa` ganha `subagentes: { id, tipo, descricao, status }[]` (os ligados a ela).
+- `Indicadores` ganha `subagentes_rodando: number`.
+
+### Rotas
+
+| Rota | Resposta |
+|---|---|
+| `GET /api/subagentes?periodo&agente&status&limite=200` | `SubAgente[]`, mais recente primeiro. `periodo` filtra pelo `inicio`; os `rodando` entram sempre |
+| `GET /api/analytics` | ganha `subagentes: { por_agente: {agente, n, rodando, erro, duracao_media_s}[], por_tipo: {tipo, n, duracao_media_s}[], por_dia_30: {dia, n}[] }` (30 d, `por_dia_30` crescente) |
+| `GET /api/workflows?periodo` | ganha nós `coluna: "subagente"` (id `sub:<tipo>`, um por tipo) com arestas agente → `sub:<tipo>`, e `kpis.subagentes: number` |
+| `GET /api/stream` | evento novo `subagente` (data: `SubAgente`), emitido quando um sub-agent nasce, muda de status ou tem atividade nova (no máximo 1 por sub-agent a cada 2 s). O servidor vigia o arquivo do dia a cada 1 s |
+
+### Notas da implementação (#22)
+
+- Leitura: `scripts/painel_subagentes.py` lê os arquivos dos últimos 31 dias de forma incremental (cache por arquivo, compartilhado entre requisições e conexões SSE) e nunca escreve. A pasta do projeto usa o mesmo nome que o coletor (`subagentes.pasta_segura`).
+- `erro` tem prioridade sobre `rodando`: o `retorno` com `ok=false` encerra o sub-agent mesmo sem `fim`.
+- `tarefa` é a tarefa mais recente do pai que estava **aberta no momento do `inicio`** (`ts` anterior ao início e ainda não fechada nele), e não a aberta de hoje.
+- `Agente.subagentes`: todos os `rodando` mais os 5 terminados (concluído, erro ou perdido) mais recentes, pelo `fim` (ou `inicio`) nas últimas 24 h; ordenados pelo `inicio`, do mais recente.
+- `/api/estado` também traz `indicadores.subagentes_rodando` e `tarefas[].subagentes`.
+- `descricao` e `ultima_atividade.resumo` passam por `base.mascarar` na saída, além da máscara do coletor.
+- SSE: o conjunto de arquivos vigiado é o de hoje e o de ontem (a virada do dia troca os nomes sozinha); o evento `agente` sai quando o conjunto (id, status) de sub-agents do agente muda, não a cada atividade. O intervalo mínimo por sub-agent é configurável (`intervalos["sub"]`, 2 s).

@@ -24,7 +24,7 @@ export interface OpcoesStream {
   falhasParaOffline?: number;
 }
 
-const NOMES: NomeEvento[] = ["ola", "mensagem", "agente", "tarefa", "ping"];
+const NOMES: NomeEvento[] = ["ola", "mensagem", "agente", "tarefa", "subagente", "ping"];
 
 export function urlStream(projeto?: string | null): string {
   return projeto ? `/api/stream?projeto=${encodeURIComponent(projeto)}` : "/api/stream";

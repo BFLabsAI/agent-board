@@ -25,6 +25,8 @@
 | `scripts/cmd_web.py` | Painel web (`servir`): servidor HTTP só leitura, rotas `/api/*`, SSE e servir a SPA |
 | `scripts/painel_estado.py` | Estado de um projeto (JSON de `/api/estado`), tarefas e a heurística do status do agente |
 | `scripts/painel_dados.py` | Dados derivados do log para a API v2: agentes, conversas, analytics e workflows (funções puras) |
+| `scripts/subagentes.py` | O coletor de sub-agents: o `hook_core` o chama depois de responder, e ele grava o ciclo de vida em `subagentes/` (nunca bloqueia) |
+| `scripts/painel_subagentes.py` | Leitura dos arquivos do coletor para a API (incremental, com cache, só leitura): `SubAgente`, ligação do `spawn` ao sub-agent e status |
 | `scripts/painel_orca.py` | Lista de terminais abertos no Orca (`orca terminal list`), com cache de 2 s |
 | `scripts/painel_stream.py` | O que o `/api/stream` (SSE) empurra: vigia o log e o Orca e devolve só o que mudou |
 | `scripts/painel_web/` | Build da SPA (`index.html` e `assets/`), **commitado**: quem instala não precisa de Node |
@@ -34,7 +36,7 @@
 | `scripts/omp-agent-board.ts` | Adaptador do OMP para o mesmo core |
 | `scripts/install.sh` | Liga os hooks e registra o servidor MCP (idempotente, com backup) |
 | `scripts/VERSION` | Versão do agent-board |
-| `scripts/test_*.py` | Testes a seco, 10 suítes: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web`, `maestri`, `contrato`, `docs` e `omp` (esta pula sozinha sem o `bun`). O front tem os próprios testes: `cd web && npx vitest run` |
+| `scripts/test_*.py` | Testes a seco, 11 suítes: `agent_board`, `registro`, `politica`, `mcp`, `time`, `web`, `maestri`, `contrato`, `docs`, `subagentes` (o coletor e a leitura do painel) e `omp` (esta pula sozinha sem o `bun`). O front tem os próprios testes: `cd web && npx vitest run` |
 | `templates/CONTRATO.md` | Vira `docs/agent-board/CONTRATO.md` no projeto |
 | `templates/agent-board.json` | Vira `docs/agent-board/agent-board.json` no projeto |
 | `SKILL.md` | Procedimento do master, lido pelo agente ao usar a skill |
@@ -50,6 +52,7 @@ Tudo em `$AGENT_BOARD_HOME` (padrão `~/.agent-hooks/agent-board/`), fora do git
 | `avisos.log` | Avisos digitados ou suprimidos, falhas de envio e de notificação, encerramentos sem resposta, alertas |
 | `avisos-estado.json` | Controle de 1 aviso por destino a cada 60 s |
 | `alertas-estado.json` | Controle do alerta de ping-pong (1 por par por janela) |
+| `subagentes/<projeto>/AAAA-MM-DD.jsonl` | Ciclo de vida dos sub-agents (`spawn`, `inicio`, `atividade`, `fim`, `retorno`), um arquivo por dia. Modo `600`, sem cadeia de hash. Apagado depois de 14 dias (limpeza 1 vez por dia, marcada em `subagentes/.limpeza`). Campos: [painel-api.md](painel-api.md#sub-agents-112-issue-20) |
 | `pendentes/` | Estado entre o pré e o pós-envio. Apagado depois de 1 h |
 | `cobrancas/<painel>.json` | Quantas vezes o fim de turno já cobrou as mesmas pendências |
 | `envios/<id>.json` | Comando completo de cada envio, para o `reenviar`. Apagado depois de 7 dias |
