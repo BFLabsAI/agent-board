@@ -11,12 +11,17 @@ import type {
   Conversa,
   ConversaDetalhe,
   EstadoTarefa,
+  Geral,
+  Indicadores,
   Mensagem,
+  MensagemSquad,
   PaginaMensagens,
+  PaginaMensagensGeral,
   Periodo,
   Projeto,
   Resumo,
   SubAgente,
+  Squad,
   Tarefa,
   TipoMsg,
   Workflows,
@@ -381,6 +386,140 @@ export function workflowsFixture(): Workflows {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Visão geral (1.13): três squads com saúdes diferentes
+// ---------------------------------------------------------------------------
+
+export const SQUAD_AB = "agent-board";
+export const SQUAD_MENT = "r7-mentorias";
+
+interface MsgSemente {
+  /** minutos atrás */
+  dt: number; de: string; para: string; tipo: TipoMsg; assunto: string; veredito?: "aprovado" | "rejeitado";
+}
+
+const MSGS_SQUADS: Record<string, MsgSemente[]> = {
+  [SQUAD_AB]: [
+    { dt: 2, de: "agent-board-manager01-cc", para: "agent-board-master", tipo: "andamento", assunto: "Tela Visão geral: grade de cards e faixa de totais prontas" },
+    { dt: 11, de: "agent-board-master", para: "agent-board-manager01-cc", tipo: "pedido", assunto: "Implementar a issue #27: visão de todos os squads" },
+    { dt: 26, de: "agent-board-manager02-omp", para: "agent-board-master", tipo: "entrega", assunto: "Office em grade com sub-agents ao vivo" },
+    { dt: 31, de: "agent-board-master", para: "agent-board-manager02-omp", tipo: "resposta", assunto: "Aprovado, pode mergear", veredito: "aprovado" },
+    { dt: 58, de: "agent-board-researcher01-cc", para: "agent-board-master", tipo: "entrega", assunto: "Comparativo de bibliotecas de grafos" },
+    { dt: 95, de: "agent-board-master", para: "agent-board-researcher01-cc", tipo: "pedido", assunto: "Comparar libs de grafo para o mapa do Office" },
+    { dt: 140, de: "agent-board-manager02-omp", para: "agent-board-master", tipo: "andamento", assunto: "Drones animados com respeito a prefers-reduced-motion" },
+  ],
+  [SQUAD_MENT]: [
+    { dt: 4, de: "r7-mentorias-manager01-omp", para: "r7-mentorias-master", tipo: "andamento", assunto: "Migração das turmas para o Postgres local" },
+    { dt: 19, de: "r7-mentorias-master", para: "r7-mentorias-manager02-cc", tipo: "pedido", assunto: "Portar o login do Supabase Auth para JWT em Go" },
+    { dt: 47, de: "r7-mentorias-manager01-omp", para: "r7-mentorias-master", tipo: "entrega", assunto: "Schema e migrações aplicados no banco de teste" },
+    { dt: 52, de: "r7-mentorias-master", para: "r7-mentorias-manager01-omp", tipo: "resposta", assunto: "Rejeitado: falta índice em matriculas(turma_id)", veredito: "rejeitado" },
+    { dt: 180, de: "r7-mentorias-researcher01-cc", para: "r7-mentorias-master", tipo: "entrega", assunto: "Mapa das tabelas e policies de RLS a remover" },
+    { dt: 230, de: "r7-mentorias-master", para: "r7-mentorias-researcher01-cc", tipo: "pedido", assunto: "Levantar todas as policies de RLS do Supabase" },
+  ],
+};
+
+function msgsDoSquad(projeto: string, agora: number): MensagemSquad[] {
+  if (projeto === PROJETO_FIXTURE) {
+    return mensagensFixture(agora).filter((m) => m.tipo !== "nota").map((m) => ({ ...m, projeto }));
+  }
+  return (MSGS_SQUADS[projeto] ?? []).map((x, i) => ({
+    id: `${projeto}-m${i + 1}`, ts: iso(agora - x.dt * MIN), de: x.de, para: x.para, tipo: x.tipo, assunto: x.assunto,
+    ...(x.veredito ? { veredito: x.veredito } : {}), projeto,
+  }));
+}
+
+function subFix(pai: string, i: number, tipo: string, descricao: string, status: SubAgente["status"], inicioMin: number, agora: number): SubAgente {
+  const inicio = agora - inicioMin * MIN;
+  return {
+    id: `s-${pai.slice(0, 3)}${i}`, agente: pai, nome: "subagent-cc", tipo, descricao, status, fundo: false,
+    inicio: iso(inicio), fim: status === "rodando" ? null : iso(inicio + 90_000), duracao_s: status === "rodando" ? null : 90,
+    ultima_atividade: { ts: iso(agora - 15_000), ferramenta: "Bash", resumo: "npx vitest run" }, n_atividades: 6, tarefa: null,
+  };
+}
+
+function indicadoresDe(ag: Agente[], extra: { abertos: number; atrasados: number; revisao: number; mensagens: number; p50: number | null; entregas: number }): Indicadores {
+  return {
+    mensagens: extra.mensagens, mensagens_antes: Math.max(0, extra.mensagens - 3),
+    pendentes: ag.reduce((n, a) => n + a.pendentes, 0), agentes_com_pendente: ag.filter((a) => a.pendentes > 0).length,
+    atrasados: extra.atrasados, revisao: extra.revisao, revisao_mais_antiga: extra.revisao ? iso(Date.now() - 37 * MIN) : null,
+    tempo_resposta: extra.p50 === null ? null : { media: extra.p50 * 1.4, p50: extra.p50, p90: extra.p50 * 3.2 },
+    trabalhando: ag.filter((a) => a.status === "trabalhando").length,
+    esperando: ag.filter((a) => a.status === "esperando").length,
+    offline: ag.filter((a) => a.status === "offline").length,
+    abertos: extra.abertos, entregas_periodo: extra.entregas,
+    subagentes_rodando: ag.reduce((n, a) => n + a.subagentes.filter((x) => x.status === "rodando").length, 0),
+  };
+}
+
+export function saudeDe(s: Pick<Squad, "cadeia_integra" | "indicadores" | "alertas">): Squad["saude"] {
+  if (!s.cadeia_integra || s.indicadores.atrasados > 0) return "critico";
+  if (s.indicadores.esperando > 0 || s.indicadores.pendentes > 0 || s.alertas > 0) return "atencao";
+  return "ok";
+}
+
+export function squadsFixture(agora = Date.now()): Squad[] {
+  const principal = agentesFixture(agora);
+  const ab = [
+    agenteBase("agent-board-master", "master", "cc", "trabalhando", "/root/agent-board", "main", 11, agora),
+    agenteBase("agent-board-manager01-cc", "manager", "cc", "trabalhando", "/root/agent-board-wt/geral", "ab/ms-geral", 12, agora),
+    agenteBase("agent-board-manager02-omp", "manager", "omp", "trabalhando", "/root/agent-board-wt/office", "ab/ms-office", 13, agora),
+    agenteBase("agent-board-researcher01-cc", "researcher", "cc", "parado", null, null, 14, agora),
+  ].map((a) => ({ ...a, pendentes: 0, tarefa_atual: null, subagentes: [] as SubAgente[] }));
+  ab[1].subagentes = [
+    subFix(ab[1].agente, 1, "Explore", "Mapear telas existentes", "rodando", 3, agora),
+    subFix(ab[1].agente, 2, "general-purpose", "Testes da grade de cards", "rodando", 5, agora),
+    subFix(ab[1].agente, 3, "Explore", "Achar usos do stream", "concluido", 20, agora),
+  ];
+  ab[2].subagentes = [subFix(ab[2].agente, 4, "task", "Drones do Office", "rodando", 2, agora)];
+  const ment = [
+    agenteBase("r7-mentorias-master", "master", "cc", "esperando", "/root/r7-mentorias", "main", 21, agora),
+    agenteBase("r7-mentorias-manager01-omp", "manager", "omp", "pendente", "/root/r7-mentorias-wt/db", "feat/postgres-local", 22, agora),
+    agenteBase("r7-mentorias-manager02-cc", "manager", "cc", "trabalhando", "/root/r7-mentorias-wt/auth", "feat/auth-jwt", 23, agora),
+    agenteBase("r7-mentorias-researcher01-cc", "researcher", "cc", "offline", null, null, 24, agora),
+  ].map((a) => ({ ...a, tarefa_atual: null, subagentes: [] as SubAgente[] }));
+  ment[2].subagentes = [subFix(ment[2].agente, 5, "general-purpose", "Handler de login em Go", "rodando", 4, agora)];
+
+  const lista = (projeto: string, raiz: string, versao: string, agentes: Agente[], cadeia: boolean, extra: Parameters<typeof indicadoresDe>[1], alertas: number): Squad => {
+    const msgs = msgsDoSquad(projeto, agora);
+    const base = { projeto, raiz, versao, cadeia_integra: cadeia, indicadores: indicadoresDe(agentes, extra), agentes, ultima_mensagem: msgs[0] ?? null, alertas };
+    return { ...base, saude: saudeDe(base) };
+  };
+  const res = resumoFixture("hoje", PROJETO_FIXTURE, agora).indicadores;
+  const sq = [
+    lista(PROJETO_FIXTURE, "/root/r7one", "1.13.0-dev", principal, true, { abertos: res.abertos, atrasados: res.atrasados, revisao: res.revisao, mensagens: res.mensagens, p50: 4.2, entregas: 5 }, res.atrasados + 1),
+    lista(SQUAD_AB, "/root/agent-board", "1.13.0-dev", ab, true, { abertos: 3, atrasados: 0, revisao: 0, mensagens: 18, p50: 2.6, entregas: 4 }, 0),
+    lista(SQUAD_MENT, "/root/r7-mentorias", "1.13.0-dev", ment, true, { abertos: 4, atrasados: 0, revisao: 2, mensagens: 12, p50: 11.5, entregas: 2 }, 0),
+  ];
+  const ordem = { critico: 0, atencao: 1, ok: 2 } as const;
+  return sq.sort((a, b) => ordem[a.saude] - ordem[b.saude] || a.projeto.localeCompare(b.projeto));
+}
+
+export function totaisDe(squads: Squad[]): Geral["totais"] {
+  const t = { squads: squads.length, agentes: 0, trabalhando: 0, esperando: 0, subagentes_rodando: 0, abertos: 0, atrasados: 0, revisao: 0, mensagens: 0 };
+  for (const s of squads) {
+    t.agentes += s.agentes.length;
+    t.trabalhando += s.indicadores.trabalhando;
+    t.esperando += s.indicadores.esperando;
+    t.subagentes_rodando += s.indicadores.subagentes_rodando;
+    t.abertos += s.indicadores.abertos;
+    t.atrasados += s.indicadores.atrasados;
+    t.revisao += s.indicadores.revisao;
+    t.mensagens += s.indicadores.mensagens;
+  }
+  return t;
+}
+
+export function geralFixture(periodo: Periodo = "hoje", agora = Date.now()): Geral {
+  const squads = squadsFixture(agora);
+  return { agora: iso(agora), periodo, squads, totais: totaisDe(squads) };
+}
+
+export function mensagensGeralFixture(agora = Date.now()): MensagemSquad[] {
+  return [PROJETO_FIXTURE, SQUAD_AB, SQUAD_MENT]
+    .flatMap((p) => msgsDoSquad(p, agora))
+    .sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+}
+
 function periodoValido(v: unknown): Periodo {
   return v === "24h" || v === "7d" ? v : "hoje";
 }
@@ -391,6 +530,14 @@ type Params = Record<string, string | number | undefined | null>;
 export function responderFixture(caminho: string, params: Params = {}): unknown {
   const agora = Date.now();
   const projeto = (params.projeto as string | undefined) || PROJETO_FIXTURE;
+  if (caminho === "/api/geral") return geralFixture(periodoValido(params.periodo), agora);
+  if (caminho === "/api/geral/mensagens") {
+    let lista = mensagensGeralFixture(agora);
+    if (params.antes) lista = lista.filter((m) => m.ts < String(params.antes));
+    const limite = Number(params.limite) || 100;
+    const pag: PaginaMensagensGeral = { mensagens: lista.slice(0, limite), mais: lista.length > limite };
+    return pag;
+  }
   if (caminho !== "/api/projetos" && !projetosFixture().some((p) => p.projeto === projeto)) {
     throw new ErroApi(404, "projeto desconhecido");
   }
@@ -450,7 +597,8 @@ export function responderFixture(caminho: string, params: Params = {}): unknown 
  * EventSource falso para o modo fixtures: conecta, manda "ola" e, de tempos
  * em tempos, uma mensagem nova e uma atualização de agente.
  */
-export function fabricaFixtures(): FonteEventos {
+export function fabricaFixtures(url = ""): FonteEventos {
+  const todos = url.includes("projeto=*");
   const ouvintes = new Map<string, Array<(ev: MessageEvent) => void>>();
   let n = 0;
   const emitir = (tipo: string, dado: unknown) =>
@@ -469,6 +617,23 @@ export function fabricaFixtures(): FonteEventos {
     n += 1;
     const agora = Date.now();
     emitir("ping", { agora: iso(agora) });
+    if (todos) {
+      // stream "*": todo evento traz o projeto (squad) de origem
+      const squads = squadsFixture(agora);
+      const sq = squads[n % squads.length];
+      if (n % 2 === 0) {
+        const alvo = sq.agentes[n % sq.agentes.length];
+        emitir("mensagem", {
+          id: `live-${n}`, ts: iso(agora), de: alvo.agente, para: sq.agentes[0].agente, tipo: n % 4 === 0 ? "entrega" : "andamento",
+          assunto: "Atualização simulada (fixtures)", projeto: sq.projeto,
+        } satisfies MensagemSquad);
+      }
+      if (n % 3 === 0) {
+        const alvo = sq.agentes[(n + 1) % sq.agentes.length];
+        emitir("agente", { ...alvo, status: n % 2 ? "esperando" : "trabalhando", projeto: sq.projeto });
+      }
+      return;
+    }
     if (n % 3 === 0) {
       const alvo = MANAGERS[n % MANAGERS.length];
       emitir("mensagem", {
@@ -488,7 +653,9 @@ export function fabricaFixtures(): FonteEventos {
   }, 5000);
   setTimeout(() => {
     fonte.onopen?.(new Event("open"));
-    emitir("ola", { projeto: PROJETO_FIXTURE, agora: iso(Date.now()) });
+    emitir("ola", todos
+      ? { projeto: "*", projetos: projetosFixture().map((p) => p.projeto), agora: iso(Date.now()) }
+      : { projeto: PROJETO_FIXTURE, agora: iso(Date.now()) });
   }, 300);
   return fonte;
 }

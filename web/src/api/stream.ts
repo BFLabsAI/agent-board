@@ -26,7 +26,11 @@ export interface OpcoesStream {
 
 const NOMES: NomeEvento[] = ["ola", "mensagem", "agente", "tarefa", "subagente", "ping"];
 
+/** Valor de `projeto` que abre o stream de todos os squads numa conexão só. */
+export const PROJETO_TODOS = "*";
+
 export function urlStream(projeto?: string | null): string {
+  if (projeto === PROJETO_TODOS) return "/api/stream?projeto=*";
   return projeto ? `/api/stream?projeto=${encodeURIComponent(projeto)}` : "/api/stream";
 }
 

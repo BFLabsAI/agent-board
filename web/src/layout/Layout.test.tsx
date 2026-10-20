@@ -14,7 +14,8 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 const TITULOS: Record<string, string> = {
-  "/": "Dashboard",
+  "/?projeto=r7one": "Dashboard",
+  "/geral": "Visão geral",
   "/kanban": "Kanban",
   "/conversas": "Conversas",
   "/feed": "Activity Feed",
@@ -25,7 +26,7 @@ const TITULOS: Record<string, string> = {
 
 describe("navegação", () => {
   it("a sidebar lista todas as telas", async () => {
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const nav = await screen.findByRole("navigation", { name: "Navegação principal" });
     for (const item of ITENS_NAV) expect(within(nav).getByRole("link", { name: item.rotulo })).toBeInTheDocument();
   });
@@ -55,7 +56,7 @@ describe("navegação", () => {
   });
 
   it("clicar no menu troca de tela e marca o item ativo", async () => {
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     await userEvent.click(await screen.findByRole("link", { name: "Kanban" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Kanban" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Kanban" })).toHaveAttribute("aria-current", "page");
@@ -81,7 +82,7 @@ describe("navegação", () => {
 
 describe("modo TV", () => {
   it("?tv=1 esconde a sidebar", async () => {
-    renderPainel("/?tv=1");
+    renderPainel("/?tv=1&projeto=r7one");
     expect(await screen.findByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Navegação principal" })).not.toBeInTheDocument();
   });
@@ -89,7 +90,7 @@ describe("modo TV", () => {
 
 describe("sidebar recolhível", () => {
   it("recolhe, esconde os rótulos e lembra a escolha", async () => {
-    renderPainel("/");
+    renderPainel("/kanban");
     await userEvent.click(await screen.findByRole("button", { name: "Recolher menu" }));
     expect(screen.queryByLabelText("Projeto")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Expandir menu" })).toBeInTheDocument();
@@ -99,7 +100,7 @@ describe("sidebar recolhível", () => {
 
 describe("seletor de projeto", () => {
   it("lista os projetos de /api/projetos e marca o atual", async () => {
-    renderPainel("/");
+    renderPainel("/kanban");
     const sel = await screen.findByLabelText("Projeto");
     await waitFor(() => expect(within(sel).getAllByRole("option")).toHaveLength(3));
     expect(sel).toHaveValue("r7one");
@@ -117,7 +118,7 @@ describe("seletor de projeto", () => {
   it("recupera o projeto do localStorage e passa para a API", async () => {
     window.localStorage.setItem(CHAVE_PROJETO, "r7-mentorias");
     const { cliente } = await import("../api/cliente");
-    renderPainel("/");
+    renderPainel("/kanban");
     await waitFor(() => expect(cliente.resumo).toHaveBeenCalledWith(expect.objectContaining({ projeto: "r7-mentorias" }), expect.anything()));
     await waitFor(() => expect(screen.getByTestId("local")).toHaveTextContent("projeto=r7-mentorias"));
   });
@@ -131,7 +132,7 @@ describe("seletor de projeto", () => {
 
   it("ignora projeto salvo que não existe mais", async () => {
     window.localStorage.setItem(CHAVE_PROJETO, "sumiu");
-    renderPainel("/");
+    renderPainel("/kanban");
     const sel = await screen.findByLabelText("Projeto");
     await waitFor(() => expect(sel).toHaveValue("r7one"));
   });
@@ -143,7 +144,7 @@ describe("seletor de projeto", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("bloqueado");
     });
-    renderPainel("/");
+    renderPainel("/kanban");
     const sel = await screen.findByLabelText("Projeto");
     await waitFor(() => expect(within(sel).getAllByRole("option")).toHaveLength(3));
     await userEvent.selectOptions(sel, "agent-board");
@@ -153,7 +154,7 @@ describe("seletor de projeto", () => {
 
 describe("seletor de período", () => {
   it("troca o período no contexto global e na URL", async () => {
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     await userEvent.click(await screen.findByRole("radio", { name: "7 dias" }));
     expect(screen.getByRole("radio", { name: "7 dias" })).toBeChecked();
     expect(screen.getByTestId("local")).toHaveTextContent("periodo=7d");
@@ -164,7 +165,7 @@ describe("seletor de período", () => {
 
 describe("indicador Live", () => {
   it("segue o estado do stream: Live, Reconectando e Offline", async () => {
-    renderPainel("/");
+    renderPainel("/?projeto=r7one");
     const ind = await screen.findByRole("status");
     await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
     const fonte = () => FonteFalsa.todas[FonteFalsa.todas.length - 1];

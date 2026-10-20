@@ -96,3 +96,20 @@ export function useRecarregar(fn: () => void): void {
   ref.current = fn;
   useEffect(() => aoRecarregar(() => ref.current()), [aoRecarregar]);
 }
+
+/**
+ * Stream de todos os squads (`/api/stream?projeto=*`). O provider abre essa
+ * conexão no lugar da do projeto enquanto a tela Visão geral está aberta, então
+ * o hook só expõe o status e a assinatura: os eventos chegam com `projeto`.
+ */
+export function useStreamGeral(): ValorStream {
+  return useContext(Ctx);
+}
+
+/** Como `useEvento`, mas só entrega eventos do stream "*" (os que trazem `projeto`). */
+export function useEventoSquad<K extends NomeEvento>(nome: K, fn: (d: EventosStream[K], projeto: string) => void): void {
+  useEvento(nome, (d) => {
+    const projeto = (d as { projeto?: unknown }).projeto;
+    if (typeof projeto === "string" && projeto) fn(d, projeto);
+  });
+}

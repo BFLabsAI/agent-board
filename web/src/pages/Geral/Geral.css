@@ -1,0 +1,21 @@
+@keyframes geral-pulso {
+  0% { box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.55), 0 0 28px -4px rgba(99, 102, 241, 0.5); border-color: rgba(129, 140, 248, 0.9); }
+  100% { box-shadow: 0 0 0 14px rgba(129, 140, 248, 0), 0 0 0 0 rgba(99, 102, 241, 0); border-color: rgba(42, 42, 61, 1); }
+}
+.geral-pulso {
+  animation: geral-pulso 1.4s ease-out;
+}
+@keyframes geral-drone {
+  0%, 100% { transform: translateY(0); opacity: 0.85; }
+  50% { transform: translateY(-3px); opacity: 1; }
+}
+.geral-drone {
+  animation: geral-drone 1.6s ease-in-out infinite;
+}
+@keyframes geral-feed-novo {
+  0% { background-color: rgba(99, 102, 241, 0.28); }
+  100% { background-color: transparent; }
+}
+.geral-feed-novo {
+  animation: geral-feed-novo 3s ease-out;
+}
