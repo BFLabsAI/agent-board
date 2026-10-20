@@ -50,6 +50,8 @@ Recursos do time (cada um aceita --help):
 
 Painel web (só leitura, 127.0.0.1; ver docs/userguide/painel.md):
   painel.py servir [--raiz <path>] [--porta 8765]
+  painel.py servico instalar|status|remover [--porta 8765] [--dry-run]
+      Painel sempre ligado (systemd) e exposto só na tailnet (tailscale serve); ver docs/referencia/painel-api.md.
 
 Maestri (canvas; cada um aceita --help; ver docs/adr/0006-maestri-como-transporte.md):
   painel.py eu [--formato texto|toon]            handle e nome no canvas deste terminal
@@ -72,6 +74,7 @@ from base import CONFIG_REL, LOG_REL, PAINEIS, achar_orca, ler_json, papel_do_no
 import cmd_log  # noqa: E402
 import contrato  # noqa: E402
 import cmd_maestri  # noqa: E402
+import cmd_servico  # noqa: E402
 import cmd_tarefas  # noqa: E402
 import cmd_time  # noqa: E402
 import cmd_web  # noqa: E402
@@ -281,7 +284,7 @@ def init(args):
 COMANDOS = {"historico": cmd_log.historico, "verificar": cmd_log.verificar,
             "arquivar": cmd_log.arquivar, "reenviar": cmd_log.reenviar,
             "nota": cmd_time.nota, "notas": cmd_time.notas, "resumo": cmd_time.resumo,
-            "servir": cmd_web.servir,
+            "servir": cmd_web.servir, "servico": cmd_servico.servico,
             "tarefas": cmd_tarefas.tarefas, "vigiar": cmd_tarefas.vigiar, "simular": cmd_tarefas.simular,
             "eu": cmd_maestri.eu, "solicitar": cmd_maestri.solicitar, "solicitacoes": cmd_maestri.solicitacoes,
             "maestri": cmd_maestri.maestri_cmd}
