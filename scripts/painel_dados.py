@@ -87,9 +87,26 @@ def harness_de(handle, nome, terminal):
     return {"claude": "cc", "omp": "omp", "pi": "omp"}.get(ident)
 
 
+SEGREDOS = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"  # chave privada PEM
+    r"|\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}"                                           # OpenAI/Anthropic/Stripe
+    r"|\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}"     # GitHub
+    r"|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}"                        # AWS, Google
+    r"|\bxox[abposr]-[A-Za-z0-9-]{10,}|\bnpm_[A-Za-z0-9]{30,}"                        # Slack, npm
+    r"|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"                  # JWT
+    r"|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"
+    r"|(?i:\b[\w.-]*(?:password|passwd|senha|secret|token|api[_-]?key|apikey|authorization)[\w.-]*)\s*[=:]\s*(?:(?:Bearer|Basic)\s+)?\S+",
+    re.S)
+
+
+def mascarar(texto):
+    """Troca por [oculto] o que parece segredo (token, chave, senha, Bearer) no texto do terminal."""
+    return SEGREDOS.sub("[oculto]", texto)
+
+
 def tela_de(preview, linhas=12):
-    """As últimas linhas não vazias do preview do Orca."""
-    ls = [l.rstrip()[:300] for l in str(preview or "").splitlines() if l.strip()]
+    """As últimas linhas não vazias do preview do Orca, com segredos mascarados (o terminal é entrada não confiável)."""
+    ls = [l.rstrip()[:300] for l in mascarar(str(preview or "")).splitlines() if l.strip()]
     return "\n".join(ls[-linhas:]) or None
 
 
@@ -333,7 +350,7 @@ def sequencia_de(thread):
     """Tipos da conversa em ordem; repetições seguidas viram uma (ex.: andamento, andamento)."""
     seq = []
     for m in thread:
-        t = m.get("tipo")
+        t = m.get("tipo") or "?"
         if t == "resposta" and m.get("veredito"):
             t = "resposta:" + m["veredito"]
         if not seq or seq[-1] != t:
@@ -362,7 +379,7 @@ def workflows(msgs, convs, periodo, agora, papeis, estados):
     aprov = rej = 0
     ate_entrega, tamanhos, fluxos = [], [], {}
     for c, th in sel:
-        ex = c["para"] if c["tipo"] == "pedido" else c["de"]
+        ex = (c["para"] if c["tipo"] == "pedido" else c["de"]) or "desconhecido"  # log torto pode não ter de/para
         agente(ex, "manager")
         entregas = [m for m in th if m.get("tipo") == "entrega"]
         est_ent = (estados.get(entregas[-1]["id"]) or {}).get("estado") if entregas else None

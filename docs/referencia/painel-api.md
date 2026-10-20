@@ -1,6 +1,6 @@
 # API do painel web (v2)
 
-Contrato entre `scripts/cmd_web.py` (servidor, Python stdlib, compatível com 3.8) e a SPA em `web/` (build em `scripts/painel_web/`). Tudo é **só leitura**: qualquer método que não seja GET responde 405. O servidor escuta em 127.0.0.1, confere o `Host` e manda os cabeçalhos de segurança da ADR 0005/0010.
+Contrato entre `scripts/cmd_web.py` (servidor, Python stdlib, compatível com 3.8) e a SPA em `web/` (build em `scripts/painel_web/`). Tudo é **só leitura**: qualquer método que não seja GET responde 405. O servidor escuta em 127.0.0.1, confere o `Host` e a origem (`Origin`/`Sec-Fetch-Site`: pedido de outra página responde 403), limita conexões (64, SSE 16, 15 s sem E/S derruba a conexão) e manda os cabeçalhos de segurança da ADR 0005/0010. O log é entrada não confiável: linhas tortas são ignoradas, textos vão limitados a 2000 caracteres, `de`/`para`/`assunto` são sempre texto, e a `tela` do terminal sai com tokens, chaves e senhas trocados por `[oculto]`.
 
 ## Convenções
 

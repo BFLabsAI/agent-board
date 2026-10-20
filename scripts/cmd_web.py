@@ -21,17 +21,20 @@ import painel_dados
 import painel_estado
 import painel_orca
 import painel_stream
-import registro
 from base import CONFIG_REL, carregar_paineis, ler_json
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 DIR_WEB = os.path.join(AQUI, "painel_web")  # build da SPA (web/)
 PAGINA_ANTIGA = os.path.join(AQUI, "painel_web.html")
 # SPA: nenhum script inline (estilo inline fica, para atributos style do React/framer-motion)
-CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; "
+       "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # painel v1 (painel_web.html, fallback sem build): página única com script embutido
 CSP_ANTIGA = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
 LIMITE_SSE = 16
+LIMITE_CONEXOES = 64   # conexões simultâneas (SSE incluso); as demais levam 503 na hora
+TIMEOUT_SOCKET = 15    # segundos sem ler/escrever no socket: derruba slowloris (cabeçalho a conta-gotas, leitor parado)
+MAX_PARAM = 500        # tamanho máximo de um parâmetro da query
 TIPOS = {".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".woff": "font/woff",
          ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".json": "application/json",
@@ -57,9 +60,35 @@ def projetos_do_cadastro(raiz, cfg, paineis):
     return out
 
 
+class ServidorLimitado(ThreadingHTTPServer):
+    """ThreadingHTTPServer com teto de conexões simultâneas: passou dele, 503 e fecha, sem criar thread."""
+    daemon_threads = True
+    limite_conexoes = LIMITE_CONEXOES
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self._conexoes = threading.BoundedSemaphore(self.limite_conexoes)
+
+    def process_request(self, request, client_address):
+        if not self._conexoes.acquire(False):
+            try:
+                request.sendall(b"HTTP/1.0 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            return self.shutdown_request(request)
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._conexoes.release()
+
+
 def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, intervalos=None, limite_sse=LIMITE_SSE):
     """`terminais`: função que devolve {handle: terminal} do Orca (ou None); os testes injetam uma falsa."""
     hosts = {f"127.0.0.1:{porta}", f"localhost:{porta}"}
+    origens = {f"http://{h}" for h in hosts}
     if terminais is None:
         terminais = painel_orca.terminais if perguntar_orca else (lambda: None)
     vagas = threading.Semaphore(limite_sse)
@@ -67,6 +96,7 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
     class Handler(BaseHTTPRequestHandler):
         server_version = "agent-board"
         sys_version = ""
+        timeout = TIMEOUT_SOCKET
 
         def log_message(self, fmt, *args):  # sem log por requisição no terminal
             pass
@@ -77,6 +107,8 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             self.send_header("Content-Security-Policy", csp)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
             self.send_header("Cache-Control", "no-store")
 
         def _enviar(self, codigo, corpo, tipo, csp=CSP):
@@ -92,16 +124,34 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
         def _erro(self, codigo, texto):
             self._json({"erro": texto}, codigo)
 
+        def _origem_ok(self):
+            """Barra página de outra origem (ou de outra porta do localhost) pedindo o painel por fetch/EventSource/script."""
+            origem = self.headers.get("Origin")
+            if origem is not None and origem not in origens:
+                return False
+            site = self.headers.get("Sec-Fetch-Site")  # navegação direta (digitar a URL, clicar num link) continua valendo
+            return site in (None, "same-origin", "none") or self.headers.get("Sec-Fetch-Mode") == "navigate"
+
         def do_GET(self):
             if self.headers.get("Host") not in hosts:  # DNS rebinding
                 return self._enviar(403, "host não permitido", TEXTO)
+            if not self._origem_ok():
+                return self._enviar(403, "origem não permitida", TEXTO)
+            try:
+                return self._despachar()
+            except (BrokenPipeError, ConnectionError, socket.timeout):
+                return  # cliente sumiu
+            except Exception:  # dado torto não derruba a conexão sem resposta
+                return self._erro(500, "erro interno")
+
+        def _despachar(self):
             url = urllib.parse.urlsplit(self.path)
             caminho = urllib.parse.unquote(url.path)
             qs = urllib.parse.parse_qs(url.query)
             if "\0" in caminho or ".." in caminho.split("/") or "\\" in caminho:
                 return self._enviar(404, "não encontrado", TEXTO)
             if caminho == "/api" or caminho.startswith("/api/"):
-                return self._api(caminho, {k: v[0] for k, v in qs.items()})
+                return self._api(caminho, {k: v[0][:MAX_PARAM] for k, v in qs.items()})
             if caminho.startswith("/assets/"):
                 return self._asset(caminho[1:], "assets")
             if "." in caminho.rsplit("/", 1)[-1]:
@@ -119,8 +169,8 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             return self._enviar(404, "painel sem página", TEXTO)
 
         def _asset(self, rel, pasta):
-            base = os.path.normpath(os.path.join(DIR_WEB, pasta))
-            alvo = os.path.normpath(os.path.join(DIR_WEB, rel))
+            base = os.path.realpath(os.path.join(DIR_WEB, pasta))
+            alvo = os.path.realpath(os.path.join(DIR_WEB, rel))  # realpath: link simbólico não sai do build
             if not alvo.startswith(base + os.sep) or not os.path.isfile(alvo):
                 return self._enviar(404, "não encontrado", TEXTO)
             with open(alvo, "rb") as f:
@@ -168,7 +218,7 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
         def _base(self, ctx):
             nome, r, c, paineis = ctx
             agora = datetime.datetime.now().astimezone()
-            msgs = registro.ler_log(r)
+            msgs = painel_estado.ler_log(r)
             return nome, r, c, paineis, agora, msgs, painel_estado.tarefas(msgs, agora)
 
         def _estado(self, ctx, qs, periodo):
@@ -216,12 +266,12 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
             return self._json(achada)
 
         def _mensagens(self, ctx, qs, periodo):
-            msgs = registro.ler_log(ctx[1])
+            msgs = painel_estado.ler_log(ctx[1])
             return painel_dados.mensagens(msgs, qs.get("antes"), painel_dados.inteiro(qs.get("limite"), 100),
                                           qs.get("agente"), qs.get("tipo"), qs.get("q"))
 
         def _analytics(self, ctx, qs, periodo):
-            return painel_dados.analytics(registro.ler_tudo(ctx[1]), datetime.datetime.now().astimezone())
+            return painel_dados.analytics(painel_estado.ler_tudo(ctx[1]), datetime.datetime.now().astimezone())
 
         def _workflows(self, ctx, qs, periodo):
             nome, _, _, paineis, agora, msgs, tars = self._base(ctx)
@@ -255,7 +305,7 @@ def criar_handler(raiz, cfg, porta, perguntar_orca=True, terminais=None, interva
                         self.wfile.write(painel_stream.formatar(*ev))
                     self.wfile.flush()
                     time.sleep(vigia.iv["log"])
-            except (BrokenPipeError, ConnectionResetError, OSError):
+            except Exception:  # cliente foi embora, timeout de escrita ou erro: encerra e devolve a vaga
                 pass
             finally:
                 vagas.release()
@@ -279,9 +329,8 @@ def servidor(raiz, porta, perguntar_orca=True, terminais=None, intervalos=None, 
         cfg = ler_json(os.path.join(raiz, CONFIG_REL), None)
         if cfg is None:
             sys.exit(f"{raiz} não tem {CONFIG_REL}; rode painel.py init antes")
-    srv = ThreadingHTTPServer(("127.0.0.1", porta), BaseHTTPRequestHandler)
+    srv = ServidorLimitado(("127.0.0.1", porta), BaseHTTPRequestHandler)
     srv.RequestHandlerClass = criar_handler(raiz, cfg, srv.server_address[1], perguntar_orca, terminais, intervalos, limite_sse)
-    srv.daemon_threads = True
     return srv
 
 
@@ -302,7 +351,7 @@ def servir(args):
     print(f"painel de {', '.join(projs)} em http://127.0.0.1:{a.porta}  (Ctrl+C para parar)")
     print(f"servidor remoto: ssh -L {a.porta}:127.0.0.1:{a.porta} <servidor>")
     for nome, r in projs.items():
-        print(f"log de {nome}: {registro.verificar(r)['linhas']} linhas")
+        print(f"log de {nome}: {painel_estado.verificar(r)['linhas']} linhas")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
