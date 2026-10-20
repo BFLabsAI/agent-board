@@ -656,7 +656,8 @@ class Servico(unittest.TestCase):
         self.assertIn("$ systemctl enable --now agent-board-painel.service", texto)
         self.assertIn("$ tailscale serve --bg --https=443 http://127.0.0.1:8765", texto)
         self.assertIn("$ tailscale serve --bg --http=8765 http://127.0.0.1:8765", texto)
-        self.assertEqual(self.cmds, [])
+        # dry-run só consulta (leitura) se a tailnet tem HTTPS; nada que mude a máquina
+        self.assertEqual(self.cmds, [["tailscale", "status", "--json"]])
         self.assertFalse(os.path.exists(self.unit()))
 
     def test_instalar_grava_unit_liga_e_configura_o_serve(self):
