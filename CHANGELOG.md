@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.2 — 2026-10-20
+
+### Corrigido
+- **Painel como serviço mostrava todos os agentes "offline":** o systemd não herda `$ORCA_CLI_BIN_DIR`, e o painel caía no `orca` do relay SSH, que não conhece os terminais do Orca server. Por isso tudo zerava: sem agentes trabalhando, sem sub-agents rodando. Três correções:
+  - `achar_orca` procura o shim padrão do Orca server (`~/.config/orca/linux-orca-cli-shim/orca`) antes do PATH e do relay;
+  - `painel.py servico instalar` grava o `ORCA_CLI_BIN_DIR` do terminal no unit e reinicia o serviço quando o unit muda;
+  - quando o orca responde com erro (`ok: false`), os agentes ficam "desconhecido" e não "offline".
+
 ## 1.14.1 — 2026-10-20
 
 ### Corrigido

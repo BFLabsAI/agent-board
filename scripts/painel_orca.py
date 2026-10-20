@@ -20,6 +20,8 @@ def _consultar():
     try:
         r = subprocess.run([achar_orca(), "terminal", "list", "--json"], capture_output=True, text=True, timeout=5)
         d = json.loads(r.stdout)
+        if r.returncode != 0 or (isinstance(d, dict) and d.get("ok") is False):
+            return None  # orca sem runtime: status "desconhecido", não "offline" para todo mundo
         t = d.get("result", d)
         t = t.get("terminals", t) if isinstance(t, dict) else t
         return normalizar(t)

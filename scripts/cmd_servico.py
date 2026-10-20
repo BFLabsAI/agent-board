@@ -34,6 +34,10 @@ def gerar_unit(porta=8765, home=None, raiz_skill=RAIZ_SKILL, scripts=AQUI):
               "[Service]", "Type=simple", "User=root", f"WorkingDirectory={raiz_skill}"]
     if os.path.abspath(home) != os.path.abspath(padrao):
         linhas.append(f"Environment=AGENT_BOARD_HOME={home}")
+    # o serviço não herda o ambiente do terminal: leva o orca que este terminal usa (o do Orca server)
+    for var in ("ORCA_CLI_BIN_DIR", "ORCA_BIN"):
+        if os.environ.get(var):
+            linhas.append(f"Environment={var}={os.environ[var]}")
     linhas += [f"ExecStart={PYTHON} {os.path.join(scripts, 'painel.py')} servir --porta {porta}",
                "Restart=always", "RestartSec=3", "", "[Install]", "WantedBy=multi-user.target", ""]
     return "\n".join(linhas)
@@ -128,6 +132,8 @@ def instalar(porta=8765, dry_run=False, dir_unit=DIR_UNIT, executar=executar_rea
             f.write(unit)
         saida(f"unit gravado em {caminho}")
         executar(["systemctl", "daemon-reload"])
+        if atual is not None:  # unit mudou com o serviço já instalado: reinicia para valer
+            executar(["systemctl", "restart", NOME_UNIT])
     else:
         saida(f"unit já em dia: {caminho}")
     rc, out = executar(["systemctl", "enable", "--now", NOME_UNIT])

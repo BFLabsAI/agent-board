@@ -122,13 +122,17 @@ def achar_orca():
 
     Ordem: ORCA_BIN explícito; o shim do terminal aberto por um Orca server
     ($ORCA_CLI_BIN_DIR); o shim do terminal aberto por SSH ($ORCA_REMOTE_CLI_BIN_DIR);
-    o PATH; e por último o relay SSH (~/.orca-relay). Um terminal do servidor nunca
+    o shim padrão do Orca server (~/.config/orca/linux-orca-cli-shim); o PATH; e por último o
+    relay SSH (~/.orca-relay). Um terminal do servidor nunca
     cai no relay, que fala com outro runtime e não conhece os painéis do servidor.
     """
     def em(var):
         d = os.environ.get(var, "")
         return os.path.join(d, "orca") if d else ""
+    # o shim padrão do Orca server vem antes do PATH e do relay: um serviço (systemd) não herda
+    # $ORCA_CLI_BIN_DIR e, sem isto, caía no relay SSH, que não conhece os painéis do servidor
     for c in (os.environ.get("ORCA_BIN", ""), em("ORCA_CLI_BIN_DIR"), em("ORCA_REMOTE_CLI_BIN_DIR"),
+              os.path.expanduser("~/.config/orca/linux-orca-cli-shim/orca"),
               shutil.which("orca") or "", os.path.expanduser("~/.orca-relay/bin/orca")):
         if c and os.access(c, os.X_OK):
             return c

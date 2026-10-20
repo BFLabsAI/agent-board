@@ -651,6 +651,15 @@ class Servico(unittest.TestCase):
         self.assertIn("WantedBy=multi-user.target", t)
         self.assertNotIn("AGENT_BOARD_HOME", t)
 
+    def test_unit_leva_o_orca_do_terminal(self):
+        # o serviço não herda o ambiente: sem isto ele caía no relay SSH e todo agente virava offline
+        velho = os.environ.get("ORCA_CLI_BIN_DIR")
+        os.environ["ORCA_CLI_BIN_DIR"] = "/root/.config/orca/linux-orca-cli-shim"
+        self.addCleanup(lambda: os.environ.pop("ORCA_CLI_BIN_DIR") if velho is None
+                        else os.environ.__setitem__("ORCA_CLI_BIN_DIR", velho))
+        t = cmd_servico.gerar_unit(8765, home=os.path.expanduser("~/.agent-hooks/agent-board"))
+        self.assertIn("Environment=ORCA_CLI_BIN_DIR=/root/.config/orca/linux-orca-cli-shim\n", t)
+
     def test_home_fora_do_padrao_vira_environment(self):
         self.assertIn("Environment=AGENT_BOARD_HOME=/srv/ab\n", cmd_servico.gerar_unit(8765, home="/srv/ab"))
 

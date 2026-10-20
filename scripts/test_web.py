@@ -224,6 +224,23 @@ class Servidor(Base):
 # ---------------------------------------------------------------------------
 # Painel v2: status do agente, dados derivados, API e SSE
 # ---------------------------------------------------------------------------
+class OrcaSemRuntime(unittest.TestCase):
+    def test_orca_que_falha_vira_desconhecido_e_nao_offline(self):
+        import subprocess as sp
+        import painel_orca
+        falhas = [sp.CompletedProcess([], 1, '{"ok": false, "error": "No owning Orca client is connected"}', ""),
+                  sp.CompletedProcess([], 0, '{"ok": false, "error": "x"}', ""),
+                  sp.CompletedProcess([], 1, "", "boom")]
+        velho = painel_orca.subprocess.run
+        self.addCleanup(setattr, painel_orca.subprocess, "run", velho)
+        for f in falhas:
+            painel_orca.subprocess.run = lambda *a, f=f, **k: f
+            self.assertIsNone(painel_orca._consultar(), f)
+        ok = sp.CompletedProcess([], 0, json.dumps({"ok": True, "result": {"terminals": [{"handle": "term_a", "title": "x"}]}}), "")
+        painel_orca.subprocess.run = lambda *a, **k: ok
+        self.assertEqual(list(painel_orca._consultar()), ["term_a"])
+
+
 class StatusAgente(unittest.TestCase):
     AGORA_MS = 1_800_000_000_000
 
