@@ -862,6 +862,316 @@ LINHAS_TORTAS = ['"id"', "[1, 2]", "42", "null", "{", '{"id": 5, "ts": "x"}', '{
                  "[" * 5000]
 
 
+class ApiGeral(Cenario):
+    """Visão geral e multi-squad (1.13): /api/geral, /api/geral/mensagens e /api/stream?projeto=*."""
+    INTERVALOS = {"log": 0.05, "orca": 0.1, "ping": 0.4, "projetos": 0.2}
+    evento = staticmethod(ApiV2.evento)
+
+    def setUp(self):
+        super().setUp()
+        self.conexoes = []
+        self.gravar_cadastro(gama={"projeto": "gama", "agente": "gama-master", "papel": "master",
+                                   "raiz": os.path.join(self.tmp, "nao-existe")})
+        self.srv = self.subir()
+        self.porta = self.srv.server_address[1]
+
+    def gravar_cadastro(self, **extra):
+        with open(os.path.join(HOME_TESTE, "paineis.json"), "w") as f:
+            json.dump({"versao": 1, "paineis": dict(paineis_do(self.raiz, self.raiz_beta), **{f"term_{k}": v for k, v in extra.items()})}, f)
+
+    def subir(self, **kw):
+        srv = cmd_web.servidor(self.raiz, 0, terminais=lambda: self.terminais, intervalos=self.INTERVALOS, **kw)
+        threading.Thread(target=srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(self._parar, srv)
+        return srv
+
+    def _parar(self, srv):
+        for c in self.conexoes:
+            c.close()
+            c.sock = None
+        srv.shutdown()
+        srv.server_close()
+
+    def get(self, caminho, cab=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+        c.request("GET", caminho, headers=dict({"Host": f"127.0.0.1:{self.porta}"}, **(cab or {})))
+        r = c.getresponse()
+        corpo = r.read()
+        c.close()
+        return r, corpo
+
+    def api(self, caminho):
+        r, corpo = self.get(caminho)
+        self.assertEqual(r.status, 200, corpo)
+        return json.loads(corpo)
+
+    def stream(self, porta=None):
+        c = http.client.HTTPConnection("127.0.0.1", porta or self.porta, timeout=5)
+        c.request("GET", "/api/stream?projeto=*", headers={"Host": f"127.0.0.1:{porta or self.porta}"})
+        self.conexoes.append(c)
+        return c, c.getresponse()
+
+    def ate(self, r, nome, projeto=None):
+        while True:
+            e, d = self.evento(r)
+            if e == nome and (projeto is None or d.get("projeto") == projeto):
+                return d
+
+    # --- /api/geral
+    def test_geral_campos_totais_e_ordem(self):
+        g = self.api("/api/geral?periodo=7d")
+        self.assertEqual((g["periodo"], set(g)), ("7d", {"agora", "periodo", "squads", "totais"}))
+        por = {s["projeto"]: s for s in g["squads"]}
+        self.assertEqual(set(por), {"alpha", "beta", "gama"})
+        a = por["alpha"]
+        self.assertEqual(set(a), {"projeto", "raiz", "versao", "cadeia_integra", "indicadores", "agentes", "ultima_mensagem",
+                                  "alertas", "saude"})
+        # indicadores e agentes são os mesmos de /api/resumo e /api/agentes
+        self.assertEqual(a["indicadores"], self.api("/api/resumo?periodo=7d&projeto=alpha")["indicadores"])
+        self.assertEqual(a["agentes"], self.api("/api/agentes?projeto=alpha"))
+        self.assertEqual((a["raiz"], a["cadeia_integra"]), (self.raiz, True))
+        self.assertEqual(por["beta"]["agentes"], self.api("/api/agentes?projeto=beta"))
+        # a última mensagem não é nota e leva o projeto
+        self.assertEqual(a["ultima_mensagem"]["id"], "av1")
+        self.assertEqual(a["ultima_mensagem"]["projeto"], "alpha")
+        self.assertNotIn("prev", a["ultima_mensagem"])
+        self.assertEqual(por["beta"]["ultima_mensagem"]["id"], "b1")
+        # alertas e saúde: pendente > 0 pede atenção; sem nada, ok
+        self.assertEqual(a["indicadores"]["pendentes"] > 0, a["saude"] != "ok")
+        # totais somam os squads
+        t = g["totais"]
+        self.assertEqual(t["squads"], 3)
+        self.assertEqual(t["agentes"], sum(len(s["agentes"]) for s in g["squads"]))
+        for k_t, k_i in (("trabalhando", "trabalhando"), ("esperando", "esperando"), ("abertos", "abertos"),
+                         ("atrasados", "atrasados"), ("revisao", "revisao"), ("mensagens", "mensagens"),
+                         ("subagentes_rodando", "subagentes_rodando")):
+            self.assertEqual(t[k_t], sum(s["indicadores"][k_i] for s in g["squads"]), k_t)
+        # ordem: critico, atencao, ok; empate por nome
+        ordem = {"critico": 0, "atencao": 1, "ok": 2}
+        chaves = [(ordem[s["saude"]], s["projeto"]) for s in g["squads"]]
+        self.assertEqual(chaves, sorted(chaves))
+
+    def test_geral_projeto_quebrado_vira_critico_sem_derrubar(self):
+        g = self.api("/api/geral")
+        gama = next(s for s in g["squads"] if s["projeto"] == "gama")
+        self.assertEqual((gama["saude"], gama["agentes"], gama["ultima_mensagem"]), ("critico", [], None))
+        self.assertIn("erro", gama)
+        self.assertIsInstance(gama["erro"], str)
+        self.assertEqual(gama["indicadores"]["mensagens"], 0)
+        self.assertEqual(set(gama["indicadores"]), set(next(s for s in g["squads"] if s["projeto"] == "alpha")["indicadores"]))
+        self.assertEqual(g["squads"][0]["projeto"], "gama")  # crítico vem primeiro
+        self.assertNotIn("erro", next(s for s in g["squads"] if s["projeto"] == "alpha"))
+
+    def test_geral_config_ilegivel_e_log_torto(self):
+        with open(os.path.join(self.raiz_beta, "docs/agent-board/agent-board.json"), "w") as f:
+            f.write("{nao e json")
+        g = self.api("/api/geral")
+        beta = next(s for s in g["squads"] if s["projeto"] == "beta")
+        self.assertEqual(beta["saude"], "critico")
+        self.assertTrue(beta["erro"])
+        self.assertEqual(next(s for s in g["squads"] if s["projeto"] == "alpha")["ultima_mensagem"]["id"], "av1")
+
+    def test_geral_saude_critico_com_atrasado(self):
+        self.gravar(m("velho", antes(dias=2), M, G, "pedido", prazo=antes(dias=1)))
+        a = next(s for s in self.api("/api/geral")["squads"] if s["projeto"] == "alpha")
+        self.assertGreaterEqual(a["indicadores"]["atrasados"], 1)
+        self.assertEqual(a["saude"], "critico")
+        self.assertGreaterEqual(a["alertas"], a["indicadores"]["atrasados"])
+
+    def test_geral_saude_atencao_e_ok(self):
+        b = next(s for s in self.api("/api/geral")["squads"] if s["projeto"] == "beta")
+        self.assertEqual((b["indicadores"]["pendentes"], b["saude"]), (1, "atencao"))
+        open(os.path.join(self.raiz_beta, "docs/agent-board/comunicacoes.jsonl"), "w").close()
+        b = next(s for s in self.api("/api/geral")["squads"] if s["projeto"] == "beta")
+        self.assertEqual((b["indicadores"]["pendentes"], b["alertas"], b["saude"], b["ultima_mensagem"]), (0, 0, "ok", None))
+
+    def test_geral_cadeia_quebrada_e_critico(self):
+        caminho = os.path.join(self.raiz, "docs/agent-board/comunicacoes.jsonl")
+        with open(caminho) as f:
+            linhas = f.read().splitlines()
+        linhas[2] = linhas[2].replace('"tipo": "entrega"', '"tipo": "resposta"')
+        with open(caminho, "w") as f:
+            f.write("\n".join(linhas) + "\n")
+        a = next(s for s in self.api("/api/geral")["squads"] if s["projeto"] == "alpha")
+        self.assertEqual((a["cadeia_integra"], a["saude"]), (False, "critico"))
+        self.assertGreaterEqual(a["alertas"], 1)
+
+    def test_geral_pergunta_ao_orca_uma_vez(self):
+        chamadas = []
+
+        def consulta():
+            chamadas.append(1)
+            return self.terminais
+
+        painel_orca._cache.update(t=0.0, v=None)
+        srv = cmd_web.servidor(self.raiz, 0, terminais=lambda: painel_orca.terminais(consulta), intervalos=self.INTERVALOS)
+        threading.Thread(target=srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(self._parar, srv)
+        c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+        c.request("GET", "/api/geral", headers={"Host": f"127.0.0.1:{srv.server_address[1]}"})
+        self.assertEqual(c.getresponse().status, 200)
+        c.close()
+        self.assertEqual(len(chamadas), 1)
+        painel_orca._cache.update(t=0.0, v=None)
+
+    def test_geral_periodo_invalido_vira_hoje(self):
+        self.assertEqual(self.api("/api/geral?periodo=xx")["periodo"], "hoje")
+
+    def test_geral_responde_rapido(self):
+        self.api("/api/geral")  # aquecimento
+        t0 = datetime.datetime.now()
+        for _ in range(5):
+            self.api("/api/geral")
+        medio = (datetime.datetime.now() - t0).total_seconds() / 5
+        self.assertLess(medio, 0.5, medio)
+
+    # --- /api/geral/mensagens
+    def test_geral_mensagens_merge_projeto_e_sem_nota(self):
+        r = self.api("/api/geral/mensagens?limite=1000")
+        ids = [x["id"] for x in r["mensagens"]]
+        self.assertIn("b1", ids)
+        self.assertNotIn("n1", ids)  # nota fica de fora
+        self.assertEqual(r["mais"], False)
+        self.assertEqual({x["id"]: x["projeto"] for x in r["mensagens"]}["b1"], "beta")
+        self.assertEqual({x["id"]: x["projeto"] for x in r["mensagens"]}["p1"], "alpha")
+        tss = [painel_estado._ts(x["ts"]) for x in r["mensagens"]]
+        self.assertEqual(tss, sorted(tss, reverse=True))
+        self.assertTrue(all("prev" not in x for x in r["mensagens"]))
+        self.assertEqual(len(r["mensagens"]), len([m_ for m_ in cenario_msgs() if m_["tipo"] != "nota"]) + 1)
+
+    def test_geral_mensagens_pagina_por_antes(self):
+        pag1 = self.api("/api/geral/mensagens?limite=3")
+        self.assertEqual((len(pag1["mensagens"]), pag1["mais"]), (3, True))
+        vistos = list(pag1["mensagens"])
+        while pag1["mais"]:
+            pag1 = self.api("/api/geral/mensagens?limite=3&antes=" + urllib_quote(pag1["mensagens"][-1]["ts"]))
+            vistos += pag1["mensagens"]
+        ids = [x["id"] for x in vistos]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(set(ids), {x["id"] for x in self.api("/api/geral/mensagens?limite=1000")["mensagens"]})
+        # limite absurdo é aparado como em /api/mensagens
+        self.assertLessEqual(len(self.api("/api/geral/mensagens?limite=99999")["mensagens"]), 1000)
+        self.assertEqual(len(self.api("/api/geral/mensagens?limite=0")["mensagens"]),
+                         len(self.api("/api/mensagens?limite=0")["mensagens"]))
+
+    # --- stream *
+    def test_stream_geral_ola_e_eventos_de_dois_projetos(self):
+        _, r = self.stream()
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.getheader("Content-Type"), "text/event-stream")
+        nome, ola = self.evento(r)
+        self.assertEqual(nome, "ola")
+        self.assertEqual((ola["projeto"], ola["projetos"]), ("*", ["alpha", "beta"]))
+        self.assertIn("agora", ola)
+        self.gravar(m("novo1", antes(0), M, R, "pedido", assunto="ao vivo"))
+        registro.gravar_log(self.raiz_beta, m("novo2", antes(0), "beta-master", "beta-master", "aviso"))
+        vistos = []
+        while len({e for e, _ in vistos}) < 3 or not any(e == "mensagem" and d["projeto"] == "beta" for e, d in vistos):
+            ev_ = self.evento(r)
+            self.assertNotEqual(ev_[0], "ola")
+            if ev_[0] != "ping":
+                vistos.append(ev_)
+        achou = {(e, d["projeto"]): d for e, d in vistos}
+        self.assertEqual(achou[("mensagem", "alpha")]["id"], "novo1")
+        self.assertEqual(achou[("mensagem", "beta")]["id"], "novo2")
+        self.assertEqual(achou[("tarefa", "alpha")]["id"], "novo1")
+        self.assertEqual(achou[("agente", "alpha")]["agente"], R)
+        self.assertTrue(all(d["projeto"] in ("alpha", "beta") for _, d in vistos))
+        self.assertIn("agora", self.ate(r, "ping"))
+
+    def test_stream_geral_projeto_novo_entra_no_cadastro(self):
+        _, r = self.stream()
+        self.evento(r)
+        raiz_g = os.path.join(self.tmp, "gama")
+        os.makedirs(os.path.join(raiz_g, "docs/agent-board"))
+        with open(CONFIG) as f:
+            cfg = json.load(f)
+        cfg["projeto"], cfg["prefixo"] = "gama", "gama"
+        with open(os.path.join(raiz_g, "docs/agent-board/agent-board.json"), "w") as f:
+            json.dump(cfg, f)
+        self.gravar_cadastro(gama={"projeto": "gama", "agente": "gama-master", "papel": "master", "raiz": raiz_g})
+        espera = datetime.datetime.now() + datetime.timedelta(seconds=1)
+        while datetime.datetime.now() < espera:  # dá tempo da releitura do cadastro (0,2 s) montar o vigia
+            self.ate(r, "ping")
+            break
+        registro.gravar_log(raiz_g, m("g1", antes(0), "gama-master", "gama-master", "aviso"))
+        self.assertEqual(self.ate(r, "mensagem", "gama")["id"], "g1")
+
+    def test_stream_geral_ocupa_uma_vaga(self):
+        srv = self.subir(limite_sse=1)
+        porta = srv.server_address[1]
+        c1, r1 = self.stream(porta)
+        self.assertEqual(r1.status, 200)
+        self.evento(r1)
+        c2, r2 = self.stream(porta)
+        self.assertEqual(r2.status, 503)
+        r2.read()
+        r1.close()
+        c1.close()
+        fim = datetime.datetime.now() + datetime.timedelta(seconds=5)
+        status = 503
+        while status == 503 and datetime.datetime.now() < fim:
+            c3, r3 = self.stream(porta)
+            status = r3.status
+            if status == 503:
+                r3.read()
+                c3.close()
+        self.assertEqual(status, 200)
+
+    def test_vigia_geral_projeto_sai_do_cadastro(self):
+        t = [100.0]
+        atuais = {"alpha": self.raiz, "beta": self.raiz_beta}
+        v = painel_stream.VigiaGeral(lambda: dict(atuais), carregar, lambda: self.terminais,
+                                     {"orca": 2.0, "ping": 15.0, "projetos": 5.0}, relogio=lambda: t[0])
+        self.assertEqual(v.ola()[1]["projetos"], ["alpha", "beta"])
+        del atuais["beta"]
+        t[0] += 4
+        v.passo()
+        self.assertEqual(list(v.vigias), ["alpha", "beta"])  # ainda não releu
+        t[0] += 1.5
+        v.passo()
+        self.assertEqual(list(v.vigias), ["alpha"])
+        registro.gravar_log(self.raiz_beta, m("b9", antes(0), "beta-master", "beta-master", "aviso"))
+        self.assertEqual([e for e, _ in v.passo() if e == "mensagem"], [])
+
+    def test_vigia_geral_ping_unico(self):
+        t = [100.0]
+        v = painel_stream.VigiaGeral(lambda: {"alpha": self.raiz, "beta": self.raiz_beta}, carregar, lambda: self.terminais,
+                                     {"orca": 2.0, "ping": 15.0, "projetos": 5.0}, relogio=lambda: t[0])
+        t[0] += 16
+        self.assertEqual([e for e, _ in v.passo()], ["ping"])
+
+    # --- compatibilidade e segurança
+    def test_curinga_so_vale_no_stream(self):
+        for rota in ("estado", "resumo", "agentes", "tarefas", "conversas", "mensagens", "analytics", "workflows", "subagentes"):
+            r, corpo = self.get(f"/api/{rota}?projeto=*")
+            self.assertEqual((r.status, json.loads(corpo)), (404, {"erro": "projeto desconhecido"}), rota)
+        self.assertNotIn("*", [p["projeto"] for p in self.api("/api/projetos")])
+
+    def test_nome_de_projeto_com_curinga_nao_entra(self):
+        self.gravar_cadastro(x={"projeto": "a*b", "agente": "ab-master", "papel": "master", "raiz": self.raiz})
+        self.assertNotIn("a*b", [p["projeto"] for p in self.api("/api/projetos")])
+        self.assertNotIn("a*b", [s["projeto"] for s in self.api("/api/geral")["squads"]])
+
+    def test_host_e_origem_nas_rotas_novas(self):
+        for caminho in ("/api/geral", "/api/geral/mensagens", "/api/stream?projeto=*"):
+            c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+            c.request("GET", caminho, headers={"Host": "evil.example"})
+            self.assertEqual(c.getresponse().status, 403, caminho)
+            c.close()
+            for cab in ({"Origin": "http://evil.example"}, {"Origin": "null"}, {"Sec-Fetch-Site": "cross-site"}):
+                self.assertEqual(self.get(caminho, cab=cab)[0].status, 403, (caminho, cab))
+        ok = {"Origin": f"http://127.0.0.1:{self.porta}", "Sec-Fetch-Site": "same-origin"}
+        self.assertEqual(self.get("/api/geral", cab=ok)[0].status, 200)
+
+    def test_rotas_novas_so_leitura(self):
+        for caminho in ("/api/geral", "/api/geral/mensagens"):
+            c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=5)
+            c.request("POST", caminho, headers={"Host": f"127.0.0.1:{self.porta}"})
+            self.assertEqual(c.getresponse().status, 405)
+            c.close()
+
+
 class Seguranca(Cenario):
     """Regressão da auditoria de segurança do painel (docs: ADR 0005). O painel é só leitura em 127.0.0.1."""
 
