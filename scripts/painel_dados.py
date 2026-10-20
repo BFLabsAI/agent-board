@@ -150,8 +150,24 @@ def _stats(agente, msgs, tars, agora, tempos):
             "tempo_resposta_p50_min": percentil([mi for q, mi, t in tempos if q == agente and t >= corte], 0.5)}
 
 
-def agentes(projeto, paineis, msgs, terminais, agora, tars=None):
-    """Agente[] do contrato. `terminais`: {handle: terminal} do Orca, ou None se o orca não respondeu."""
+SUBS_TERMINADOS = 5
+
+
+def subs_do_agente(subs, agente, agora):
+    """(SubAgente[] do Agente, subagentes_7d): todos os `rodando` + os 5 terminados mais recentes das últimas 24 h."""
+    meus = [s for s in subs if s.get("agente") == agente]
+    corte24, corte7 = agora - datetime.timedelta(hours=24), agora - datetime.timedelta(days=7)
+    rodando = [s for s in meus if s["status"] == "rodando"]
+    fechados = [s for s in meus if s["status"] != "rodando" and (_ts(s.get("fim") or s["inicio"]) or corte24) >= corte24]
+    fechados.sort(key=lambda s: _ts(s.get("fim") or s["inicio"]) or corte24, reverse=True)
+    lista = sorted(rodando + fechados[:SUBS_TERMINADOS], key=lambda s: _ts(s["inicio"]) or corte24, reverse=True)
+    return lista, sum(1 for s in meus if (_ts(s["inicio"]) or corte7) >= corte7)
+
+
+def agentes(projeto, paineis, msgs, terminais, agora, tars=None, subs=None):
+    """Agente[] do contrato. `terminais`: {handle: terminal} do Orca, ou None se o orca não respondeu.
+
+    `subs`: SubAgente[] (painel_subagentes.listar) do projeto; None = sem coleta."""
     tars = tars if tars is not None else painel_estado.tarefas(msgs, agora)
     cadastro = sorted(({"handle": h, **p} for h, p in paineis.items() if p.get("projeto") == projeto),
                       key=lambda a: (ORDEM_PAPEL.get(a.get("papel"), 3), a["agente"]))
@@ -164,6 +180,7 @@ def agentes(projeto, paineis, msgs, terminais, agora, tars=None):
         term = (terminais or {}).get(h)
         n_pend = len(pend.get(nome, []))
         wt = a.get("worktree")
+        meus_subs, subs_7d = subs_do_agente(subs or [], nome, agora)
         out.append({
             "agente": nome, "papel": a.get("papel") or papel_do_nome(nome), "handle": h,
             "harness": harness_de(h, nome, term), "worktree": wt, "branch": a.get("branch") or (f"ab/{nome}" if wt else None),
@@ -171,7 +188,8 @@ def agentes(projeto, paineis, msgs, terminais, agora, tars=None):
             "tela": tela_de(term["preview"]) if term else None,
             "ultima_saida": _iso_ms(term.get("lastOutputAt"), agora.tzinfo) if term else None,
             "pendentes": n_pend, "tarefa_atual": tarefa_atual(nome, tars),
-            "stats": _stats(nome, msgs, tars, agora, tempos),
+            "stats": dict(_stats(nome, msgs, tars, agora, tempos), subagentes_7d=subs_7d),
+            "subagentes": meus_subs,
         })
     return out
 
@@ -293,7 +311,41 @@ def conversa_por_id(convs, cid):
 # ---------------------------------------------------------------------------
 # Analytics
 # ---------------------------------------------------------------------------
-def analytics(msgs, agora):
+def _media(valores):
+    return round(sum(valores) / len(valores), 1) if valores else None
+
+
+def analytics_subagentes(subs, agora):
+    """analytics.subagentes: por agente, por tipo e por dia (30 d, crescente), pelo inicio."""
+    hoje, tz = agora.date(), agora.tzinfo
+    corte = agora - datetime.timedelta(days=30)
+    dias = dict.fromkeys((hoje - datetime.timedelta(days=29 - i) for i in range(30)), 0)
+    ag, tp = {}, {}
+    for s in subs or []:
+        t = _ts(s["inicio"])
+        if t is None or t < corte:
+            continue
+        d = t.astimezone(tz).date()
+        if d in dias:
+            dias[d] += 1
+        a = ag.setdefault(s["agente"], {"n": 0, "rodando": 0, "erro": 0, "d": []})
+        k = tp.setdefault(s.get("tipo") or "desconhecido", {"n": 0, "d": []})
+        a["n"] += 1
+        k["n"] += 1
+        a["rodando"] += s["status"] == "rodando"
+        a["erro"] += s["status"] == "erro"
+        if s.get("duracao_s") is not None:
+            a["d"].append(s["duracao_s"])
+            k["d"].append(s["duracao_s"])
+    return {"por_agente": [{"agente": n, "n": a["n"], "rodando": a["rodando"], "erro": a["erro"],
+                            "duracao_media_s": _media(a["d"])}
+                           for n, a in sorted(ag.items(), key=lambda x: (-x[1]["n"], x[0]))],
+            "por_tipo": [{"tipo": n, "n": k["n"], "duracao_media_s": _media(k["d"])}
+                         for n, k in sorted(tp.items(), key=lambda x: (-x[1]["n"], x[0]))],
+            "por_dia_30": [{"dia": d.isoformat(), "n": n} for d, n in dias.items()]}
+
+
+def analytics(msgs, agora, subs=None):
     """Heatmap de 371 dias e os agregados de 30 dias, sobre o log ativo + arquivo."""
     tz = agora.tzinfo
     hoje = agora.date()
@@ -337,7 +389,7 @@ def analytics(msgs, agora):
     return {"heatmap": [{"dia": d.isoformat(), "n": n} for d, n in heat.items()],
             "ultimos_30d": list(dias30.values()), "horas": horas, "por_agente": por_agente,
             "tipos": [{"tipo": t, "n": n} for t, n in sorted(tipos.items(), key=lambda x: (-x[1], str(x[0])))],
-            "alertas": painel_estado.ping_pong(recentes)}
+            "alertas": painel_estado.ping_pong(recentes), "subagentes": analytics_subagentes(subs, agora)}
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +415,7 @@ def sequencia_de(thread):
     return seq
 
 
-def workflows(msgs, convs, periodo, agora, papeis, estados):
+def workflows(msgs, convs, periodo, agora, papeis, estados, subs=None):
     """Grafo em colunas, comunicação por par, fluxos mais comuns e KPIs. `papeis`: {agente: papel}; `estados`: {id da tarefa: Tarefa}."""
     desde = painel_estado.inicio_do_periodo(periodo, agora)
     no_periodo = [m for m in msgs if m.get("tipo") != "nota" and (_ts(m.get("ts")) or agora) >= desde]
@@ -381,6 +433,12 @@ def workflows(msgs, convs, periodo, agora, papeis, estados):
             agente(m["de"], "master")
             agente(m["para"], "manager")
             aresta(m["de"], m["para"])
+    sel_subs = [s for s in subs or [] if s["status"] == "rodando" or (_ts(s["inicio"]) or agora) >= desde]
+    for sb in sel_subs:  # agente -> sub:<tipo>, um nó por tipo
+        no = "sub:" + (sb.get("tipo") or "desconhecido")
+        agente(sb["agente"], "manager")
+        colunas[no], rotulos[no] = "subagente", no[4:]
+        aresta(sb["agente"], no)
     aprov = rej = 0
     ate_entrega, tamanhos, fluxos = [], [], {}
     for c, th in sel:
@@ -418,7 +476,7 @@ def workflows(msgs, convs, periodo, agora, papeis, estados):
             colunas[no], rotulos[no] = "resultado", ROTULOS[no]
         elif no == "revisao":
             colunas[no], rotulos[no] = "revisao", ROTULOS[no]
-    ordem_col = ("master", "manager", "researcher", "issue", "revisao", "resultado")
+    ordem_col = ("master", "manager", "researcher", "subagente", "issue", "revisao", "resultado")
     nos = sorted(ids, key=lambda i: (ordem_col.index(colunas[i]) if colunas.get(i) in ordem_col else 1, i))
     comunicacao = {}
     for m in no_periodo:
@@ -434,6 +492,7 @@ def workflows(msgs, convs, periodo, agora, papeis, estados):
         "kpis": {"conversas": len(sel), "taxa_aprovacao": round(aprov / (aprov + rej), 3) if aprov + rej else None,
                  "tempo_ate_entrega_p50_min": percentil(ate_entrega, 0.5),
                  "fluxo_mais_comum": " > ".join(top[0][0]) if top else None,
-                 "msgs_por_conversa": round(sum(tamanhos) / len(tamanhos), 1) if tamanhos else None},
+                 "msgs_por_conversa": round(sum(tamanhos) / len(tamanhos), 1) if tamanhos else None,
+                 "subagentes": len(sel_subs)},
     }
 
