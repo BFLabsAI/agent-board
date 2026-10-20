@@ -11,7 +11,6 @@ import time
 
 import painel_dados
 import painel_estado
-import registro
 from base import LOG_REL
 
 INTERVALOS = {"log": 1.0, "orca": 2.0, "ping": 15.0}
@@ -69,13 +68,14 @@ class Vigia:
                 l = json.loads(texto)
             except ValueError:
                 continue
-            if isinstance(l, dict) and "id" in l and "status" not in l:
+            l = painel_estado.sanear(l)
+            if l:
                 out.append(painel_dados.publica(l))
         return out
 
     def _atualizar(self, eventos):
         agora = datetime.datetime.now().astimezone()
-        msgs = registro.ler_log(self.raiz)
+        msgs = painel_estado.ler_log(self.raiz)
         tars = painel_estado.tarefas(msgs, agora)
         ags = painel_dados.agentes(self.projeto, self.paineis(), msgs, self.terminais(), agora, tars)
         for t in tars:

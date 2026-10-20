@@ -832,6 +832,269 @@ class ApiV2(Cenario):
         self.assertEqual(status, 200)
 
 
+# ---------------------------------------------------------------------------
+# Segurança (issue #12): log, terminal e rede são entrada não confiável
+# ---------------------------------------------------------------------------
+ENDPOINTS = ("estado", "resumo", "agentes", "tarefas", "conversas", "mensagens", "analytics", "workflows",
+             "conversas/p1", "conversas/torto")
+LINHAS_TORTAS = ['"id"', "[1, 2]", "42", "null", "{", '{"id": 5, "ts": "x"}', '{"id": ["a"], "tipo": "pedido"}',
+                 '{"id": "t1", "tipo": "pedido"}',
+                 '{"id": "t2", "ts": "2026-10-20T10:00:00", "tipo": "pedido", "de": "alpha-master", "para": "alpha-manager01-cc",'
+                 ' "assunto": null, "prazo": "0001-01-01T00:00:00", "issues": "abc", "responde_a": {"x": 1}}',
+                 '{"id": "t3", "ts": 12345, "tipo": ["pedido"], "de": {"a": 1}, "para": ["x"], "veredito": ["x"]}',
+                 '{"id": "t4", "ts": "9999-12-31T23:59:59+14:00", "tipo": "pedido", "de": "a", "para": "b", "issues": [null, 1.5, true, 7]}',
+                 '{"id": "t5", "ts": "2026-10-20T10:00:00Z", "tipo": "entrega", "de": "alpha-manager01-cc", "para": null, "x": NaN, "y": Infinity}',
+                 "[" * 5000]
+
+
+class Seguranca(Cenario):
+    """Regressão da auditoria de segurança do painel (docs: ADR 0005). O painel é só leitura em 127.0.0.1."""
+
+    def setUp(self):
+        super().setUp()
+        self.srv = self.subir()
+        self.porta = self.srv.server_address[1]
+
+    def subir(self, **kw):
+        srv = cmd_web.servidor(self.raiz, 0, terminais=lambda: self.terminais, intervalos={"log": 0.05, "orca": 0.1, "ping": 0.4}, **kw)
+        threading.Thread(target=srv.serve_forever, args=(0.02,), daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        return srv
+
+    def get(self, caminho, host=None, cab=None, porta=None):
+        porta = porta or self.porta
+        c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
+        c.request("GET", caminho, headers=dict({"Host": host or f"127.0.0.1:{porta}"}, **(cab or {})))
+        r = c.getresponse()
+        corpo = r.read()
+        c.close()
+        return r, corpo
+
+    def gravar_cru(self, *linhas):
+        with open(os.path.join(self.raiz, "docs/agent-board/comunicacoes.jsonl"), "a") as f:
+            for l in linhas:
+                f.write(l + "\n")
+
+    # --- linha torta no log não derruba a API, nem o SSE, nem escreve em avisos.log
+    def test_linhas_tortas_nao_derrubam_nenhum_endpoint(self):
+        self.gravar_cru(*LINHAS_TORTAS)
+        for ep in ENDPOINTS:
+            for q in ("", "?periodo=7d", "?periodo=24h"):
+                r, corpo = self.get(f"/api/{ep}{q}")
+                self.assertIn(r.status, (200, 404), (ep, q, corpo[:200]))
+                if r.status == 200:  # JSON estrito: NaN/Infinity quebram o JSON.parse do navegador
+                    json.loads(corpo, parse_constant=lambda c: self.fail(f"{c} em {ep}"))
+
+    def test_ler_o_log_nao_escreve_avisos(self):
+        avisos = os.path.join(HOME_TESTE, "avisos.log")
+        antes_ = os.path.getsize(avisos) if os.path.exists(avisos) else 0
+        self.gravar_cru("{", "lixo")
+        for _ in range(3):
+            self.get("/api/estado")
+            self.get("/api/analytics")
+        self.assertEqual(os.path.getsize(avisos) if os.path.exists(avisos) else 0, antes_)
+
+    def test_vigia_sobrevive_a_linha_torta(self):
+        v = painel_stream.Vigia(self.raiz, "alpha", carregar, lambda: self.terminais, {"log": 0, "orca": 0, "ping": 99})
+        self.gravar_cru(*LINHAS_TORTAS)
+        self.gravar(m("ok1", antes(1), M, G, "pedido"))
+        evs = v.passo()
+        self.assertEqual([e[1]["id"] for e in evs if e[0] == "mensagem"], ["t1", "t2", "t3", "t4", "t5", "ok1"])
+
+    def test_ts_sem_fuso_e_datas_absurdas_nao_estouram(self):
+        self.gravar_cru('{"id": "n1", "ts": "2026-10-20T10:00:00", "tipo": "pedido", "de": "alpha-master", "para": "alpha-manager01-cc"}')
+        self.assertEqual(self.get("/api/mensagens?antes=2026-01-01T00:00:00")[0].status, 200)
+        self.assertEqual(self.get("/api/mensagens?antes=0001-01-01T00:00:00")[0].status, 200)
+        self.assertEqual(self.get("/api/mensagens?antes=9999-12-31T23:59:59%2B14:00")[0].status, 200)
+
+    def test_texto_do_log_e_limitado_e_so_texto(self):
+        self.gravar(m("gigante", antes(1), M, G, "pedido", assunto="A" * 1_000_000, branch="B" * 1_000_000, issues=list(range(500))),
+                    m("aninhado", antes(1), M, G, "pedido", extra={"a": [1]}, lista=[1]))
+        r, corpo = self.get("/api/mensagens?limite=1000")
+        self.assertLess(len(corpo), 200_000)
+        ms = {x["id"]: x for x in json.loads(corpo)["mensagens"]}
+        self.assertLessEqual(len(ms["gigante"]["assunto"]), 2000)
+        self.assertLessEqual(len(ms["gigante"]["issues"]), 50)
+        self.assertNotIn("extra", ms["aninhado"])
+        self.assertLess(len(self.get("/api/estado")[1]), 400_000)
+
+    def test_de_para_assunto_sempre_texto(self):
+        self.gravar_cru('{"id": "sem-campos", "ts": "%s", "tipo": "pedido"}' % antes(1))
+        ms = {x["id"]: x for x in json.loads(self.get("/api/mensagens")[1])["mensagens"]}
+        self.assertEqual((ms["sem-campos"]["de"], ms["sem-campos"]["para"], ms["sem-campos"]["assunto"]), ("", "", ""))
+
+    # --- parâmetros
+    def test_parametros_invalidos_ou_enormes(self):
+        for q in ("limite=-1", "limite=0", "limite=1000000000", "limite=abc", "limite=1e9", "limite=" + "9" * 400, "antes=lixo",
+                  "periodo=%00", "agente[]=x", "q=" + "a" * 5000, "estado=%00", "tipo=" + "x" * 5000):
+            for ep in ("mensagens", "conversas", "estado", "workflows"):
+                r, corpo = self.get(f"/api/{ep}?{q}")
+                self.assertEqual(r.status, 200, (ep, q))
+        self.assertLessEqual(len(json.loads(self.get("/api/mensagens?limite=1000000")[1])["mensagens"]), 1000)
+        self.assertEqual(len(json.loads(self.get("/api/mensagens?limite=-5")[1])["mensagens"]), 1)
+
+    def test_projeto_malicioso_e_id_malicioso(self):
+        for p in ("../../etc", "..", "a/b", "%2e%2e%2f", "alpha%00", "x" * 400, "<script>", "beta/../alpha", self.raiz_beta + "/../alpha",
+                  "/etc"):
+            r, corpo = self.get(f"/api/agentes?projeto={urllib_quote(p)}")
+            self.assertEqual((r.status, json.loads(corpo)), (404, {"erro": "projeto desconhecido"}), p)
+        for cid in ("..%2f..%2fetc", "%00", "../x", "p1/../p1", "x" * 300, "%3Cscript%3E", ""):
+            self.assertEqual(self.get(f"/api/conversas/{cid}")[0].status, 404, cid)
+
+    # --- caminhos
+    def test_path_traversal_e_codificacoes(self):
+        for c in ("/../../etc/passwd", "/%2e%2e/%2e%2e/etc/passwd", "/assets/../index.html", "/assets/%2e%2e/index.html",
+                  "/assets/%252e%252e/x", "/assets/..%5cindex.html", "/assets/..%2findex.html", "/assets//etc/passwd",
+                  "/assets/%00", "/assets/", "/sub/favicon.svg", "/x.py", "/cmd_web.py", "/painel_web.html",
+                  "/api/stream/../estado", "/api/%2e%2e/%2e%2e/etc/passwd", "/%5c..%5c..%5cetc%5cpasswd"):
+            r, corpo = self.get(c)
+            self.assertIn(r.status, (404, 400), c)
+            self.assertNotIn(b"root:", corpo, c)
+
+    def test_link_simbolico_nao_sai_do_build(self):
+        build = os.path.join(self.tmp, "build")
+        os.makedirs(os.path.join(build, "assets"))
+        segredo = os.path.join(self.tmp, "segredo.txt")
+        with open(segredo, "w") as f:
+            f.write("SEGREDO")
+        with open(os.path.join(build, "assets", "ok.js"), "w") as f:
+            f.write("1")
+        os.symlink(segredo, os.path.join(build, "assets", "link.js"))
+        os.symlink(segredo, os.path.join(build, "link.svg"))
+        antigo, cmd_web.DIR_WEB = cmd_web.DIR_WEB, build
+        self.addCleanup(setattr, cmd_web, "DIR_WEB", antigo)
+        self.assertEqual(self.get("/assets/ok.js")[1], b"1")
+        for c in ("/assets/link.js", "/link.svg"):
+            r, corpo = self.get(c)
+            self.assertEqual(r.status, 404, c)
+            self.assertNotIn(b"SEGREDO", corpo)
+
+    def test_metodos_e_requisicao_sem_host(self):
+        for metodo in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"):
+            self.assertEqual(self.pedir_cru(f"{metodo} /api/estado HTTP/1.0\r\nHost: 127.0.0.1:{self.porta}\r\n\r\n")[0], 405, metodo)
+        self.assertEqual(self.pedir_cru("GET /api/estado HTTP/1.0\r\n\r\n")[0], 403)  # sem Host
+        self.assertEqual(self.pedir_cru("GET /api/estado HTTP/1.0\r\nHost:\r\n\r\n")[0], 403)
+
+    def pedir_cru(self, texto):
+        import socket
+        s = socket.create_connection(("127.0.0.1", self.porta), timeout=5)
+        s.sendall(texto.encode())
+        dado = b""
+        while True:
+            parte = s.recv(65536)
+            if not parte:
+                break
+            dado += parte
+        s.close()
+        return int(dado.split(b" ", 2)[1]), dado
+
+    # --- DNS rebinding, CORS, CSRF/SSE de outra origem, cabeçalhos
+    def test_host_e_origem(self):
+        for h in ("evil.example", "evil.example:80", "127.0.0.1", f"127.0.0.1:{self.porta}.evil.com", f"evil.com:{self.porta}",
+                  f"127.0.0.1:{self.porta},evil.com", f"[::1]:{self.porta}", f"0.0.0.0:{self.porta}"):
+            self.assertEqual(self.get("/api/estado", host=h)[0].status, 403, h)
+        for cab in ({"Origin": "http://evil.example"}, {"Origin": "null"}, {"Origin": f"http://127.0.0.1:{self.porta + 1}"},
+                    {"Origin": f"http://localhost:{self.porta + 1}"}, {"Sec-Fetch-Site": "cross-site"},
+                    {"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors"}):
+            for caminho in ("/api/estado", "/api/stream"):
+                self.assertEqual(self.get(caminho, cab=cab)[0].status, 403, (caminho, cab))
+        self.assertEqual(self.get("/api/estado", cab={"Origin": f"http://127.0.0.1:{self.porta}", "Sec-Fetch-Site": "same-origin"})[0].status, 200)
+        # navegar direto (digitar a URL, clicar num link de outro site) continua abrindo a página
+        self.assertEqual(self.get("/", cab={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"})[0].status, 200)
+
+    def test_cabecalhos_em_todas_as_respostas(self):
+        for c in ("/", "/api/estado", "/api/projetos", "/nada.js", "/api/x", "/assets/nada.js"):
+            r, _ = self.get(c, cab={"Origin": f"http://127.0.0.1:{self.porta}"})
+            csp = r.getheader("Content-Security-Policy") or ""
+            for parte in ("default-src 'self'", "script-src 'self'", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'",
+                          "form-action 'none'"):
+                self.assertIn(parte, csp, (c, parte))
+            if c == "/":
+                self.assertNotIn("unsafe-inline", csp.split("style-src")[0])  # script sem 'unsafe-inline'
+                self.assertNotRegex(csp, r"script-src[^;]*unsafe")
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff", c)
+            self.assertEqual(r.getheader("Referrer-Policy"), "no-referrer", c)
+            self.assertEqual(r.getheader("X-Frame-Options"), "DENY", c)
+            self.assertEqual(r.getheader("Cross-Origin-Resource-Policy"), "same-origin", c)
+            self.assertEqual(r.getheader("Cache-Control"), "no-store", c)
+            self.assertIsNone(r.getheader("Access-Control-Allow-Origin"), c)  # sem CORS
+
+    # --- DoS
+    def test_slowloris_e_leitor_parado_perdem_a_conexao(self):
+        import socket
+        import time
+        antigo, cmd_web.TIMEOUT_SOCKET = cmd_web.TIMEOUT_SOCKET, 0.4
+        self.addCleanup(setattr, cmd_web, "TIMEOUT_SOCKET", antigo)
+        srv = self.subir()
+        s = socket.create_connection(("127.0.0.1", srv.server_address[1]), timeout=5)
+        s.sendall(b"GET /api/estado HTTP/1.1\r\nHost: 127.0.0.1:1\r\nX-Lento: ")  # cabeçalho nunca termina
+        t0 = time.time()
+        self.assertEqual(s.recv(100), b"")  # o servidor fechou
+        self.assertLess(time.time() - t0, 4)
+        s.close()
+
+    def test_teto_de_conexoes_simultaneas(self):
+        import socket
+        antigo, cmd_web.ServidorLimitado.limite_conexoes = cmd_web.ServidorLimitado.limite_conexoes, 3
+        self.addCleanup(setattr, cmd_web.ServidorLimitado, "limite_conexoes", antigo)
+        srv = self.subir()
+        porta = srv.server_address[1]
+        ociosas = [socket.create_connection(("127.0.0.1", porta), timeout=5) for _ in range(3)]
+        try:
+            fim = datetime.datetime.now() + datetime.timedelta(seconds=3)
+            status = 200
+            while status != 503 and datetime.datetime.now() < fim:  # as ociosas ainda podem não ter chegado ao accept
+                status = self.get("/api/projetos", porta=porta)[0].status
+            self.assertEqual(status, 503)
+        finally:
+            for s in ociosas:
+                s.close()
+        fim = datetime.datetime.now() + datetime.timedelta(seconds=5)  # fechou: as vagas voltam
+        while status != 200 and datetime.datetime.now() < fim:
+            status = self.get("/api/projetos", porta=porta)[0].status
+        self.assertEqual(status, 200)
+
+    def test_erro_inesperado_vira_500_com_resposta(self):
+        original = painel_dados.agentes
+        painel_dados.agentes = lambda *a, **k: 1 / 0
+        self.addCleanup(setattr, painel_dados, "agentes", original)
+        r, corpo = self.get("/api/agentes")
+        self.assertEqual((r.status, json.loads(corpo)), (500, {"erro": "erro interno"}))
+        self.assertEqual(self.get("/api/projetos")[0].status, 200)  # o servidor segue de pé
+
+    # --- XSS: o servidor devolve o texto do log como dado (JSON), nunca como HTML
+    def test_payloads_voltam_como_json_inertes(self):
+        xs = ['<script>alert(1)</script>', '<img src=x onerror=alert(1)>', "javascript:alert(1)", '<svg onload=alert(1)>',
+              "\u202eevil\u202c", '"><script>', "{{7*7}}"]
+        for i, x in enumerate(xs):
+            self.gravar(m(f"x{i}", antes(1), M, G, "pedido", assunto=x, branch=x, prazo=x, modo=x, veredito=x, tema=x))
+        for ep in ("mensagens", "estado", "tarefas", "conversas/x0"):
+            r, corpo = self.get(f"/api/{ep}")
+            self.assertEqual(r.getheader("Content-Type"), "application/json; charset=utf-8")
+            self.assertEqual(r.getheader("X-Content-Type-Options"), "nosniff")
+        self.assertIn("<script>", json.loads(self.get("/api/mensagens")[1])["mensagens"][0]["assunto"])
+
+    # --- vazamento pela tela do terminal
+    def test_tela_mascara_segredos(self):
+        saida = painel_dados.tela_de("\n".join([
+            "export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx", 'curl -H "Authorization: Bearer abc.def-1234567890" x',
+            "ghp_abcdefghijklmnopqrstuvwxyz0123456789", "AKIAIOSFODNN7EXAMPLE", "password=hunter2", "senha: x1y2",
+            "token: abc123", "-----BEGIN RSA PRIVATE KEY-----", "MIIEvQIBADANBg", "-----END RSA PRIVATE KEY-----",
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdefghijk", "npm test passou, 3 tokens usados"]))
+        for segredo in ("abcdefghijklmnopqrstuvwx", "abc.def-1234567890", "ghp_", "AKIA", "hunter2", "x1y2", "abc123", "MIIEvQ",
+                        "eyJhbGci"):
+            self.assertNotIn(segredo, saida, segredo)
+        self.assertIn("npm test passou", saida)
+        t = json.loads(self.get("/api/agentes")[1])
+        self.assertTrue(all("sk-" not in (a["tela"] or "") for a in t))
+
+    def test_api_entrega_tela_mascarada(self):
+        self.terminais["term_m"]["preview"] = "rodando\nAPI_KEY=sk-abcdefghijklmnopqrstuvwxyz\n"
+        m_ = next(a for a in json.loads(self.get("/api/agentes")[1]) if a["agente"] == M)
+        self.assertNotIn("sk-abc", m_["tela"])
+        self.assertIn("rodando", m_["tela"])
+
+
 if __name__ == "__main__":
     try:
         unittest.main(verbosity=1)

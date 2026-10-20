@@ -6,22 +6,129 @@ de tarefa seguem docs/userguide/painel.md.
 """
 import datetime
 import glob
+import json
 import os
 
 import cmd_tarefas
 import politica
 import registro
-from base import VERSAO, eh_maestri
+from base import LOG_REL, VERSAO, eh_maestri
 
 TIPOS_TAREFA = ("pedido", "entrega")
 PERIODOS = {"hoje": None, "24h": datetime.timedelta(hours=24), "7d": datetime.timedelta(days=7)}
 
 
+ANO_MIN, ANO_MAX = 2000, 2100
+
+
 def _ts(texto):
+    """ISO -> datetime com fuso (sem fuso = hora local); None se ilegível ou fora de 2000-2100.
+
+    Sempre com fuso: comparar naive com aware levanta TypeError, e datas absurdas estouram no astimezone/timestamp.
+    """
     try:
-        return datetime.datetime.fromisoformat(texto)
-    except (TypeError, ValueError):
+        t = datetime.datetime.fromisoformat(texto)
+        if not ANO_MIN <= t.year <= ANO_MAX:
+            return None
+        return t if t.tzinfo else t.astimezone()
+    except (TypeError, ValueError, OverflowError, OSError):
         return None
+
+
+# --- Entrada não confiável: o log vem de agentes de IA (e de merges) ---------------------------------
+MAX_TEXTO = 2000       # tamanho máximo de qualquer texto que a API devolve
+MAX_ID = 200
+MAX_ISSUES = 50
+TEXTOS = ("ts", "de", "para", "tipo", "assunto", "branch", "prazo", "modo", "veredito", "tema", "titulo", "trecho",
+          "responde_a", "andamento", "id")
+
+
+def _texto(valor):
+    return valor[:MAX_TEXTO] if isinstance(valor, str) else str(valor)[:MAX_TEXTO]
+
+
+def sanear(linha):
+    """A mensagem com tipos previsíveis e tamanho limitado, ou None se não serve (sem id texto, não é objeto).
+
+    Os campos de texto viram str (ou None), `issues` vira lista de inteiros, `responde_a` vira texto, valores
+    aninhados e números não finitos saem. Assim uma linha torta no log não derruba a API nem o SSE.
+    """
+    if not isinstance(linha, dict) or "status" in linha:
+        return None
+    cid = linha.get("id")
+    if not isinstance(cid, str) or not cid or len(cid) > MAX_ID:
+        return None
+    out = {}
+    for k, v in linha.items():
+        if not isinstance(k, str):
+            continue
+        k = k[:60]
+        if k == "issues":
+            v = [i for i in v if isinstance(i, int) and not isinstance(i, bool) and abs(i) < 2 ** 53][:MAX_ISSUES] \
+                if isinstance(v, list) else []
+        elif k == "responde_a" and isinstance(v, list):
+            v = ", ".join(x for x in v if isinstance(x, str))
+        elif isinstance(v, (dict, list)):
+            continue
+        elif isinstance(v, float) and (v != v or v in (float("inf"), float("-inf"))):
+            v = None
+        elif k in TEXTOS and v is not None:
+            v = _texto(v)
+        elif isinstance(v, str):
+            v = v[:MAX_TEXTO]
+        out[k] = v
+    out.setdefault("tipo", None)  # o código do painel indexa m["tipo"]
+    for k in ("de", "para", "assunto"):  # o contrato da API (e a SPA) tratam como texto, nunca null
+        out[k] = out.get(k) or ""
+    out["ts"] = out.get("ts") or ""  # politica.pendentes compara o ts como texto
+    if out.get("prazo") is not None and _ts(out["prazo"]) is None:
+        out["prazo"] = None  # prazo ilegível não vale (e datas absurdas estouram a conta do atraso)
+    return out
+
+
+def _linhas(caminho):
+    """(texto, objeto JSON) de cada linha legível. Não escreve nada: o registro.ler_log anota cada linha ruim em
+    avisos.log a cada leitura, e o painel lê o log a cada requisição e a cada tique do SSE."""
+    out = []
+    try:
+        with open(caminho, encoding="utf-8", errors="replace") as f:
+            for texto in f:
+                if texto.strip():
+                    try:
+                        out.append((texto, json.loads(texto)))
+                    except (ValueError, RecursionError):
+                        pass
+    except OSError:
+        pass
+    return out
+
+
+def _mensagens(pares):
+    """Só as saneadas; uma linha de status `falhou` tira a mensagem (como registro.ler_log)."""
+    pares = [(t, d) for t, d in pares if isinstance(d, dict) and isinstance(d.get("id", ""), str)]
+    return [s for s in map(sanear, registro._mensagens(pares)) if s]
+
+
+def ler_log(raiz):
+    """registro.ler_log, mas à prova de linha torta: só mensagens saneadas (ver `sanear`) e sem escrever."""
+    return _mensagens(_linhas(os.path.join(raiz, LOG_REL)))
+
+
+def verificar(raiz):
+    """registro.verificar sem estourar: linha torta vira um problema da cadeia, e o texto dos problemas é limitado."""
+    try:
+        r = registro.verificar(raiz)
+    except (TypeError, AttributeError, ValueError, RecursionError):
+        return {"linhas": 0, "problemas": ["log com linhas fora do formato (não são objetos JSON)"], "bifurcacoes": 0}
+    return dict(r, problemas=[str(x)[:300] for x in r["problemas"][:50]])
+
+
+def ler_tudo(raiz):
+    """registro.ler_tudo (arquivo morto + log ativo) com o mesmo saneamento."""
+    pares = []
+    for a in registro.arquivos(raiz) + [os.path.join(raiz, LOG_REL)]:
+        pares += _linhas(a)
+    return _mensagens(pares)
 
 
 def _ids(valor):
@@ -180,7 +287,7 @@ def montar(raiz, projeto, paineis, periodo="hoje", agora=None, abertos=None, cad
     agora = agora or datetime.datetime.now().astimezone()
     desde = inicio_do_periodo(periodo, agora)
     duracao = agora - desde
-    msgs = registro.ler_log(raiz)
+    msgs = ler_log(raiz)
     no_periodo = [m for m in msgs if (_ts(m.get("ts")) or agora) >= desde and m.get("tipo") != "nota"]
     anterior = [m for m in msgs if desde - duracao <= (_ts(m.get("ts")) or agora) < desde and m.get("tipo") != "nota"]
 
@@ -199,7 +306,7 @@ def montar(raiz, projeto, paineis, periodo="hoje", agora=None, abertos=None, cad
             arestas[chave] = arestas.get(chave, 0) + 1
     atrasados = [t for t in tar if t["estado"] == "atrasado"]
     revisao = [t for t in tar if t["estado"] == "aguardando_revisao"]
-    cadeia = cadeia if cadeia is not None else registro.verificar(raiz)
+    cadeia = cadeia if cadeia is not None else verificar(raiz)
     limites = limites or {}
     return {
         "projeto": projeto,
