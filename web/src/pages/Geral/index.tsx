@@ -1,9 +1,10 @@
-import { AlertTriangle, LayoutGrid, RefreshCw } from "lucide-react";
+import { AlertTriangle, Building2, LayoutGrid, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cliente } from "../../api/cliente";
 import type { Squad } from "../../api/tipos";
 import { useApi } from "../../api/useApi";
 import { useEventoSquad } from "../../api/useStream";
+import { LinkPainel } from "../../components/LinkPainel";
 import { EmptyState, PageHeader, Skeleton } from "../../components/ui";
 import { CardSquad } from "./CardSquad";
 import { FeedGeral } from "./FeedGeral";
@@ -71,9 +72,14 @@ export default function Geral() {
         titulo="Visão geral"
         subtitulo="Todos os squads do servidor ao mesmo tempo"
         acoes={
+          <>
+          <LinkPainel to="/office?modo=andar" className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-muted px-3 py-1.5 text-sm font-medium text-accent-hover transition-colors hover:border-accent/60 hover:bg-accent/25">
+            <Building2 className="h-4 w-4" aria-hidden="true" /> Office do andar
+          </LinkPainel>
           <button type="button" onClick={api.recarregar} className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-texto-suave transition-colors hover:bg-surface-4 hover:text-texto">
             <RefreshCw className={`h-4 w-4 ${api.carregando ? "animate-spin" : ""}`} aria-hidden="true" /> Atualizar
           </button>
+          </>
         }
       />
 
