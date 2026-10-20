@@ -193,6 +193,45 @@ describe("Office, modos, TV e Live Logs", () => {
     act(() => fonte().emitir("mensagem", msg({ id: "log-2", assunto: "Segunda do log" })));
     expect(await within(painel).findByText("Segunda do log")).toBeInTheDocument();
   });
+
+  it("Live Logs fecha com Esc e com clique fora", async () => {
+    await abrirOffice();
+    const abrir = () => userEvent.click(screen.getByRole("button", { name: "Abrir Live Logs" }));
+    await abrir();
+    await screen.findByTestId("live-logs");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("live-logs")).not.toBeInTheDocument());
+    await abrir();
+    await screen.findByTestId("live-logs");
+    await userEvent.click(screen.getByTestId("office").querySelector("main, h1, header") ?? document.body);
+    await waitFor(() => expect(screen.queryByTestId("live-logs")).not.toBeInTheDocument());
+  });
+
+  it("Live Logs e gaveta nunca ficam abertos juntos", async () => {
+    await abrirOffice();
+    await userEvent.click(screen.getByRole("button", { name: "Abrir Live Logs" }));
+    await screen.findByTestId("live-logs");
+    fireEvent.click(document.querySelector(`[data-agente="${M1}"]`)!);
+    await screen.findByTestId("gaveta");
+    await waitFor(() => expect(screen.queryByTestId("live-logs")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Abrir Live Logs" }));
+    await screen.findByTestId("live-logs");
+    await waitFor(() => expect(screen.queryByTestId("gaveta")).not.toBeInTheDocument());
+  });
+
+  it("gaveta separa mensagens sem resposta de tarefas abertas e esconde worktree vazio", async () => {
+    await abrirOffice();
+    fireEvent.click(document.querySelector(`[data-agente="${M1}"]`)!);
+    const gaveta = await screen.findByTestId("gaveta");
+    const ag = agentesFixture().find((a) => a.agente === M1)!;
+    expect(within(gaveta).getByText("Mensagens sem resposta")).toBeInTheDocument();
+    expect(within(gaveta).getByTestId("sem-resposta")).toHaveTextContent(String(ag.pendentes));
+    expect(within(gaveta).getByText("Tarefas abertas")).toBeInTheDocument();
+    expect(within(gaveta).queryByText("Pendentes")).not.toBeInTheDocument();
+    const n = within(gaveta).queryByTestId("pendentes-agente")?.children.length ?? 0;
+    expect(within(gaveta).getByTestId("tarefas-abertas")).toHaveTextContent(String(n));
+    expect(within(gaveta).queryByText("sem worktree")).not.toBeInTheDocument();
+  });
 });
 
 void tarefasFixture;

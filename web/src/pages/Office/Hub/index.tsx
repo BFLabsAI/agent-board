@@ -82,7 +82,7 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
 
   return (
     <svg
-      className="hub-svg block select-none"
+      className="hub-svg block select-none overflow-visible"
       width={vb.w}
       height={vb.h}
       viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
@@ -110,7 +110,7 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
       </defs>
 
       <ellipse cx={0} cy={20} rx={maxRx + 260} ry={maxRy + 190} fill="url(#hub-piso)" />
-      <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="url(#hub-grid)" mask="url(#hub-mascara-grid)" />
+      <rect x={vb.x - 2400} y={vb.y - 2400} width={vb.w + 4800} height={vb.h + 4800} fill="url(#hub-grid)" mask="url(#hub-mascara-grid)" />
       {layout.aneis.map((a, i) => (
         <ellipse key={i} cx={0} cy={0} rx={a.rx} ry={a.ry} fill="none" stroke="#6366f1" strokeOpacity={0.14} strokeWidth={1.2} strokeDasharray="2 10" />
       ))}

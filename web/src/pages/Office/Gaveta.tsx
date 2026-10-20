@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, ClipboardList, ExternalLink, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
+import { ArrowRight, ClipboardList, ExternalLink, ListChecks, FolderGit2, GitBranch, Inbox, MessagesSquare, Radio, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Agente, Mensagem, Tarefa } from "../../api/tipos";
 import { cliente } from "../../api/cliente";
@@ -116,7 +116,7 @@ export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; t
     return () => window.removeEventListener("keydown", fn);
   }, [agente, aoFechar]);
 
-  const pendentes = useMemo(
+  const tarefasAbertas = useMemo(
     () => (agente ? tarefas.filter((t) => t.para === agente.agente && ABERTAS.has(t.estado)) : []),
     [agente, tarefas],
   );
@@ -156,10 +156,12 @@ export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; t
           </header>
 
           <div className="space-y-1 px-5 pb-4 font-mono text-[11px] text-texto-suave">
-            <p className="flex items-center gap-2 truncate" title={agente.worktree ?? ""}>
-              <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-texto-fraco" aria-hidden="true" />
-              {agente.worktree ?? "sem worktree"}
-            </p>
+            {agente.worktree && (
+              <p className="flex items-center gap-2 truncate" title={agente.worktree}>
+                <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-texto-fraco" aria-hidden="true" />
+                {agente.worktree}
+              </p>
+            )}
             <p className="flex items-center gap-2 truncate" title={agente.branch ?? ""}>
               <GitBranch className="h-3.5 w-3.5 shrink-0 text-texto-fraco" aria-hidden="true" />
               {agente.branch ?? "sem branch"}
@@ -184,10 +186,18 @@ export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; t
             )}
           </Secao>
 
-          <Secao icone={Inbox} titulo="Pendentes" extra={<span className="text-texto-suave">{agente.pendentes}</span>}>
-            {pendentes.length > 0 ? (
+          <Secao icone={Inbox} titulo="Mensagens sem resposta" extra={<span className="font-semibold text-texto" data-testid="sem-resposta">{agente.pendentes}</span>}>
+            <p className="text-sm text-texto-fraco">
+              {agente.pendentes > 0
+                ? `${agente.pendentes} ${agente.pendentes === 1 ? "mensagem recebida ainda sem resposta" : "mensagens recebidas ainda sem resposta"}.`
+                : "Nenhuma mensagem aguardando resposta."}
+            </p>
+          </Secao>
+
+          <Secao icone={ListChecks} titulo="Tarefas abertas" extra={<span className="font-semibold text-texto" data-testid="tarefas-abertas">{tarefasAbertas.length}</span>}>
+            {tarefasAbertas.length > 0 ? (
               <ul className="space-y-1.5" data-testid="pendentes-agente">
-                {pendentes.map((t) => (
+                {tarefasAbertas.map((t) => (
                   <li key={t.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-2">
                     <span className={`h-2 w-2 shrink-0 rounded-full ${ESTILO_ESTADO_TAREFA[t.estado].ponto}`} />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-texto" title={t.assunto}>{truncar(t.assunto, 60)}</span>
@@ -196,7 +206,7 @@ export function Gaveta({ agente, tarefas, aoFechar }: { agente: Agente | null; t
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-texto-fraco">{agente.pendentes > 0 ? `${agente.pendentes} sem resposta.` : "Nada pendente."}</p>
+              <p className="text-sm text-texto-fraco">Nenhuma tarefa aberta para este agente.</p>
             )}
           </Secao>
 

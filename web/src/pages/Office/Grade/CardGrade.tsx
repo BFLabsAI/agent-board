@@ -32,8 +32,13 @@ export function CardGrade({ agente, selecionado, aoSelecionar }: { agente: Agent
       data-testid="card-grade"
       data-agente={agente.agente}
       data-selecionado={selecionado || undefined}
+      onClick={(e) => {
+        // clique em qualquer parte do card abre a gaveta (o botão Detalhes cuida do próprio clique)
+        if ((e.target as HTMLElement).closest("button, a")) return;
+        aoSelecionar(agente.agente);
+      }}
       className={clsx(
-        "group flex flex-col gap-4 rounded-2xl border bg-surface-3 p-5 shadow-card transition-all duration-200 animate-fade-in",
+        "group flex cursor-pointer flex-col gap-4 rounded-2xl border bg-surface-3 p-5 shadow-card transition-all duration-200 animate-fade-in",
         "hover:-translate-y-0.5 hover:border-border-light hover:bg-surface-4",
         selecionado ? "border-accent shadow-glow" : "border-border",
         agente.status === "offline" && "opacity-75",
@@ -67,10 +72,12 @@ export function CardGrade({ agente, selecionado, aoSelecionar }: { agente: Agent
               </span>
             )}
           </div>
-          <p className="mt-2 flex items-center gap-1.5 truncate font-mono text-[11px] text-texto-fraco" title={[agente.worktree, agente.branch].filter(Boolean).join(" · ")}>
-            <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">{agente.branch ?? agente.worktree ?? "sem worktree"}</span>
-          </p>
+          {(agente.branch ?? agente.worktree) && (
+            <p className="mt-2 flex items-center gap-1.5 truncate font-mono text-[11px] text-texto-fraco" title={[agente.worktree, agente.branch].filter(Boolean).join(" · ")}>
+              <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{agente.branch ?? agente.worktree}</span>
+            </p>
+          )}
         </div>
       </header>
 

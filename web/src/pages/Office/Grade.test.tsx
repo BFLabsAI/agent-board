@@ -41,6 +41,17 @@ describe("Grade", () => {
     expect(aoSelecionar).toHaveBeenCalledWith("r7one-manager03-cc");
   });
 
+  it("clicar no card inteiro abre a gaveta, sem disparar duas vezes pelo botão", () => {
+    const aoSelecionar = vi.fn();
+    render(<Grade {...base} aoSelecionar={aoSelecionar} />);
+    fireEvent.click(within(doc("r7one-manager03-cc")).getByText("Tarefa atual"));
+    expect(aoSelecionar).toHaveBeenCalledTimes(1);
+    expect(aoSelecionar).toHaveBeenCalledWith("r7one-manager03-cc");
+    aoSelecionar.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Detalhes de r7one-manager03-cc" }));
+    expect(aoSelecionar).toHaveBeenCalledTimes(1);
+  });
+
   it("filtra por status e mostra vazio quando ninguém bate", () => {
     render(<Grade {...base} />);
     fireEvent.click(screen.getByRole("radio", { name: /Trabalhando/ }));
