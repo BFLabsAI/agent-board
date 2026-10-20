@@ -192,10 +192,12 @@ function TooltipSub({ p }: { p: PosSub }) {
   const { sub } = p;
   const ult = sub.ultima_atividade;
   const linhaSec = descricaoSub(sub) ?? tipoDetalhe(sub);
+  const iss = (sub.issues ?? []).slice(0, 4).map((n) => `#${n}`).join(" ");
   return (
     <g transform={`translate(${p.x} ${p.y - 24})`} pointerEvents="none" data-testid="tooltip-sub">
       <rect x={-112} y={-62} width={224} height={62} rx={8} fill="#2a2a3d" fillOpacity={0.97} stroke="#363650" />
-      <text x={-102} y={-45} fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(nomeSub(sub), 26)}</text>
+      <text x={-102} y={-45} fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(nomeSub(sub), iss ? 14 : 26)}</text>
+      {iss && <text x={102} y={-45} textAnchor="end" className="hub-mono" fontSize={10} fill="#818cf8">{iss}</text>}
       {linhaSec && <text x={-102} y={-30} fontSize={10.5} fill="#9ca3af">{truncar(linhaSec, 38)}</text>}
       {ult && <text x={-102} y={-12} className="hub-mono" fontSize={9.5} fill="#6ee7b7">{truncar(`${ult.ferramenta} ${ult.resumo}`, 40)}</text>}
     </g>
