@@ -251,7 +251,13 @@ class StatusAgente(unittest.TestCase):
         for tela in ("Continue? [y/n]", "Allow this tool?", "Needs permission to run"):
             self.assertEqual(self.st("✳ x", tela), "esperando", tela)
         # trabalhando vence pendente
-        self.assertEqual(self.st("✳ x", pend=2, saida=self.AGORA_MS - 3000), "trabalhando")
+        self.assertEqual(self.st("⠋ x", pend=2), "trabalhando")
+        self.assertEqual(self.st("bash", pend=2, saida=self.AGORA_MS - 3000), "trabalhando")
+        # Claude Code/OMP ociosos redesenham a tela: a saída recente não vira trabalhando (status piscava)
+        self.assertEqual(self.st("✳ x", pend=2, saida=self.AGORA_MS - 3000), "pendente")
+        self.assertEqual(self.st("✳ r7one-manager01-cc", saida=self.AGORA_MS - 1000), "parado")
+        self.assertEqual(self.st("π - r7one-manager01-omp - tmp", saida=self.AGORA_MS - 1000), "parado")
+        self.assertEqual(self.st("π - 󰒋 OMP: r7one-manager02-omp - t", saida=self.AGORA_MS - 1000), "parado")
         self.assertEqual(self.st("✳ x", pend=2, saida=self.AGORA_MS - 11000), "pendente")
         self.assertEqual(self.st("✳ x", pend=0, saida=self.AGORA_MS - 11000), "parado")
         self.assertEqual(self.st("✳ x", saida=None), "parado")
@@ -1153,6 +1159,17 @@ class LeitorDeSubagentes(SubBase):
     def test_spawn_sem_inicio_nao_vira_subagent(self):
         self.sub_gravar(ev("spawn", 5, tipo="Explore", descricao="x"))
         self.assertEqual(self.listar(), [])
+
+    def test_sem_inicio_nasce_no_primeiro_evento(self):
+        # sessão aberta antes dos hooks novos: só chegam atividade e fim (fim com tipo vazio)
+        self.sub_gravar(ev("atividade", 5, id="a1", tipo="general-purpose", ferramenta="Bash", resumo="ls"),
+                        ev("fim", 4, id="a1", tipo=""),
+                        ev("fim", 3, id="a2", tipo=""),
+                        ev("atividade", 2, id="a3", tipo="Explore", ferramenta="Edit", resumo="x.py"))
+        d = {s["id"]: s for s in self.listar()}
+        self.assertEqual((d["a1"]["status"], d["a1"]["tipo"], d["a1"]["n_atividades"]), ("concluido", "general-purpose", 1))
+        self.assertEqual((d["a2"]["status"], d["a2"]["tipo"]), ("concluido", None))
+        self.assertEqual((d["a3"]["status"], d["a3"]["tipo"]), ("rodando", "Explore"))
 
     def test_inicio_sem_spawn(self):
         self.sub_gravar(ev("inicio", 5, id="a1", tipo="Explore"))

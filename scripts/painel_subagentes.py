@@ -141,7 +141,10 @@ def assinatura(projeto, agora, dias=2):
 
 # --- ligação spawn -> sub-agent --------------------------------------------------------------------
 def ligar(eventos):
-    """Registros de sub-agent a partir dos eventos (qualquer ordem; ordena por ts). Regras do contrato."""
+    """Registros de sub-agent a partir dos eventos (qualquer ordem; ordena por ts). Regras do contrato.
+
+    Sem `inicio` (sessão aberta antes dos hooks novos, ou OMP sem evento de início), o sub-agent
+    nasce no primeiro evento visto dele (`atividade` ou `fim`)."""
     eventos = sorted(eventos, key=lambda e: e["t"])  # estável: no mesmo instante vale a ordem de gravação
     por_pai = {}
     regs = []
@@ -150,27 +153,21 @@ def ligar(eventos):
         ev = e["ev"]
         if ev == "spawn":
             pai["spawns"].append({"e": e, "dono": False})
-        elif ev == "inicio":
-            if e["id"] is None or e["id"] in pai["subs"]:
+        elif ev in ("inicio", "atividade", "fim"):
+            if e["id"] is None:
                 continue
-            sp = _spawn_para(pai["spawns"], e)
-            reg = {"id": e["id"], "agente": e["agente"], "tipo": e["tipo"] or (sp["e"]["tipo"] if sp else None),
-                   "descricao": sp["e"]["descricao"] if sp else None, "fundo": bool(sp and sp["e"]["fundo"]),
-                   "inicio": e["t"], "inicio_ts": e["ts"], "fim": None, "fim_ts": None, "ultima": None,
-                   "n": 0, "ok": None, "ultimo_evento": e["t"]}
-            if sp:
-                sp["dono"] = True
-            pai["subs"][e["id"]] = reg
-            pai["ordem"].append(reg)
-            regs.append(reg)
-        elif ev in ("atividade", "fim"):
             reg = pai["subs"].get(e["id"])
             if reg is None:
+                reg = _novo(pai, e)
+                regs.append(reg)
+            elif ev == "inicio":
                 continue
+            if not reg["tipo"] and e["tipo"]:
+                reg["tipo"] = e["tipo"]
             if ev == "atividade":
                 reg["n"] += 1
                 reg["ultima"] = {"ts": e["ts"], "ferramenta": e["ferramenta"], "resumo": e["resumo"]}
-            elif reg["fim"] is None:
+            elif ev == "fim" and reg["fim"] is None:
                 reg["fim"], reg["fim_ts"] = e["t"], e["ts"]
             reg["ultimo_evento"] = max(reg["ultimo_evento"], e["t"])
         else:  # retorno: fecha o mais antigo do tipo ainda sem ok
@@ -178,6 +175,19 @@ def ligar(eventos):
             if alvo is not None:
                 alvo["ok"] = e["ok"] is not False
     return regs
+
+
+def _novo(pai, e):
+    sp = _spawn_para(pai["spawns"], e)
+    reg = {"id": e["id"], "agente": e["agente"], "tipo": e["tipo"] or (sp["e"]["tipo"] if sp else None),
+           "descricao": sp["e"]["descricao"] if sp else None, "fundo": bool(sp and sp["e"]["fundo"]),
+           "inicio": e["t"], "inicio_ts": e["ts"], "fim": None, "fim_ts": None, "ultima": None,
+           "n": 0, "ok": None, "ultimo_evento": e["t"]}
+    if sp:
+        sp["dono"] = True
+    pai["subs"][e["id"]] = reg
+    pai["ordem"].append(reg)
+    return reg
 
 
 def _spawn_para(spawns, inicio):

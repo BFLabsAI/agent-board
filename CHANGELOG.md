@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.1 — 2026-10-20
+
+### Corrigido
+- **Status piscando no painel:** os managers do Claude Code e do OMP parados alternavam entre parado e trabalhando, porque o terminal ocioso redesenha a barra de status e a regra "saída nos últimos 10 s" contava isso como trabalho. Quando o título é do Claude Code (`✳`) ou do OMP (`π`), vale só o spinner do título; a saída recente fica para terminais de outros tipos.
+- **Sub-agents sumidos:** sessões abertas antes da 1.12.0 não mandam `inicio` nem `spawn` até reiniciar, só `atividade` e `fim`, e o painel exigia o `inicio`. Agora o sub-agent nasce no primeiro evento visto dele.
+
 ## 1.12.0 — 2026-10-20
 
 Sub-agents no painel: cada master e manager mostra os sub-agents que lançou, com o que fazem agora. Ver [ADR-0011](docs/adr/0011-subagentes-no-painel.md), o [plano](docs/planos/subagentes.md) e o [guia do painel](docs/userguide/painel.md#sub-agents). Épico [#20](https://github.com/BFLabsAI/agent-board/issues/20).

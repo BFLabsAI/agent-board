@@ -184,7 +184,12 @@ def status_agente(terminal, pendentes, agora_ms, orca_ok=True, maestri=False, su
         return "esperando"
     titulo = terminal.get("title") or ""
     ultima = terminal.get("lastOutputAt")
-    if (titulo[:1] and titulo[0] in SPINNERS) or (isinstance(ultima, (int, float)) and 0 <= agora_ms - ultima < SAIDA_RECENTE_MS):
+    if titulo[:1] and titulo[0] in SPINNERS:
+        return "trabalhando"
+    # Claude Code (✳) e OMP (π) dizem no título se estão trabalhando; a saída recente não conta,
+    # porque um terminal ocioso redesenha a barra de status de tempos em tempos e o status piscava.
+    titulo_fala = titulo[:1] == "✳" or "π" in titulo[:6]
+    if not titulo_fala and isinstance(ultima, (int, float)) and 0 <= agora_ms - ultima < SAIDA_RECENTE_MS:
         return "trabalhando"
     if subs_rodando > 0:
         return "trabalhando"
