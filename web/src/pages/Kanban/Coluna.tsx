@@ -29,8 +29,14 @@ function DicaColuna({ titulo, entra, sai, alinhar }: { titulo: string; entra: st
 
 /** Coluna rolável com altura cheia: título colorido, "?" e contador. */
 export function Coluna({
-  titulo, entra, sai, total, texto, ponto, destaque, alinhar = "esq", children,
+  titulo, entra, sai, total, texto, ponto, destaque, alinhar = "esq", chave, brilho, extra, children,
 }: {
+  /** id estável da coluna (usado para rolar até ela) */
+  chave?: string;
+  /** pisca o cabeçalho (card chegou aqui) */
+  brilho?: boolean;
+  /** conteúdo logo abaixo do cabeçalho (ex.: abas de Fechadas) */
+  extra?: ReactNode;
   titulo: string;
   entra: string;
   sai: string;
@@ -45,18 +51,23 @@ export function Coluna({
     <section
       aria-label={titulo}
       data-coluna={titulo}
+      data-chave={chave}
       className={clsx(
-        "relative flex h-full w-[19rem] shrink-0 flex-col rounded-xl border",
+        "relative flex h-full min-w-[11rem] max-w-[20rem] grow basis-[12rem] flex-col rounded-xl border",
         destaque ? "border-red-500/40 bg-red-500/[0.04]" : "border-border bg-surface-1/60",
       )}
     >
       <span className={clsx("absolute inset-x-4 top-0 h-0.5 rounded-b-full opacity-70", ponto)} aria-hidden="true" />
-      <header className="flex items-center gap-2 px-4 pb-3 pt-4">
+      <header
+        data-brilho={brilho || undefined}
+        className={clsx("mx-1 mt-1 flex items-center gap-2 rounded-lg px-3 pb-3 pt-3 transition-colors duration-500", brilho && "bg-accent/25 ring-2 ring-accent/60")}
+      >
         <span className={clsx("h-2 w-2 rounded-full", ponto)} aria-hidden="true" />
         <h2 className={clsx("text-xs font-semibold uppercase tracking-wider", texto)}>{titulo}</h2>
         <DicaColuna titulo={titulo} entra={entra} sai={sai} alinhar={alinhar} />
         <span className="ml-auto rounded-full bg-surface-4 px-2 py-0.5 text-xs tabular-nums text-texto-suave" data-contador>{total}</span>
       </header>
+      {extra}
       <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4">{children}</ul>
     </section>
   );

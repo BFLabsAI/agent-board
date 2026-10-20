@@ -21,7 +21,7 @@ describe("Kanban: tarefas", () => {
   it("renderiza as colunas com contadores e cards", async () => {
     renderPainel("/kanban");
     await screen.findByText("SSE no lugar de polling na tela de conversas");
-    for (const n of ["Atrasado", "Aberto", "Em andamento", "Aguardando revisão", "Aprovado", "Rejeitado", "Concluído"]) {
+    for (const n of ["Atrasado", "Aberto", "Em andamento", "Aguardando revisão", "Fechadas"]) {
       expect(coluna(n)).toBeInTheDocument();
     }
     expect(within(coluna("Aberto")).getByText("Corrigir fuso horário dos agendamentos de follow-up")).toBeInTheDocument();
@@ -29,6 +29,33 @@ describe("Kanban: tarefas", () => {
     expect(within(coluna("Atrasado")).getByText("#427")).toBeInTheDocument();
     expect(within(coluna("Atrasado")).getByText(/Venceu/)).toBeInTheDocument();
     expect(within(coluna("Atrasado")).getByText("feat/import-csv")).toBeInTheDocument();
+  });
+
+  it("Fechadas agrupa aprovado, rejeitado e concluído em abas com contador", async () => {
+    renderPainel("/kanban");
+    await screen.findByText("SSE no lugar de polling na tela de conversas");
+    const f = coluna("Fechadas");
+    const abas = within(f).getAllByRole("tab");
+    expect(abas.map((a) => a.textContent)).toEqual([expect.stringMatching(/^Aprovado\d+$/), expect.stringMatching(/^Rejeitado\d+$/), expect.stringMatching(/^Concluído\d+$/)]);
+    expect(abas[0]).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(abas[1]);
+    expect(abas[1]).toHaveAttribute("aria-selected", "true");
+    const total = Array.from(f.querySelectorAll("[data-contador-aba]")).reduce((n, e) => n + Number(e.textContent), 0);
+    expect(f.querySelector("[data-contador]")).toHaveTextContent(String(total));
+  });
+
+  it("card movido por SSE para Fechadas troca a aba e destaca o cabeçalho", async () => {
+    renderPainel("/kanban");
+    await screen.findByText("Corrigir fuso horário dos agendamentos de follow-up");
+    await waitFor(() => expect(FonteFalsa.todas.length).toBeGreaterThan(0));
+    const t = tarefasFixture().find((x) => x.id === "p-0147")!;
+    act(() => {
+      fonte().abrir();
+      fonte().emitir("tarefa", { ...t, estado: "rejeitado" });
+    });
+    await waitFor(() => expect(within(coluna("Fechadas")).getByRole("tab", { name: /Rejeitado/ })).toHaveAttribute("aria-selected", "true"));
+    expect(within(coluna("Fechadas")).getByText("Corrigir fuso horário dos agendamentos de follow-up")).toBeInTheDocument();
+    expect(coluna("Fechadas").querySelector("header")).toHaveAttribute("data-brilho");
   });
 
   it("o card leva à conversa", async () => {

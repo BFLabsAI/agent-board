@@ -1,11 +1,12 @@
 import { LayoutGroup } from "framer-motion";
 import { AlertTriangle, Bot, Columns3, ListChecks, RefreshCw, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cliente } from "../../api/cliente";
-import type { Agente, Tarefa } from "../../api/tipos";
+import type { Agente, EstadoTarefa, Tarefa } from "../../api/tipos";
 import { useApi } from "../../api/useApi";
 import { useEvento } from "../../api/useStream";
+import { RolagemX } from "../../components/RolagemX";
 import { EmptyState, PageHeader, Segmented, Skeleton } from "../../components/ui";
 import { ESTILO_ESTADO_TAREFA, ESTILO_STATUS_AGENTE } from "../../lib/cores";
 import { nomeCurto } from "../../lib/formato";
@@ -29,17 +30,62 @@ function upsert<T>(lista: T[], item: T, chave: (x: T) => string): T[] {
   return n;
 }
 
+const FECHADAS: EstadoTarefa[] = ["aprovado", "rejeitado", "concluido"];
+const ESTADOS_FECHADOS = new Set<string>(FECHADAS);
+
 function SkeletonColunas({ n }: { n: number }) {
   return (
     <div className="flex h-full gap-4" aria-busy="true" aria-label="Carregando">
       {Array.from({ length: n }, (_, i) => (
-        <div key={i} className="w-[19rem] shrink-0 space-y-3 rounded-xl border border-border bg-surface-1/60 p-3">
+        <div key={i} className="min-w-[11rem] grow basis-[12rem] space-y-3 rounded-xl border border-border bg-surface-1/60 p-3">
           <Skeleton className="h-5 w-28" />
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-28 w-full" />
         </div>
       ))}
     </div>
+  );
+}
+
+function ColunaFechadas({ tarefas, aba, onAba, brilho }: { tarefas: Tarefa[]; aba: EstadoTarefa; onAba: (e: EstadoTarefa) => void; brilho: boolean }) {
+  const defs = COLUNAS_TAREFA.filter((c) => ESTADOS_FECHADOS.has(c.estado));
+  const contagem = (e: EstadoTarefa) => tarefas.filter((t) => t.estado === e).length;
+  const atual = defs.find((c) => c.estado === aba) ?? defs[0];
+  const itens = tarefas
+    .filter((t) => t.estado === atual.estado)
+    .sort((a, b) => (b.fechada_em ?? b.andamento_ts ?? b.ts).localeCompare(a.fechada_em ?? a.andamento_ts ?? a.ts));
+  const total = FECHADAS.reduce((n, e) => n + contagem(e), 0);
+  const est = ESTILO_ESTADO_TAREFA[atual.estado];
+  return (
+    <Coluna
+      titulo="Fechadas" chave="fechadas" brilho={brilho} entra={`${atual.titulo}: ${atual.entra}`} sai={atual.sai}
+      total={total} texto={est.texto} ponto={est.ponto} alinhar="dir"
+      extra={
+        <div role="tablist" aria-label="Tipo de tarefa fechada" className="mx-3 mb-3 flex flex-wrap gap-1.5">
+          {defs.map((c) => {
+            const e = ESTILO_ESTADO_TAREFA[c.estado];
+            const ativo = c.estado === atual.estado;
+            return (
+              <button
+                key={c.estado}
+                type="button"
+                role="tab"
+                aria-selected={ativo}
+                onClick={() => onAba(c.estado)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${ativo ? `${e.fundo} ${e.borda} ${e.texto}` : "border-border text-texto-suave hover:bg-surface-4"}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${e.ponto}`} aria-hidden="true" />
+                {c.titulo}
+                <span className="tabular-nums opacity-80" data-contador-aba>{contagem(c.estado)}</span>
+              </button>
+            );
+          })}
+        </div>
+      }
+    >
+      {itens.map((t) => <CartaoTarefa key={t.id} t={t} />)}
+      {itens.length === 0 && <li className="py-8 text-center text-sm text-texto-fraco">Nenhuma tarefa {atual.titulo.toLowerCase()}</li>}
+    </Coluna>
   );
 }
 
@@ -62,7 +108,31 @@ export default function Kanban() {
   const [agentes, setAgentes] = useState<Agente[]>([]);
   useEffect(() => { if (apiT.dados) setTarefas(apiT.dados); }, [apiT.dados]);
   useEffect(() => { if (apiA.dados) setAgentes(apiA.dados); }, [apiA.dados]);
-  useEvento("tarefa", (t) => setTarefas((l) => upsert(l, t, (x) => x.id)));
+  const [abaFechada, setAbaFechada] = useState<EstadoTarefa>("aprovado");
+  const [brilho, setBrilho] = useState<string | null>(null);
+  const estadosRef = useRef<Map<string, string>>(new Map());
+  const timerBrilho = useRef<number | undefined>(undefined);
+  useEffect(() => { estadosRef.current = new Map(tarefas.map((t) => [t.id, t.estado])); }, [tarefas]);
+  useEffect(() => () => window.clearTimeout(timerBrilho.current), []);
+
+  /** Card mudou de coluna por SSE: rola até a coluna e destaca o cabeçalho. */
+  const revelar = useCallback((estado: EstadoTarefa) => {
+    const chave = ESTADOS_FECHADOS.has(estado) ? "fechadas" : estado;
+    if (ESTADOS_FECHADOS.has(estado)) setAbaFechada(estado);
+    setBrilho(chave);
+    window.clearTimeout(timerBrilho.current);
+    timerBrilho.current = window.setTimeout(() => setBrilho(null), 2500);
+    window.requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-chave="${chave}"]`);
+      if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+    });
+  }, []);
+  useEvento("tarefa", (t) => {
+    const antes = estadosRef.current.get(t.id);
+    estadosRef.current.set(t.id, t.estado);
+    if (antes && antes !== t.estado) revelar(t.estado);
+    setTarefas((l) => upsert(l, t, (x) => x.id));
+  });
   useEvento("agente", (a) => setAgentes((l) => upsert(l, a, (x) => x.agente)));
 
   const nomes = useMemo(() => {
@@ -152,9 +222,9 @@ export default function Kanban() {
           />
         ) : (
           <LayoutGroup>
-            <div className="flex h-full gap-4 overflow-x-auto pb-2" data-modo={modo}>
+            <RolagemX className="h-full" interno="flex gap-3 pb-3" rotulo="Colunas do Kanban">
               {modo === "tarefas"
-                ? COLUNAS_TAREFA.map((c, i) => {
+                ? <>{COLUNAS_TAREFA.filter((c) => !ESTADOS_FECHADOS.has(c.estado)).map((c, i) => {
                     const e = ESTILO_ESTADO_TAREFA[c.estado];
                     const itens = tarefasFiltradas
                       .filter((t) => t.estado === c.estado)
@@ -164,14 +234,15 @@ export default function Kanban() {
                           : (b.fechada_em ?? b.andamento_ts ?? b.ts).localeCompare(a.fechada_em ?? a.andamento_ts ?? a.ts),
                       );
                     return (
-                      <Coluna key={c.estado} titulo={c.titulo} entra={c.entra} sai={c.sai} total={itens.length}
+                      <Coluna key={c.estado} chave={c.estado} brilho={brilho === c.estado} titulo={c.titulo} entra={c.entra} sai={c.sai} total={itens.length}
                         texto={c.destaque ? "text-red-400" : e.texto} ponto={e.ponto} destaque={c.destaque}
-                        alinhar={i >= 4 ? "dir" : "esq"}>
+                        alinhar={i >= 3 ? "dir" : "esq"}>
                           {itens.map((t) => <CartaoTarefa key={t.id} t={t} />)}
                         {itens.length === 0 && <li className="py-8 text-center text-sm text-texto-fraco">Nenhuma tarefa</li>}
                       </Coluna>
                     );
-                  })
+                  })}
+                  <ColunaFechadas tarefas={tarefasFiltradas} aba={abaFechada} onAba={setAbaFechada} brilho={brilho === "fechadas"} /></>
                 : COLUNAS_AGENTE.map((c, i) => {
                     const e = ESTILO_STATUS_AGENTE[c.status];
                     const itens = agentesFiltrados.filter((a) =>
@@ -185,7 +256,7 @@ export default function Kanban() {
                       </Coluna>
                     );
                   })}
-            </div>
+            </RolagemX>
           </LayoutGroup>
         )}
       </div>
