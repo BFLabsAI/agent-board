@@ -35,8 +35,15 @@ novo = {
                    {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [h()]},
                    {"matcher": "SendMessage", "hooks": [h()]},
                    # board_send do servidor MCP: só para barrar subagent (a regra do envio vive no envio.py)
-                   {"matcher": "mcp__agent-board__board_send", "hooks": [h()]}],
-    "PostToolUse": [{"matcher": "Bash", "hooks": [h()]}],
+                   {"matcher": "mcp__agent-board__board_send", "hooks": [h()]},
+                   {"matcher": "Agent|Task", "hooks": [h()]}],
+    "PostToolUse": [{"matcher": "Bash", "hooks": [h()]},
+                    {"matcher": "Agent|Task", "hooks": [h()]}],
+    # sub-agents (ADR 0011): ciclo de vida para o painel. Nunca PreToolUse "*": a atividade
+    # pega carona nos PreToolUse de Bash/Edit/Write acima.
+    "SubagentStart": [{"hooks": [h()]}],
+    "SubagentStop": [{"hooks": [h()]}],
+    "PostToolUseFailure": [{"matcher": "Agent|Task", "hooks": [h()]}],
     "Stop": [{"hooks": [h()]}],
 }
 with open(alvo) as f:
