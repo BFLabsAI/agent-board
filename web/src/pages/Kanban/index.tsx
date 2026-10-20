@@ -59,7 +59,7 @@ function ColunaFechadas({ tarefas, aba, onAba, brilho }: { tarefas: Tarefa[]; ab
   return (
     <Coluna
       titulo="Fechadas" chave="fechadas" brilho={brilho} entra={`${atual.titulo}: ${atual.entra}`} sai={atual.sai}
-      total={total} texto={est.texto} ponto={est.ponto} alinhar="dir"
+      total={total} texto={est.texto} ponto={est.ponto} alinhar="dir" larga
       extra={
         <div role="tablist" aria-label="Tipo de tarefa fechada" className="mx-3 mb-3 flex flex-wrap gap-1.5">
           {defs.map((c) => {

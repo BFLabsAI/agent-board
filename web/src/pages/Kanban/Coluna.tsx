@@ -29,7 +29,7 @@ function DicaColuna({ titulo, entra, sai, alinhar }: { titulo: string; entra: st
 
 /** Coluna rolável com altura cheia: título colorido, "?" e contador. */
 export function Coluna({
-  titulo, entra, sai, total, texto, ponto, destaque, alinhar = "esq", chave, brilho, extra, children,
+  titulo, entra, sai, total, texto, ponto, destaque, larga, alinhar = "esq", chave, brilho, extra, children,
 }: {
   /** id estável da coluna (usado para rolar até ela) */
   chave?: string;
@@ -44,6 +44,8 @@ export function Coluna({
   texto: string;
   ponto: string;
   destaque?: boolean;
+  /** coluna com abas (Fechadas): mais larga para os cards não espremerem */
+  larga?: boolean;
   alinhar?: "esq" | "dir";
   children: ReactNode;
 }) {
@@ -53,7 +55,8 @@ export function Coluna({
       data-coluna={titulo}
       data-chave={chave}
       className={clsx(
-        "relative flex h-full min-w-[11rem] max-w-[20rem] grow basis-[12rem] flex-col rounded-xl border",
+        "relative flex h-full grow flex-col rounded-xl border",
+        larga ? "min-w-[15rem] max-w-[24rem] basis-[17rem]" : "min-w-[11rem] max-w-[20rem] basis-[12rem]",
         destaque ? "border-red-500/40 bg-red-500/[0.04]" : "border-border bg-surface-1/60",
       )}
     >
