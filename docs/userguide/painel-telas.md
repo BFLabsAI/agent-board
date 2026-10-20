@@ -62,11 +62,17 @@ Uma coluna por status do agente:
 1. **Desconhecido:** o agente é do Maestri, ou o `orca` não respondeu. Aparece na coluna Offline.
 2. **Offline:** o handle não está aberto no Orca.
 3. **Esperando você:** nas últimas 15 linhas não vazias da tela aparece `Do you want`, `[y/n]`, `Allow`, `❯ 1.` ou `permission`.
-4. **Trabalhando:** o título do terminal começa com um spinner (braille, `◐◓◑◒` ou `✻✽✶·`; o `✳` do Claude parado não conta) **ou** houve saída há menos de 10 s.
+4. **Trabalhando:** o título do terminal começa com um spinner (braille, `◐◓◑◒` ou `✻✽✶·`; o `✳` do Claude parado não conta), **ou** houve saída há menos de 10 s, **ou** o agente tem um [sub-agent](painel.md#sub-agents) rodando.
 5. **Com pendente:** tem mensagem recebida sem resposta.
 6. **Parado:** o resto.
 
 Como depende do formato do título e da tela, uma versão nova do Orca ou do agente pode errar o status. Nesse caso o agente cai em "Parado".
+
+### Sub-agents no Dashboard e no Kanban
+Detalhes e limites: [Sub-agents](painel.md#sub-agents).
+- **Dashboard:** o cartão **Sub-agents rodando** soma todos os agentes e diz em quantos eles estão. No cartão de cada agente, um chip por sub-agent rodando, com tipo e duração.
+- **Kanban, modo Agentes:** os sub-agents ficam aninhados sob o agente (3 visíveis, "+N" expande).
+- **Kanban, modo Tarefas:** o cartão mostra "N sub-agents (M rodando)" e uma lista expansível. O vínculo é a tarefa que o pai tinha aberta quando o sub-agent começou.
 
 ## Conversas
 Cada pedido (ou entrega) com a sua **thread**: ele mais tudo que responde a ele, direta ou indiretamente.

@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.12.0 — 2026-10-20
+
+Sub-agents no painel: cada master e manager mostra os sub-agents que lançou, com o que fazem agora. Ver [ADR-0011](docs/adr/0011-subagentes-no-painel.md), o [plano](docs/planos/subagentes.md) e o [guia do painel](docs/userguide/painel.md#sub-agents). Épico [#20](https://github.com/BFLabsAI/agent-board/issues/20).
+
+### Novo
+- **Coletor de sub-agents** (`scripts/subagentes.py`, chamado pelo `hook_core`): grava o ciclo de vida em cinco eventos, `spawn`, `inicio`, `atividade`, `fim` e `retorno`. O sub-agent não entra no cadastro nem no log de mensagens.
+- **Hooks novos** no `install.sh`: `SubagentStart`, `SubagentStop`, `PostToolUseFailure` e `PreToolUse`/`PostToolUse` com matcher `Agent|Task`. Nenhum `PreToolUse *`: a `atividade` (Bash, Edit e Write) pega carona nos `PreToolUse` que o hook já recebe.
+- **Arquivo do coletor** em `~/.agent-hooks/agent-board/subagentes/<projeto>/AAAA-MM-DD.jsonl`: fora do git, sem cadeia de hash, só append, retenção de 14 dias (limpeza no máximo 1 vez por dia).
+- **Privacidade:** o prompt, a saída das ferramentas e a última mensagem do sub-agent nunca são gravados. `descricao` e `resumo` passam pela máscara de segredos, extraída para `base.mascarar` (compilada só no primeiro uso, para não pesar no boot do hook).
+- **OMP:** o adaptador emite `inicio`, `atividade` e `fim` (o `fim` vem do `agent_end` do sub ou do resultado da ferramenta `task` do pai). Ficam de fora o `spawn` e o `retorno` (a ferramenta `task` não traz descrição nem tipo) e o advisor. **Codex e Maestri não têm** coleta de sub-agents.
+- **API:** `GET /api/subagentes?periodo&agente&status&limite`, o campo `subagentes` em agentes, tarefas, analytics e workflows, `indicadores.subagentes_rodando` e o evento SSE `subagente`. Leitura incremental em `scripts/painel_subagentes.py`. Contrato em [painel-api.md](docs/referencia/painel-api.md#sub-agents-112-issue-20).
+- **Telas:**
+  - **Office:** o Mapa mostra sub-cards ligados ao pai, o Hub põe drones em órbita da mesa, a Grade ganha o resumo de sub-agents e a gaveta lista os sub-agents do agente.
+  - **Kanban:** os cartões de agente trazem os sub-agents aninhados e os de tarefa mostram os ligados a ela.
+  - **Dashboard:** cartão "Sub-agents rodando" e chips nos cartões dos agentes.
+  - **Analytics:** aba "Sub-agents", com por agente, por tipo e por dia.
+  - **Workflows:** coluna SUB-AGENTS no grafo e KPI novo.
+- Status do sub-agent: `rodando`, `concluido`, `erro` e `perdido` (rodando sem nenhum evento há mais de 2 h).
+
+### Alterado
+- **Status do agente:** quem tem sub-agent rodando passa a contar como `trabalhando`, mesmo com o terminal parado.
+- **ADR-0010 reaberta em parte:** a regra "sem telemetria nova" deixa de valer só para o ciclo de vida de sub-agents. Continua valendo para transcript, saída de ferramenta e prompt.
+- **Custo:** cada execução de hook leva cerca de 110 ms, quase tudo boot do Python; a gravação do coletor leva cerca de 0,1 ms. Cada sub-agent gera 4 execuções (`spawn`, `inicio`, `fim`, `retorno`). A `atividade` não gera execução extra.
+
+### Limites
+- Com `run_in_background`, o `retorno` diz que o sub-agent subiu, não que terminou. O fim real é o `fim`.
+- Terminal sem cadastro não grava nada; hook que falhou e retenção deixam pontas faltando, e a leitura tolera.
+- O painel passa a mostrar, mascaradas, linhas de comando e caminhos que antes só existiam no terminal do agente.
+
+### Atualização
+- Quem atualiza a skill **precisa rodar o `install.sh` de novo** (`bash ~/.agents/skills/agent-board/scripts/install.sh`) para registrar os hooks novos. Ele preserva os seus outros hooks e faz backup do settings. Sem isso, o painel continua funcionando, mas não mostra sub-agents.
+
+### Testes
+- **414 testes Python em 11 suítes:** `test_agent_board` 101, `test_contrato` 26, `test_docs` 2, `test_maestri` 35, `test_mcp` 15, `test_omp` 14, `test_politica` 35, `test_registro` 23, `test_subagentes` 25 (1 pulado), `test_time` 19 e `test_web` 119. Rode com `env -u ORCA_CLI_BIN_DIR` dentro de um terminal do Orca server.
+- **211 testes Vitest** do front, em 16 arquivos (`cd web && npx vitest run`).
+- A CI roda 10 suítes Python (entrou a `test_subagentes.py`); `test_omp.py` (precisa do `bun`) e o Vitest rodam à mão.
+
 ## 1.11.0 — 2026-10-20
 
 Painel web v2: uma SPA com sete telas, atualizada por push. Ver [ADR-0010](docs/adr/0010-painel-v2-spa-com-build-e-sse.md) e o [guia do painel](docs/userguide/painel.md).

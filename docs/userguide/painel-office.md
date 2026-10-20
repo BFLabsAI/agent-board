@@ -35,6 +35,15 @@ Um cartão rico por agente:
 
 No alto, três contadores: ativos, precisam de você e offline. Filtre por status (Todos, Trabalhando, Esperando, Pendente, Parado, Offline) e ordene por Status, Nome ou Atividade.
 
+## Sub-agents no Office
+Os sub-agents de cada agente aparecem em todos os modos ([o que são e os limites](painel.md#sub-agents)).
+
+| Modo | O que você vê |
+|---|---|
+| Hub | Mini-robôs (drones) em órbita da mesa do pai, um por sub-agent rodando (até o limite de lugares ao redor da mesa) |
+| Mapa | Um sub-card ao lado do pai, ligado por um conector. Rodando pulsa; `perdido` é tracejado; o que passa do limite vira um chip "+N". Clique abre a gaveta no sub-agent |
+| Grade | No cartão: sub-agents rodando e iniciados hoje, os últimos 7 dias e os avatares dos que rodam |
+
 ## Gaveta do agente
 Clique em qualquer agente (nos três modos) para abrir uma gaveta à direita. Clique de novo, no **X** ou em `Esc` para fechar.
 
@@ -43,6 +52,7 @@ Clique em qualquer agente (nos três modos) para abrir uma gaveta à direita. Cl
 | Tela do terminal | A última tela do terminal, vinda do Orca, atualizada ao vivo. Pode estar vazia se o terminal estiver fechado |
 | Tarefa atual | O pedido aberto mais recente em que ele é o destino |
 | Pendentes | As mensagens que ele ainda não respondeu |
+| Sub-agents | Os que estão rodando e os terminados nas últimas 24 h: tipo, descrição, duração, última ação, tarefa de origem e a marca "em segundo plano" |
 | Últimas mensagens | As trocas mais recentes dele |
 | Ver conversas | Abre a tela [Conversas](painel-telas.md#conversas) filtrada por ele |
 

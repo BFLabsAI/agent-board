@@ -14,7 +14,12 @@ Toda entrada roda `python3 <skill>/scripts/hook_core.py --dialect claude`, com t
 | `PreToolUse` | `Edit\|Write\|MultiEdit\|NotebookEdit` | Barra edição do log e do cadastro |
 | `PreToolUse` | `SendMessage` | Barra `SendMessage` entre agentes do time |
 | `PreToolUse` | `mcp__agent-board__board_send` | Só barra subagent. A regra do envio roda no `envio.py` |
+| `PreToolUse` | `Agent\|Task` | Só coleta: grava o `spawn` do sub-agent. Não barra nada |
 | `PostToolUse` | `Bash` | Digita o aviso na tela do destino (Orca), marca `falhou` no log se a entrega falhou e dispara as notificações |
+| `PostToolUse` | `Agent\|Task` | Só coleta: grava o `retorno` do sub-agent |
+| `PostToolUseFailure` | `Agent\|Task` | Só coleta: grava o `retorno` com erro |
+| `SubagentStart` | (todos) | Só coleta: grava o `inicio` |
+| `SubagentStop` | (todos) | Só coleta: grava o `fim` |
 | `Stop` | (todos) | Cobra mensagens recebidas sem resposta |
 
 O `Bash` não usa filtro `if`: o filtro do Claude Code não pega redirecionamentos (ex.: `echo x >> log`). O core descarta em milissegundos o que não interessa.
@@ -62,6 +67,26 @@ omp --no-extensions --hook /caminho/absoluto/omp-agent-board.ts
 Sem a flag `--no-extensions`, o OMP carrega o instalado **e** o do `--hook`. O adaptador lê `AGENT_BOARD_CORE` (caminho do `hook_core.py`) e `AGENT_BOARD_HOME` (estado); aponte os dois para a cópia que quer testar, pois o arquivo da skill traz o marcador `__AGENT_BOARD_CORE__` no lugar do caminho (o `install.sh` troca). `ORCA_TERMINAL_HANDLE` vem do terminal e chega intacto. `--no-extensions` também desliga as outras extensões (por exemplo as do Orca em `~/.omp/agent/extensions/`).
 
 Confira com `/extensions` numa sessão **aberta depois** da instalação.
+
+### Sub-agents (Claude Code e OMP)
+
+Os hooks de `Agent|Task`, `SubagentStart` e `SubagentStop` alimentam o [painel](../userguide/painel.md#sub-agents) ([ADR-0011](../adr/0011-subagentes-no-painel.md)). Eles respondem `{}`, saem com 0 e nunca barram: a gravação roda depois da decisão, e um erro de I/O é engolido. Terminal sem cadastro não grava nada.
+
+| Evento gravado | Vem de |
+|---|---|
+| `spawn` | `PreToolUse` `Agent\|Task`, no pai |
+| `inicio` | `SubagentStart` |
+| `atividade` | O `PreToolUse` de `Bash`, `Edit` ou `Write` que o hook **já** recebe, quando o payload traz `agent_id`. Chamada barrada pela política não conta |
+| `fim` | `SubagentStop` |
+| `retorno` | `PostToolUse` ou `PostToolUseFailure` `Agent\|Task`, no pai |
+
+**Custo.** Cada execução de hook leva cerca de 110 ms, quase tudo boot do Python; a gravação em si leva cerca de 0,1 ms. Cada sub-agent gera **4 execuções** (`spawn`, `inicio`, `fim`, `retorno`), fora do caminho crítico do modelo. A `atividade` não gera execução extra, e por isso não há `PreToolUse *`.
+
+**OMP.** O adaptador emite `inicio`, `atividade` e `fim`. Não emite `spawn` nem `retorno`, e o advisor fica de fora. **Codex e Maestri** não têm coleta.
+
+**Privacidade.** Não grava o prompt, a saída das ferramentas nem a mensagem final. `descricao` (120 caracteres) e `resumo` (160) passam por `base.mascarar`. O arquivo fica em `$AGENT_BOARD_HOME/subagentes/` por 14 dias ([arquivos](arquivos-e-estado.md#estado-na-máquina)).
+
+**Atualizar.** Instalações anteriores à 1.12 precisam rodar o `install.sh` de novo para registrar os hooks novos.
 
 ### Quando o hook falha
 
@@ -124,6 +149,7 @@ O motivo vem na própria mensagem de erro, com a correção sugerida. Coluna **O
 
 - O hook só vê o que passa pelas ferramentas de shell, de edição, pelo `SendMessage` e pelo `board_send` (neste, só para barrar subagent). Um script que chama o `orca` por dentro escapa da checagem, e o contrato proíbe isso.
 - No OMP, o hook vê `bash`, `edit`, `write`, `ast_edit`, `eval` e o `board_send` do MCP; o resto passa. Um `eval` que monta o caminho do log por partes escapa da checagem de texto.
+- Com `run_in_background`, o `retorno` do sub-agent só diz que ele subiu; o fim real é o `fim`. Sem `fim`, o painel o marca `perdido` depois de 2 h.
 - Os hooks valem para Claude Code e OMP. Outros harnesses seguem o contrato sem trava automática.
 - O correio do Orca por terminal não sobrevive se o painel fechar antes de ler. A linha no log fica, e `painel.py reenviar` manda de novo.
 - A cadeia de hash acusa linha editada ou apagada no meio do log, mas não a remoção da **última** linha. Torna a adulteração visível, não impossível.

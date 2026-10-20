@@ -1,7 +1,7 @@
 # agent-board: base de conhecimento do produto
 
 > **Para quem é:** o CEO. Serve para entender, explicar, vender e decidir sobre o agent-board.
-> **Versão descrita:** `1.11.0`, a do release do painel v2 (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a nova interface web) está integrado na branch `feat/painel-v2` com as sete telas prontas.
+> **Versão descrita:** `1.12.0`, a do release dos sub-agents no painel (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a interface web, com as sete telas) saiu na 1.11.0; a 1.12.0 acrescenta os sub-agents a ele.
 > **Fonte de verdade:** o código em `scripts/`. Quando uma doc discorda do código, vale o código, e a diferença está na seção [14. Divergências encontradas](#14-divergências-encontradas).
 > **Estilo:** frases curtas e muitas tabelas, como em [ESTILO.md](ESTILO.md). Este arquivo passa do limite de tamanho do guia de estilo de propósito: é uma base de conhecimento, não um guia de passo a passo.
 
@@ -43,7 +43,7 @@ O agent-board é um **carteiro com regras** para times de agentes de IA. Cada ag
 | Como o CEO acompanha? | `painel.py resumo` ("o que houve enquanto eu estava fora"), `painel.py tarefas`, o painel web e as notas e decisões do time. |
 | Onde roda? | Linux (testado em CI e nesta VPS) e macOS (documentado, sem CI). Windows só por WSL, não testado. Python 3.8 ou mais novo. |
 | Quanto custa em dependências? | Zero pacotes Python. Precisa de `git`, `bash` e da CLI `orca` ou `maestri`. |
-| Em que estágio está? | Versão 1.11.0, com 324 testes Python em 10 suítes e 159 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com sete telas. |
+| Em que estágio está? | Versão 1.12.0, com 414 testes Python em 11 suítes e 211 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com sete telas e os sub-agents de cada agente. |
 | Qual o maior limite? | A trava automática só existe para Claude Code e OMP. Outros harnesses seguem o contrato por disciplina. |
 
 ---
@@ -78,7 +78,7 @@ Vários agentes de IA trabalhando juntos no mesmo projeto têm quatro defeitos n
 | **Nada se perde.** O agente é segurado até 3 vezes ao tentar encerrar com resposta pendente. | `decide_stop` em [`hook_core.py`](../scripts/hook_core.py) |
 | **Sem dependência.** Só biblioteca padrão do Python. Nenhum `pip install`. | [`MELHORIAS.md`](MELHORIAS.md), o código não importa nada de fora |
 | **Dois transportes, um conjunto de regras.** Orca ou Maestri, mesma política e mesmo log. | [ADR-0006](adr/0006-maestri-como-transporte.md) |
-| **Testado.** 324 testes em 10 suítes (mais 159 do front), incluindo CLI falsa do Maestri, adaptador do OMP rodando de verdade no `bun` e conferência dos links da documentação. | Seção [7.6](#76-testes-e-ci) |
+| **Testado.** 414 testes em 11 suítes (mais 211 do front), incluindo CLI falsa do Maestri, adaptador do OMP rodando de verdade no `bun` e conferência dos links da documentação. | Seção [7.6](#76-testes-e-ci) |
 | **Em uso real.** 557 mensagens em 13 dias num projeto desta VPS (seção [11.3](#113-uso-real-nesta-vps)). | Log agregado |
 | **Governança configurável.** Quem pede a quem, limite de pedidos abertos, prazo padrão e alerta de ping-pong, com `simular` para testar antes de ligar. | [Regras](conceitos/regras.md) |
 
@@ -233,6 +233,7 @@ flowchart LR
 | **Notificar** | Webhook, comentário no GitHub e status do floor, em processo separado. | [`notificar.py`](../scripts/notificar.py) |
 | **Proteção** | Detecta escrita à mão no log e no cadastro. | [`protecao.py`](../scripts/protecao.py) |
 | **Base** | Caminhos, cadastro, config, identidade, trava, busca das CLIs. | [`base.py`](../scripts/base.py) |
+| **Coletor de sub-agents** | Chamado pelo hook depois da resposta: grava o ciclo de vida dos sub-agents (`spawn`, `inicio`, `atividade`, `fim`, `retorno`) em `subagentes/`, fora do log. Nunca bloqueia. O painel lê com [`painel_subagentes.py`](../scripts/painel_subagentes.py). | [`subagentes.py`](../scripts/subagentes.py) |
 | **Adaptador OMP** | Traduz os eventos do OMP para o mesmo core. | [`omp-agent-board.ts`](../scripts/omp-agent-board.ts) |
 
 ### 4.2 Quem aplica as regras
@@ -295,11 +296,17 @@ Toda entrada roda `python3 <skill>/scripts/hook_core.py --dialect claude`, com t
 | `PreToolUse` | `SendMessage` | Barra `SendMessage` entre agentes do time. |
 | `PreToolUse` | `mcp__agent-board__board_send` | Só barra subagent. A regra do envio roda no `envio.py`. |
 | `PostToolUse` | `Bash` | Digita o aviso no destino (Orca), marca `falhou` no log se a entrega falhou e dispara as notificações. |
+| `PreToolUse` | `Agent\|Task` | Só coleta (1.12): grava o `spawn` do sub-agent. |
+| `PostToolUse` | `Agent\|Task` | Só coleta: grava o `retorno`. |
+| `PostToolUseFailure` | `Agent\|Task` | Só coleta: grava o `retorno` com erro. |
+| `SubagentStart`, `SubagentStop` | todos | Só coleta: gravam o `inicio` e o `fim`. |
 | `Stop` | todos | Cobra mensagens recebidas sem resposta. |
+
+Os hooks de coleta respondem `{}` e nunca barram. Custo: cerca de 110 ms por execução (quase tudo boot do Python), 4 execuções por sub-agent, e nenhum `PreToolUse *`. Ver [hooks e limites](referencia/hooks-e-limites.md#sub-agents-claude-code-e-omp).
 
 O `Bash` não usa o filtro `if`: o filtro do Claude Code não pega redirecionamentos, como `echo x >> log`. O core descarta em milissegundos o que não interessa.
 
-Como esta VPS registra os hooks (`~/.claude/settings.json`): seis entradas `agent-board`, todas com timeout 10, apontando para `/root/.agents/skills/agent-board/scripts/hook_core.py`. São as quatro de `PreToolUse` da tabela, uma de `PostToolUse` e uma de `Stop`. O servidor MCP está registrado no escopo de usuário e conectado (`claude mcp get agent-board`). O adaptador do OMP está em `~/.omp/agent/hooks/pre/agent-board.ts`.
+Como esta VPS registra os hooks (`~/.claude/settings.json`): seis entradas `agent-board` (na instalação 1.10.2 atual), todas com timeout 10, apontando para `/root/.agents/skills/agent-board/scripts/hook_core.py`. São as quatro de `PreToolUse` da tabela, uma de `PostToolUse` e uma de `Stop`. Na 1.12, o `install.sh` acrescenta as de sub-agents (`Agent|Task` em Pre e PostToolUse, `PostToolUseFailure`, `SubagentStart` e `SubagentStop`), então a instalação desta VPS precisa rodá-lo de novo depois de atualizar o clone. O servidor MCP está registrado no escopo de usuário e conectado (`claude mcp get agent-board`). O adaptador do OMP está em `~/.omp/agent/hooks/pre/agent-board.ts`.
 
 ### 4.5 A política: a ordem das checagens
 
@@ -656,18 +663,19 @@ Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.
 | Servidor | Continua Python, só biblioteca padrão (`ThreadingHTTPServer`). |
 | Tempo real | **SSE** no lugar do polling de 5 s. |
 | Projetos | **Multi-projeto**: um servidor atende todos os projetos do cadastro. |
-| Telemetria | Nenhuma nova: sem hook novo e sem transcript. Só log, cadastro, `avisos.log`, pendentes, notas e `orca terminal list`. |
+| Telemetria | Na 1.11.0, nenhuma. Na 1.12.0, só o ciclo de vida dos sub-agents ([ADR-0011](adr/0011-subagentes-no-painel.md)); nada de transcript, saída de ferramenta ou prompt. O resto vem do log, do cadastro, de `avisos.log`, dos pendentes, das notas e do `orca terminal list`. |
 | Segurança | Só leitura (outros métodos, inclusive `HEAD` e `OPTIONS`, respondem 405), `127.0.0.1`, checagem de `Host`, CSP sem script inline, conteúdo do log como texto. |
-| Fora do escopo | Custo, tokens, ferramenta por ferramenta e subagentes, porque exigiriam telemetria. |
+| Fora do escopo | Custo, tokens e ferramenta por ferramenta, porque exigiriam telemetria. Os sub-agents entraram na 1.12.0. |
 
 #### Estado de cada parte
 
 | Parte | Estado | Evidência |
 |---|---|---|
-| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (54 testes) |
+| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (119 testes) |
 | Casca da SPA | **Pronta** | Sidebar, rotas, tema escuro, seletor de projeto e de período, indicador Live, clientes da API e do SSE, componentes de UI |
-| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 159 testes Vitest no total |
+| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 211 testes Vitest no total |
 | Office: Hub, Mapa e Grade, gaveta, Live Logs e modo TV | **Prontos e integrados** | `web/src/pages/Office/` |
+| **Sub-agents** (1.12): coletor, API, SSE e telas | **Prontos** | `subagentes.py`, `painel_subagentes.py`, `test_subagentes.py` (25 testes), `web/src/pages/Office/Subagentes.test.tsx` |
 | CSP sem script inline; `HEAD` e `OPTIONS` com 405 | **Corrigidos** (divergências 4 e 5) | `cmd_web.py` |
 | Build da SPA em `scripts/painel_web/` | Gerado e commitado no release (`npm ci && npm run build`). Sem ele, o servidor cai no painel v1 | `cmd_web._spa()` |
 | Playwright de fumaça | **Não feito** (ficou de fora do release) | [`planos/painel-v2.md`](planos/painel-v2.md) |
@@ -682,6 +690,7 @@ Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.
 | **Activity Feed** | Mensagens ao vivo, com filtros (agente, tipo, issue, datas), busca, pausa e agrupamento por conversa. Avisos e cobranças como eventos de sistema ficaram de fora |
 | **Analytics** | Últimos 30 dias: heatmap de 371 dias, mensagens e entregas por dia, tipos, horas de pico, tempo de resposta por agente, taxa de rejeição e alertas de ping-pong |
 | **Workflows** | Grafo em colunas (Master, Managers e researchers, Issues, Revisão, Resultado), grafo de comunicação e os 10 fluxos mais comuns |
+| **Sub-agents** (1.12) | Em todas as telas, abaixo do agente que os lançou: Office (sub-cards no Mapa, drones no Hub, resumo na Grade, lista na gaveta), Kanban (aninhados no agente e no cartão da tarefa), Dashboard (cartão "Sub-agents rodando"), Analytics (aba Sub-agents) e Workflows (coluna SUB-AGENTS). Status `rodando`, `concluido`, `erro` e `perdido`; agente com sub-agent rodando conta como `trabalhando` |
 | **Office** | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa sala central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma, por hierarquia ou por time) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens; o botão Live Logs abre o feed por cima |
 
 #### Rotas da API v2 (já implementadas)
@@ -699,6 +708,7 @@ Todas são `GET`, aceitam `?projeto=` e, quando faz sentido, `?periodo=hoje|24h|
 | `/api/mensagens` | Paginado por `antes`, com filtros (`agente`, `tipo`, `q`) |
 | `/api/analytics` | Heatmap de 371 dias, últimos 30 dias, horas, por agente, tipos, alertas |
 | `/api/workflows` | Nós, arestas, comunicação, fluxos e KPIs |
+| `/api/subagentes` | Sub-agents (1.12), com filtros `periodo`, `agente`, `status` e `limite` |
 | `/api/stream` | SSE (abaixo) |
 
 #### Tempo real (SSE)
@@ -711,6 +721,7 @@ O servidor vigia o `comunicacoes.jsonl` (a cada 1 s) e o `orca terminal list` (a
 | `mensagem` | Linha nova no log |
 | `agente` | Status, tela, pendentes ou tarefa atual mudou |
 | `tarefa` | Tarefa nova ou com estado mudado |
+| `subagente` | Sub-agent novo, com status mudado ou com atividade nova (1.12; no máximo 1 por sub-agent a cada 2 s) |
 | `ping` | A cada 15 s, sem outro evento |
 
 Não há replay: ao reconectar, a página recarrega as rotas REST. Limite de **16 conexões SSE**; a 17ª recebe 503.
@@ -721,7 +732,7 @@ O status vem do `orca terminal list`: título com *spinner*, saída recente e te
 
 | Status | Quando |
 |---|---|
-| `trabalhando` | Título com spinner, ou saída do terminal há menos de 10 s |
+| `trabalhando` | Título com spinner, saída do terminal há menos de 10 s, ou (1.12) sub-agent rodando |
 | `esperando` | A tela pede ação humana (`Do you want`, `[y/n]`, `Allow`, `permission`, `❯ 1.`) |
 | `pendente` | O agente tem mensagem sem resposta |
 | `parado` | Os demais casos |
@@ -740,12 +751,14 @@ A ordem de checagem no código é: `desconhecido`, `offline`, `esperando`, `trab
 
 | Harness | Trava automática | Evidência | Situação |
 |---|---|---|---|
-| **Claude Code** | **Sim, completa** | `install.sh` grava os hooks em `~/.claude/settings.json` e registra o MCP. Esta VPS usa. | Suportado e testado |
-| **OMP (Oh My Pi, "Pi")** | **Sim, com limites** | Adaptador `omp-agent-board.ts` instalado em `~/.omp/agent/hooks/pre/`. `test_omp.py` (14 testes) roda o adaptador no `bun` com o core real. Conferido no OMP 18.8.6. | Suportado e testado. O hook vê `bash`, `edit`, `write`, `ast_edit`, `eval` e o `board_send` do MCP; o resto passa. O painel trata a identidade `pi` do Orca como `omp` |
+| **Claude Code** | **Sim, completa** | `install.sh` grava os hooks em `~/.claude/settings.json` e registra o MCP. Esta VPS usa. | Suportado e testado. Sub-agents no painel: completo (5 eventos) |
+| **OMP (Oh My Pi, "Pi")** | **Sim, com limites** | Adaptador `omp-agent-board.ts` instalado em `~/.omp/agent/hooks/pre/`. `test_omp.py` (14 testes) roda o adaptador no `bun` com o core real. Conferido no OMP 18.8.6. | Suportado e testado. O hook vê `bash`, `edit`, `write`, `ast_edit`, `eval` e o `board_send` do MCP; o resto passa. O painel trata a identidade `pi` do Orca como `omp`. Sub-agents no painel: `inicio`, `atividade` e `fim`, sem `spawn` nem `retorno` |
 | **Codex** | **Não** | Nenhum instalador de hook. O código `cx` existe nos nomes. O guia do Maestri recruta `Codex` com `--preset`. O arquivo [`agents/openai.yaml`](../agents/openai.yaml) é só um manifesto de skill (`allow_implicit_invocation: false`). | Participa do time por disciplina de contrato, com `board.py send`. **MCP não testado** em Codex |
 | **Gemini CLI** | **Não** | Não há código de runtime `gemini` nos nomes (a lista é `cc`, `omp`, `cx`, `agy`, `oc`, `hr`). Nenhum instalador. A função `normalize()` do core reconhece nomes de ferramenta como `run_shell_command`, `write_file` e `replace`, mas nada liga isso a um hook. | **Não suportado.** Poderia entrar como membro por contrato, com um código de runtime livre, mas não há teste nem guia |
 | **Antigravity (`agy`), OpenCode (`oc`), Hermes (`hr`)** | **Não** | Só os códigos de nome. `SKILL.md`: "Agentes de outro harness (Codex, Hermes etc.) seguem o contrato, mas sem trava automática". | Por disciplina de contrato. MCP não testado em OpenCode |
 | **Outro qualquer** | Não | Mesmo caminho | Precisa de terminal Orca ou Maestri e de `board.py send` |
+
+**Sub-agents no painel** (1.12): Claude Code (5 eventos) e OMP (3, sem descrição nem tipo). **Codex, Maestri e os demais não têm** coleta, porque não há hook de ciclo de vida equivalente.
 
 O que um agente **sem trava** perde: o bloqueio de atalhos (`maestri ask` direto, `SendMessage`, escrita no log), o aviso digitado na tela (no Orca), a cobrança no fim do turno e a trava de subagent. O que ele **mantém**: as regras de envio, se usar `board.py send`, e o registro no log.
 
@@ -810,16 +823,17 @@ Dependências do front (só desenvolvimento): React 18.3.1, Vite 8.3.2, TypeScri
 | `test_agent_board.py` (hook, política, avisos, bloqueios) | 101 | Sim |
 | `test_politica.py` | 35 | Sim |
 | `test_maestri.py` (com CLI `maestri` falsa) | 35 | Sim |
-| `test_web.py` (API, SSE, servidor) | 54 | Sim |
+| `test_web.py` (API, SSE, servidor) | 119 | Sim |
 | `test_contrato.py` | 26 | Sim |
 | `test_registro.py` (log, hash, arquivo morto) | 23 | Sim |
 | `test_time.py` (notas, resumo, worktree, notificação) | 19 | Sim |
 | `test_mcp.py` | 15 | Sim |
 | `test_docs.py` (links e âncoras da documentação) | 2 | Sim |
+| `test_subagentes.py` (coletor e leitura do painel; 1 pulado) | 25 | Sim |
 | `test_omp.py` (adaptador no `bun`) | 14 | **Não** |
-| **Total** | **324** | 9 de 10 suítes |
+| **Total** | **414** | 10 de 11 suítes |
 
-Contagem feita rodando as suítes em Python 3.12.3. O front tem mais **159 testes** (Vitest, 14 arquivos, `cd web && npx vitest run`), que a CI também não roda. A CI roda 3.8 e 3.12, mais `ruff` (versão 0.17.0, regras `E4`, `E7`, `E9`, `F`). Atenção: `test_agent_board.py` falha 5 verificações de aviso se rodado **dentro de um terminal aberto pelo Orca server** (seção [14](#14-divergências-encontradas)).
+Contagem feita rodando as suítes em Python 3.12.3. O front tem mais **211 testes** (Vitest, 16 arquivos, `cd web && npx vitest run`), que a CI também não roda. A CI roda 3.8 e 3.12, mais `ruff` (versão 0.17.0, regras `E4`, `E7`, `E9`, `F`). Atenção: `test_agent_board.py` falha 5 verificações de aviso se rodado **dentro de um terminal aberto pelo Orca server** (seção [14](#14-divergências-encontradas)).
 
 ---
 
@@ -961,7 +975,7 @@ O agent-board protege um time **cooperativo** de agentes contra erro, esquecimen
 
 ## 10. Decisões de arquitetura (ADRs)
 
-Dez ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **aceita**.
+Onze ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **aceita**.
 
 | ADR | Data | Decisão | Consequência principal |
 |---|---|---|---|
@@ -974,7 +988,8 @@ Dez ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **acei
 | [0007](adr/0007-protocolo-de-tarefas-e-regras-opcionais.md) Protocolo de tarefas e regras opcionais | 2026-10-12 | Regras numa função pura (`politica.py`). `andamento`, `--veredito`, `--prazo`, `tarefas`, `vigiar`, `simular`. `ligacoes`, `limites`, roteamento `papel:`. Nada liga por padrão. | Muda comportamento: resposta a `entrega` sem `--veredito` passa a ser barrada (1.8.0). O estado é sempre derivado do log. |
 | [0008](adr/0008-interface-escolhida-no-setup-e-contrato-adaptado.md) Interface escolhida no setup | 2026-10-13 | `init` grava `transporte` no `agent-board.json`. Um template de contrato com marcadores gera duas versões. `cadastrar` recusa terminal da outra interface. Delegação orientada ao time. | Projeto novo nasce com contrato enxuto. Trocar de interface exige refazer cadastros. A escolha orienta e valida o cadastro, **não** é trava de execução. |
 | [0009](adr/0009-entrega-fecha-o-pedido.md) Entrega fecha o pedido | 2026-10-14 | `respostas()` conta `resposta` **e** `entrega` com `--responde-a`. Entrega rejeitada não reabre o pedido. `resposta` a pedido de trabalho continua permitida. | Quadro, `vigiar`, limite e painel concordam. Pedido entregue deixa de aparecer como atrasado. |
-| [0010](adr/0010-painel-v2-spa-com-build-e-sse.md) Painel v2: SPA com build commitado e SSE | 2026-10-20 | SPA React em `web/`, build em `scripts/painel_web/`. SSE no lugar do polling. Multi-projeto. Sem telemetria nova. Herda só leitura, loopback, `Host` e conteúdo como texto. | Cadeia de build só para quem desenvolve. Peso do build no repo (meta: menos de 600 KB gzip). Conexões longas: `ThreadingHTTPServer`, heartbeat de 15 s, limite de 16. |
+| [0010](adr/0010-painel-v2-spa-com-build-e-sse.md) Painel v2: SPA com build commitado e SSE | 2026-10-20 | SPA React em `web/`, build em `scripts/painel_web/`. SSE no lugar do polling. Multi-projeto. Sem telemetria nova (o item foi reaberto em parte pela 0011). Herda só leitura, loopback, `Host` e conteúdo como texto. | Cadeia de build só para quem desenvolve. Peso do build no repo (meta: menos de 600 KB gzip). Conexões longas: `ThreadingHTTPServer`, heartbeat de 15 s, limite de 16. |
+| [0011](adr/0011-subagentes-no-painel.md) Sub-agents no painel: coletor de ciclo de vida | 2026-10-20 | Hooks novos só de coleta gravam `spawn`, `inicio`, `atividade`, `fim` e `retorno` em `subagentes/` (fora do repo, sem hash, 14 dias). 4 execuções por sub-agent; a atividade pega carona nos hooks existentes. Sem prompt nem saída; segredos mascarados. Claude Code e OMP. | Quem atualiza roda o `install.sh` de novo. O painel mostra comandos e caminhos mascarados. O `retorno` de sub-agent em segundo plano só diz que ele subiu. |
 
 ---
 
@@ -986,7 +1001,7 @@ Dez ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **acei
 |---|---|---|---|
 | Original | BFLabsAI | 2026-10-09 | Versão **1.5.1**: Orca, papéis, log, cobrança. |
 | Fork | davioliveeira (Davi Oliveira) | 2026-10-12 a 2026-10-13 | Versões 1.6 a **1.10.0**: log confiável, tarefas, MCP, painel web, Maestri, interface no setup, documentação didática. |
-| Esta VPS | root | 2026-10-14 em diante | **1.10.1** e **1.10.2** (entrega fecha o pedido, adaptador do OMP corrigido, Orca server) e o **painel v2** (release **1.11.0**). |
+| Esta VPS | root | 2026-10-14 em diante | **1.10.1** e **1.10.2** (entrega fecha o pedido, adaptador do OMP corrigido, Orca server) o **painel v2** (release **1.11.0**) e os **sub-agents no painel** (release **1.12.0**). |
 
 O repositório tem 62 commits: 1 do original, 45 do fork (`davioliveeira` e `Davi Oliveira`) e 16 de `root`. A skill instalada nesta VPS (`~/.agents/skills/agent-board`) está em `main`, versão 1.10.2, **sem** o painel v2 até o clone ser atualizado para a 1.11.0.
 
@@ -996,6 +1011,7 @@ Fonte: [CHANGELOG.md](../CHANGELOG.md).
 
 | Versão | Data | Destaques |
 |---|---|---|
+| **1.12.0** | 2026-10-20 | **Sub-agents no painel** ([ADR-0011](adr/0011-subagentes-no-painel.md)): coletor nos hooks, `/api/subagentes` e evento SSE `subagente`, telas do Office, Kanban, Dashboard, Analytics e Workflows. Exige rodar o `install.sh` de novo. |
 | **1.11.0** | 2026-10-20 | **Painel v2**: sete telas, SSE, multi-projeto, build commitado ([ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md)), CSP sem script inline, `HEAD` e `OPTIONS` com 405. Esta base de conhecimento. |
 | **1.10.2** | 2026-10-14 | `achar_orca()` procura primeiro o shim do Orca server, antes do relay SSH. Corrige "no live pane bound to a Run". |
 | **1.10.1** | 2026-10-14 | `entrega --responde-a` fecha o pedido ([ADR-0009](adr/0009-entrega-fecha-o-pedido.md)). Rodapé mostra `entrega` e `resposta`. **OMP**: adaptador traduz ferramentas, barra subagent, confere o resultado do envio, trata `edit` com vários arquivos, `ast_edit` e `eval`. `test_omp.py` (14 testes). `AGENT_BOARD_PYTHON`. |
@@ -1241,13 +1257,15 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | [`painel_estado.py`](../scripts/painel_estado.py) | Estado v1, tarefas e status do agente |
 | [`painel_dados.py`](../scripts/painel_dados.py) | Dados derivados do log para a API v2 |
 | [`painel_stream.py`](../scripts/painel_stream.py) | O vigia que gera os eventos SSE |
+| [`subagentes.py`](../scripts/subagentes.py) | Coletor de sub-agents (grava em `subagentes/`) |
+| [`painel_subagentes.py`](../scripts/painel_subagentes.py) | Leitura dos eventos de sub-agents para a API |
 | [`painel_orca.py`](../scripts/painel_orca.py) | `orca terminal list`, com cache de 2 s |
 | [`painel_web.html`](../scripts/painel_web.html) | Página do painel v1 (fallback do v2) |
 | [`mcp_server.py`](../scripts/mcp_server.py), [`mcp_ferramentas.py`](../scripts/mcp_ferramentas.py) | Servidor MCP e as 5 ferramentas |
 | [`omp-agent-board.ts`](../scripts/omp-agent-board.ts) | Adaptador do OMP |
 | [`install.sh`](../scripts/install.sh) | Instalador idempotente |
 | [`VERSION`](../scripts/VERSION) | Versão do pacote |
-| `test_*.py` | 10 suítes de teste |
+| `test_*.py` | 11 suítes de teste |
 
 Contagem de linhas em `scripts/`: cerca de 5.000 de código (Python, TypeScript e `install.sh`), mais cerca de 255 do `painel_web.html`, e cerca de 3.700 de teste.
 
@@ -1261,6 +1279,7 @@ Contagem de linhas em `scripts/`: cerca de 5.000 de código (Python, TypeScript 
 | `avisos.log` | Avisos digitados ou suprimidos, falhas, encerramentos sem resposta, alertas |
 | `avisos-estado.json` | Controle de 1 aviso por destino a cada 60 s |
 | `alertas-estado.json` | Controle do alerta de ping-pong |
+| `subagentes/<projeto>/AAAA-MM-DD.jsonl` | Ciclo de vida dos sub-agents (1.12), sem hash. Apagado depois de 14 dias |
 | `pendentes/` | Estado entre o pré e o pós-envio. Apagado depois de 1 h |
 | `cobrancas/<painel>.json` | Quantas vezes o Stop já cobrou as mesmas pendências |
 | `envios/<id>.json` | Comando completo de cada envio, **com o corpo**, para o `reenviar`. Apagado depois de 7 dias |
@@ -1274,7 +1293,7 @@ Fora dessa pasta:
 
 | Caminho | O que é |
 |---|---|
-| `~/.claude/settings.json` | Onde o Claude Code registra os 6 hooks |
+| `~/.claude/settings.json` | Onde o Claude Code registra os hooks (6 entradas até a 1.11; 11 com os de sub-agents da 1.12) |
 | `~/.omp/agent/hooks/pre/agent-board.ts` | Adaptador do OMP instalado |
 | `~/.claude/skills/agent-board` | Link para a skill |
 | `~/.agents/skills/agent-board` | A skill instalada (clone do repositório) |
