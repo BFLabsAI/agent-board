@@ -2,7 +2,7 @@
 
 > **Em 1 minuto:** uma página local, só de leitura, que mostra ao vivo o que o time de agentes está fazendo: quem trabalha, o que está pendente ou atrasado, o que espera revisão e como o time conversa. Decisões: [ADR-0005](../adr/0005-painel-web-local-somente-leitura.md) e [ADR-0010](../adr/0010-painel-v2-spa-com-build-e-sse.md).
 
-**Páginas deste guia:** esta (abrir e usar) · [Telas: Dashboard, Kanban, Conversas e Activity Feed](painel-telas.md) · [Telas: Analytics e Workflows](painel-analise.md) · [Telas: Office](painel-office.md)
+**Páginas deste guia:** esta (abrir e usar) · [Telas: Dashboard, Kanban, Conversas e Activity Feed](painel-telas.md) · [Telas: Analytics e Workflows](painel-analise.md) · [Telas: Office](painel-office.md) · [Sub-agents](#sub-agents) (nesta página)
 
 ## Para que serve
 Responde "o que aconteceu enquanto eu estava fora?" sem ler `avisos.log` nem rodar `jq`. Mostra também o que está acontecendo agora: quem está trabalhando, quem espera você e o que atrasou.
@@ -55,9 +55,36 @@ O servidor aceita até 16 conexões ao mesmo tempo (uma por aba). A 17ª recebe 
 ## O que o painel não faz
 - **Não escreve nada:** qualquer método que não seja GET responde 405, inclusive `HEAD` e `OPTIONS`.
 - **Não mostra o corpo das mensagens:** só o assunto fica no log.
-- **Não tem telemetria de modelo:** custo, tokens e uso de ferramentas não aparecem, porque nenhum hook novo coleta isso. O painel usa só o log, o cadastro, as notas e a lista de terminais do Orca.
+- **Não tem telemetria de modelo:** custo, tokens e uso de ferramentas não aparecem. A única coleta própria é o ciclo de vida dos [sub-agents](#sub-agents). O resto vem do log, do cadastro, das notas e da lista de terminais do Orca.
 - **Não vê agentes do Maestri em tempo real:** o Maestri não lista terminais; o status deles fica "desconhecido" e aparecem na coluna Offline do Kanban.
 - **Não executa HTML do log:** tudo vindo do log é exibido como texto.
+
+## Sub-agents
+Um **sub-agent** é um agente que o Claude Code ou o OMP lança de dentro de uma sessão (ferramenta `Agent`/`Task`). Ele não entra no cadastro nem no log de mensagens. O painel o mostra **abaixo do agente que o lançou** (o "pai"), com o tipo, a descrição, a duração e a última ação.
+
+**De onde vêm os dados.** Os hooks do agent-board gravam o ciclo de vida em `~/.agent-hooks/agent-board/subagentes/<projeto>/AAAA-MM-DD.jsonl`, fora do git, e o painel só lê. Apaga sozinho depois de 14 dias. Referência: [hooks](../referencia/hooks-e-limites.md#sub-agents-claude-code-e-omp) e [API](../referencia/painel-api.md#sub-agents-112-issue-20).
+
+| Onde | O que mostra |
+|---|---|
+| [Office](painel-office.md#sub-agents-no-office) | Sub-cards no Mapa, drones no Hub, resumo na Grade e lista na gaveta |
+| [Kanban](painel-telas.md#sub-agents-no-dashboard-e-no-kanban) | Sub-agents aninhados no cartão do agente e contagem no cartão da tarefa |
+| [Dashboard](painel-telas.md#sub-agents-no-dashboard-e-no-kanban) | Cartão "Sub-agents rodando" e chips nos agentes |
+| [Analytics e Workflows](painel-analise.md#sub-agents) | Aba "Sub-agents" e coluna SUB-AGENTS no grafo |
+
+| Status | Significa |
+|---|---|
+| `rodando` | Começou e ainda não terminou. O agente pai conta como `trabalhando` |
+| `concluido` | Terminou sem erro |
+| `erro` | O pai recebeu a falha do sub-agent |
+| `perdido` | Ficou `rodando` sem nenhum evento por mais de 2 h (hook que falhou ou sessão encerrada) |
+
+**Limites.**
+- Só Claude Code e OMP. **Codex e Maestri** não têm hook de ciclo de vida: nada aparece.
+- No OMP não há descrição nem tipo do sub-agent (sem `spawn` e `retorno`); aparecem como `sub-agent`.
+- Em segundo plano (`run_in_background`), o retorno do pai só diz que o sub-agent subiu. O fim vem do evento de fim; sem ele, vira `perdido`.
+- Quem atualizou a skill precisa rodar o `install.sh` de novo para registrar os hooks novos.
+
+**Privacidade.** Não se grava o prompt, a saída das ferramentas nem a mensagem final. A descrição (até 120 caracteres) e o resumo da ação (até 160, comando ou caminho) passam por uma máscara de segredos (`sk-`, `ghp_`, `AKIA`, `Bearer`, `password=` e parecidos). Mesmo assim, comandos e caminhos ficam visíveis no painel: não o deixe aberto para quem não deve ver.
 
 ## Se der errado
 | Você vê | Faça |
@@ -71,6 +98,7 @@ O servidor aceita até 16 conexões ao mesmo tempo (uma por aba). A 17ª recebe 
 | Lista de agentes vazia | Nenhum painel cadastrado para o projeto. `painel.py listar` e `cadastrar`. |
 | Projeto não aparece no seletor | A raiz dele não tem `docs/agent-board/agent-board.json`, ou nenhum painel dele está cadastrado. |
 | "linha ilegível ignorada" no `avisos.log` | Linha corrompida no log. O painel segue sem ela; corrija pelo git e rode `verificar`. |
+| Nenhum sub-agent aparece, mas eles rodam | Os hooks da 1.12 não estão registrados (rode o `install.sh` de novo), o terminal não está cadastrado, ou o harness é Codex ou Maestri. |
 | Página antiga, sem as telas novas | O servidor está sem o build (`scripts/painel_web/`) e serve o painel antigo, de uma página só. Atualize a skill (`git pull`). |
 
 ## Regras que valem em todas as telas
