@@ -9,7 +9,7 @@
 ## Passo 1 — Clonar numa pasta fixa
 
 ```bash
-git clone https://github.com/davioliveeira/agent-board.git ~/.agents/skills/agent-board
+git clone https://github.com/BFLabsAI/agent-board.git ~/.agents/skills/agent-board
 mkdir -p ~/.claude/skills
 ln -s ../../.agents/skills/agent-board ~/.claude/skills/agent-board
 ```

@@ -78,7 +78,7 @@ O que **só o hook** faz: barrar os desvios (`maestri ask` direto, `SendMessage`
 
 Por isso um agente que não é Claude Code nem OMP (Codex, Hermes, OpenCode…) só tem as regras **no envio**. Se ele usar `board.py send`, a mensagem é conferida e registrada. Mas nada o impede de pular o agent-board, e ninguém o cobra no fim do turno. Ele segue o [contrato](../../templates/CONTRATO.md) por disciplina.
 
-No OMP, o adaptador `omp-agent-board.ts` só repassa ao hook os comandos do `orca`, do `maestri ask` e os que tocam o log ou o cadastro. A trava de subagent no `board.py` vale só no Claude Code.
+No OMP, o adaptador `omp-agent-board.ts` só repassa ao hook os comandos do `orca`, do `maestri ask` e os que tocam o log ou o cadastro. O adaptador também manda ao hook a identidade de subagent (`agent_id`), então a trava de subagent no `orca`, no `board.py` e no `board_send` vale no Claude Code e no OMP.
 
 ## Leia também
 

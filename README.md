@@ -54,7 +54,7 @@ Instale na máquina onde os agentes rodam (com Orca via SSH, é o servidor remot
 **1. Baixe a skill numa pasta fixa** (os hooks apontam para ela):
 
 ```bash
-git clone https://github.com/davioliveeira/agent-board.git ~/.agents/skills/agent-board
+git clone https://github.com/BFLabsAI/agent-board.git ~/.agents/skills/agent-board
 mkdir -p ~/.claude/skills && ln -s ../../.agents/skills/agent-board ~/.claude/skills/agent-board
 ```
 
@@ -79,7 +79,7 @@ No Claude Code, `/hooks` deve mostrar as entradas `agent-board`.
 
 ## O que mudou desde o fork
 
-A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.10.0**:
+A versão original (1.5.1) fazia o essencial no Orca. Daqui até a **1.11.0**:
 
 ```mermaid
 flowchart TB
@@ -88,6 +88,7 @@ flowchart TB
     F1 --> F2["Tarefas<br/>andamento · prazo · veredito"]
     F2 --> F3["Ferramentas<br/>MCP · painel web · notas"]
     F3 --> F4["Maestri<br/>2º transporte, testado ao vivo"]
+    F4 --> F5["Painel v2<br/>7 telas ao vivo"]
 ```
 
 | Evolução | O que ganhou |
@@ -96,10 +97,23 @@ flowchart TB
 | **Tarefas** | `andamento` para trabalho longo, `--prazo` com vigilância, entrega com veredito aprovado/rejeitado, quadro de tarefas. |
 | **Regras sob medida** | Quem pede a quem, limite de pedidos, alerta de ping-pong — e `simular` antes de ligar. |
 | **Log confiável** | Cadeia de hash que acusa adulteração, arquivo morto, reenvio de mensagem perdida. |
-| **Ferramentas** | Servidor MCP (sem erro de aspas), painel web local, notas e decisões do time, resumo do período. |
-| **Qualidade** | 256 testes em 9 suítes (inclusive os links da documentação e o contrato de cada interface), CI em Python 3.8 e 3.12, código em módulos pequenos, 8 ADRs. |
+| **Ferramentas** | Servidor MCP (sem erro de aspas), notas e decisões do time, resumo do período. |
+| **Painel web v2** | Sete telas ao vivo (Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e Office), só leitura. Veja [abaixo](#painel-web-v2). |
+| **Qualidade** | 324 testes em 10 suítes Python (inclusive os links da documentação e o contrato de cada interface) e 159 testes do front (Vitest). A CI roda 9 das 10 suítes Python, em Python 3.8 e 3.12; o OMP e o front rodam à mão. Código em módulos pequenos, 10 ADRs. |
 
 Detalhes em linguagem simples: [MELHORIAS.md](docs/MELHORIAS.md) · Histórico completo: [CHANGELOG.md](CHANGELOG.md) · Decisões: [docs/adr/](docs/adr/)
+
+---
+
+## Painel web v2
+
+Uma página local, só de leitura, para acompanhar o time ao vivo: Dashboard, Kanban, Conversas, Activity Feed, Analytics, Workflows e o Office (o time como um escritório animado). Funciona com vários projetos e atualiza por SSE, sem recarregar.
+
+```bash
+python3 ~/.agents/skills/agent-board/scripts/painel.py servir   # http://127.0.0.1:8765
+```
+
+Quem instala não precisa de Node: o build já vem em `scripts/painel_web/`. Passo a passo e o que cada número significa: [Guia do painel](docs/userguide/painel.md).
 
 ---
 
@@ -111,7 +125,7 @@ Detalhes em linguagem simples: [MELHORIAS.md](docs/MELHORIAS.md) · Histórico c
 | Fazer, passo a passo | [Orca](docs/guias/orca/README.md) · [Maestri](docs/guias/maestri/README.md) |
 | Os agentes usarem ferramentas em vez de comandos (MCP) | [Guia do MCP](docs/guias/mcp.md) |
 | Consultar um comando ou config | [Comandos](docs/referencia/comandos.md) · [Config](docs/referencia/config.md) · [Arquivos e estado](docs/referencia/arquivos-e-estado.md) · [Hooks e limites](docs/referencia/hooks-e-limites.md) |
-| Acompanhar o time numa tela | [Painel web](docs/userguide/painel.md) |
+| Acompanhar o time numa tela | [Painel web](docs/userguide/painel.md) · [API](docs/referencia/painel-api.md) |
 | Saber as regras que todo agente segue | [Contrato do time](templates/CONTRATO.md) |
 | Procedimento do master (para o agente) | [SKILL.md](SKILL.md) |
 | Contribuir com a documentação | [Guia de estilo](docs/ESTILO.md) |

@@ -1,6 +1,6 @@
 # O que melhorou no agent-board
 
-Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.10.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
+Um resumo em linguagem simples de tudo o que mudou da versão original (**1.5.1**) até a **1.11.0**. Para os detalhes técnicos, veja o [CHANGELOG](../CHANGELOG.md) e as decisões em [`docs/adr/`](adr/).
 
 ---
 
@@ -77,11 +77,15 @@ No Claude Code, o agente pode usar ferramentas prontas (`board_send`, `board_pen
 
 ## 7. Painel web para você acompanhar
 
-`painel.py servir` abre uma página local (só leitura) com:
-- o **mapa do time** (quem fala com quem, quem está devendo resposta);
-- o **quadro de tarefas** (inclusive atrasos e entregas esperando revisão);
-- a **linha do tempo** das mensagens;
-- as **notas e decisões** do time.
+**Antes:** uma página única que se atualizava a cada 5 s.
+**Agora:** o painel v2, com sete telas que se atualizam sozinhas (push por SSE, sem polling) e um indicador **Live** na barra lateral:
+- **Dashboard**: agentes trabalhando, pedidos abertos, pendentes, atrasados, revisão e tempo de resposta;
+- **Kanban**: tarefas por estado, ou agentes por status (trabalhando, esperando você, parado…);
+- **Conversas** e **Activity Feed**: cada pedido com a sua thread, e as mensagens ao vivo, com filtros e pausa;
+- **Analytics** e **Workflows**: heatmap, qualidade das entregas, tempo de resposta e por onde o trabalho passa;
+- **Office**: o time num escritório animado (Hub, Mapa e Grade), com a tela de cada agente numa gaveta e modo TV.
+
+Um servidor atende todos os projetos cadastrados. Continua só leitura, só em `127.0.0.1`, e quem instala não precisa de Node. Guia: [painel web](userguide/painel.md).
 
 ## 8. Memória do time
 
@@ -106,10 +110,10 @@ Achados no teste ao vivo no Maestri e na revisão das docs (todos com teste auto
 
 ## 10. Qualidade
 
-- **9 suítes de testes** (mais de 250 testes, inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) rodando na CI em Python 3.8 e 3.12, mais lint.
+- **10 suítes de testes Python (324 testes) e 159 testes do front** (inclusive um que confere todos os links da documentação e outro que garante que o contrato de cada interface não cita a outra) A CI roda 9 das 10 suítes Python em Python 3.8 e 3.12, mais lint. A suíte do OMP (precisa do `bun`) e a do front rodam à mão.
 - Código dividido em módulos pequenos (antes era um arquivo de quase 800 linhas).
 - Sem nenhuma dependência nova: só a biblioteca padrão do Python.
-- Decisões importantes registradas em **8 ADRs** (`docs/adr/`).
+- Decisões importantes registradas em **10 ADRs** (`docs/adr/`).
 
 ---
 
