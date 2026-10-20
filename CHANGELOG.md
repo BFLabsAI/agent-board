@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.11.0 — 2026-10-20
+
+Painel web v2: uma SPA com sete telas, atualizada por push. Ver [ADR-0010](docs/adr/0010-painel-v2-spa-com-build-e-sse.md) e o [guia do painel](docs/userguide/painel.md).
+
+### Novo
+- **Painel v2** (`painel.py servir`): Dashboard, Kanban (tarefas e agentes), Conversas (lista e detalhe), Activity Feed, Analytics, Workflows e Office (modos Hub, Mapa e Grade, gaveta do agente, Live Logs e modo TV). Continua só leitura, em 127.0.0.1.
+- **Tempo real por SSE** (`/api/stream`): o servidor vigia o log (1 s) e o Orca (2 s) e empurra `mensagem`, `agente` e `tarefa`. No lugar do polling de 5 s. Heartbeat de 15 s e no máximo 16 conexões.
+- **Multi-projeto:** um servidor atende todos os projetos do cadastro; todas as rotas aceitam `?projeto=`. `--raiz` virou opcional.
+- **API nova:** `/api/projetos`, `/api/resumo`, `/api/agentes`, `/api/tarefas`, `/api/conversas`, `/api/mensagens`, `/api/analytics` e `/api/workflows`, mais o status do agente (trabalhando, esperando, pendente, parado, offline) lido do `orca terminal list`. Contrato em [painel-api.md](docs/referencia/painel-api.md).
+- **Build commitado** em `scripts/painel_web/`: quem instala não precisa de Node. O código-fonte fica em `web/` (React, Vite, TypeScript, Tailwind). Módulos novos: `painel_dados.py`, `painel_orca.py` e `painel_stream.py`.
+- **Base de conhecimento** do produto em [`docs/PRODUTO.md`](docs/PRODUTO.md), com a lista de divergências entre a documentação e o código.
+- Guia do painel reescrito e dividido em quatro páginas; plano do v2 em [docs/planos/painel-v2.md](docs/planos/painel-v2.md).
+
+### Alterado
+- **CSP sem script inline:** `default-src 'self'; script-src 'self'`, mais `object-src 'none'`, `base-uri 'none'` e `frame-ancestors 'none'`. O `'unsafe-inline'` de script só vale para a página antiga (`painel_web.html`), usada se não houver build.
+- **`HEAD` e `OPTIONS` respondem 405**, com os cabeçalhos de segurança (antes caíam no 501 do `http.server`). Só `GET` é aceito.
+- Documentação alinhada ao código: a trava de subagent vale também no OMP (desde a 1.10.1); `agents/openai.yaml` cita o Maestri; `SKILL.md` lista todos os subcomandos do `painel.py`; URL de clone `BFLabsAI/agent-board`; números do README e do MELHORIAS atualizados.
+
+### Testes
+- **324 testes Python em 10 suítes:** `test_agent_board` 101, `test_contrato` 26, `test_docs` 2, `test_maestri` 35, `test_mcp` 15, `test_omp` 14, `test_politica` 35, `test_registro` 23, `test_time` 19 e `test_web` 54. Rode com `env -u ORCA_CLI_BIN_DIR` dentro de um terminal do Orca server.
+- **159 testes Vitest** do front, em 14 arquivos (`cd web && npx vitest run`).
+- A CI continua rodando 9 suítes Python; `test_omp.py` (precisa do `bun`) e o Vitest rodam à mão.
+
 ## 1.10.2 — 2026-10-14
 
 ### Corrigido

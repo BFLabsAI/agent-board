@@ -22,7 +22,7 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 |---|---|---|
 | [`scripts/hook_core.py`](scripts/hook_core.py) | skill | Regras: antes do envio (valida, traduz nome → painel, grava o log), depois do envio (avisa o destino) e ao encerrar (cobra resposta) |
 | [`scripts/omp-agent-board.ts`](scripts/omp-agent-board.ts) | skill | Adaptador do OMP para o mesmo core |
-| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar`, `tarefas`, `vigiar`, `simular`, `nota`, `notas`, `resumo`, `servir` |
+| [`scripts/painel.py`](scripts/painel.py) | skill | `init`, `listar`, `cadastrar`, `remover`, `historico`, `verificar`, `arquivar`, `reenviar`, `tarefas`, `vigiar`, `simular`, `nota`, `notas`, `resumo`, `servir`, `eu`, `solicitar`, `solicitacoes`, `maestri` |
 | [`scripts/politica.py`](scripts/politica.py) | skill | Regras de envio sem I/O (`validar_envio`), usadas pelo hook, pelo MCP e pelo `simular` |
 | [`scripts/mcp_server.py`](scripts/mcp_server.py) | skill | Servidor MCP: ferramentas `board_*` tipadas, com as mesmas regras do hook |
 | [`scripts/board.py`](scripts/board.py) | skill | `board.py send`: envio do time em qualquer transporte (Orca ou Maestri) |
@@ -32,7 +32,7 @@ Harnesses cobertos pelos hooks: Claude Code e OMP. Agentes de outro harness (Cod
 | [`scripts/contrato.py`](scripts/contrato.py) | skill | A interface do projeto (Orca ou Maestri) e o `CONTRATO.md` adaptado a ela |
 | [`scripts/envio.py`](scripts/envio.py), [`scripts/maestri.py`](scripts/maestri.py) | skill | Envio pelo transporte do destino (usado por `board.py` e MCP) e a CLI do Maestri |
 | [`scripts/cmd_log.py`](scripts/cmd_log.py), [`cmd_tarefas.py`](scripts/cmd_tarefas.py), [`cmd_time.py`](scripts/cmd_time.py), [`cmd_web.py`](scripts/cmd_web.py) | skill | Subcomandos do `painel.py` (log, tarefas/vigiar/simular, nota/resumo/worktree, servir) |
-| [`scripts/painel_estado.py`](scripts/painel_estado.py), [`painel_web.html`](scripts/painel_web.html) | skill | Painel web (`painel.py servir`) |
+| [`scripts/painel_estado.py`](scripts/painel_estado.py), [`painel_dados.py`](scripts/painel_dados.py), [`painel_orca.py`](scripts/painel_orca.py), [`painel_stream.py`](scripts/painel_stream.py), `scripts/painel_web/` | skill | Painel web v2 (`painel.py servir`, só leitura, 7 telas ao vivo, vários projetos): dados, terminais do Orca, SSE e a SPA já compilada. Código-fonte em [`web/`](web/README.md); guia em [docs/userguide/painel.md](docs/userguide/painel.md). `painel_web.html` é a página antiga, usada só sem o build |
 | `scripts/mcp_ferramentas.py`, `base.py`, `registro.py`, `protecao.py`, `avisos.py`, `toon.py` | skill | Ferramentas MCP e módulos do core |
 | `scripts/test_*.py` | skill | Testes a seco, sem envio real |
 | [`scripts/VERSION`](scripts/VERSION) | skill | Versão do pacote |

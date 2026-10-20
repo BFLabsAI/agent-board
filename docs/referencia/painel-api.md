@@ -77,7 +77,7 @@ interface Conversa {
 
 ```ts
 {
-  heatmap: { dia: string /* AAAA-MM-DD */, n: number }[]       // 371 dias até hoje, mensagens por dia (log ativo + arquivo)
+  heatmap: { dia: string /* AAAA-MM-DD */, n: number }[]       // 371 dias até hoje (53 semanas), mensagens por dia (log ativo + arquivo)
   ultimos_30d: { dia: string, mensagens: number, entregas: number, aprovadas: number, rejeitadas: number }[]
   horas: number[]                                                // 24 posições, mensagens por hora do dia (30 d)
   por_agente: { agente: string, enviadas: number, recebidas: number, entregas: number,

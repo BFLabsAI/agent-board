@@ -1,7 +1,7 @@
 # agent-board: base de conhecimento do produto
 
 > **Para quem é:** o CEO. Serve para entender, explicar, vender e decidir sobre o agent-board.
-> **Versão descrita:** `1.10.2` (arquivo [`scripts/VERSION`](../scripts/VERSION)), que é a instalada nesta VPS. O **painel v2** (a nova interface web) está **em construção** na branch `feat/painel-v2` e vem marcado como tal em cada ponto.
+> **Versão descrita:** `1.11.0`, a do release do painel v2 (o arquivo [`scripts/VERSION`](../scripts/VERSION) recebe o número no bump do release). A skill instalada nesta VPS ainda é a `1.10.2`, até a atualização do clone. O **painel v2** (a nova interface web) está integrado na branch `feat/painel-v2` com as sete telas prontas.
 > **Fonte de verdade:** o código em `scripts/`. Quando uma doc discorda do código, vale o código, e a diferença está na seção [14. Divergências encontradas](#14-divergências-encontradas).
 > **Estilo:** frases curtas e muitas tabelas, como em [ESTILO.md](ESTILO.md). Este arquivo passa do limite de tamanho do guia de estilo de propósito: é uma base de conhecimento, não um guia de passo a passo.
 
@@ -43,7 +43,7 @@ O agent-board é um **carteiro com regras** para times de agentes de IA. Cada ag
 | Como o CEO acompanha? | `painel.py resumo` ("o que houve enquanto eu estava fora"), `painel.py tarefas`, o painel web e as notas e decisões do time. |
 | Onde roda? | Linux (testado em CI e nesta VPS) e macOS (documentado, sem CI). Windows só por WSL, não testado. Python 3.8 ou mais novo. |
 | Quanto custa em dependências? | Zero pacotes Python. Precisa de `git`, `bash` e da CLI `orca` ou `maestri`. |
-| Em que estágio está? | Versão 1.10.2, com 323 testes automáticos em 10 suítes. Em uso real nesta VPS desde 2026-10-07. Painel v2 em construção. |
+| Em que estágio está? | Versão 1.11.0, com 324 testes Python em 10 suítes e 159 testes do front (Vitest). Em uso real nesta VPS desde 2026-10-07. Painel v2 pronto, com sete telas. |
 | Qual o maior limite? | A trava automática só existe para Claude Code e OMP. Outros harnesses seguem o contrato por disciplina. |
 
 ---
@@ -78,7 +78,7 @@ Vários agentes de IA trabalhando juntos no mesmo projeto têm quatro defeitos n
 | **Nada se perde.** O agente é segurado até 3 vezes ao tentar encerrar com resposta pendente. | `decide_stop` em [`hook_core.py`](../scripts/hook_core.py) |
 | **Sem dependência.** Só biblioteca padrão do Python. Nenhum `pip install`. | [`MELHORIAS.md`](MELHORIAS.md), o código não importa nada de fora |
 | **Dois transportes, um conjunto de regras.** Orca ou Maestri, mesma política e mesmo log. | [ADR-0006](adr/0006-maestri-como-transporte.md) |
-| **Testado.** 323 testes em 10 suítes, incluindo CLI falsa do Maestri, adaptador do OMP rodando de verdade no `bun` e conferência dos links da documentação. | Seção [7.6](#76-testes-e-ci) |
+| **Testado.** 324 testes em 10 suítes (mais 159 do front), incluindo CLI falsa do Maestri, adaptador do OMP rodando de verdade no `bun` e conferência dos links da documentação. | Seção [7.6](#76-testes-e-ci) |
 | **Em uso real.** 557 mensagens em 13 dias num projeto desta VPS (seção [11.3](#113-uso-real-nesta-vps)). | Log agregado |
 | **Governança configurável.** Quem pede a quem, limite de pedidos abertos, prazo padrão e alerta de ping-pong, com `simular` para testar antes de ligar. | [Regras](conceitos/regras.md) |
 
@@ -528,7 +528,7 @@ O prefixo é só `[a-z0-9]`. `<NN>` tem dois dígitos. O runtime é `[a-z]+`. O 
 
 ## 6. Features completas
 
-Legenda: **Pronto** = no código e testado na versão 1.10.2. **Em construção** = painel v2, ainda não está na `main` nem na instalação desta VPS.
+Legenda: **Pronto** = no código e testado na versão 1.11.0.
 
 ### 6.1 Comunicação
 
@@ -629,9 +629,9 @@ Servidor `agent-board` ([`mcp_server.py`](../scripts/mcp_server.py) e [`mcp_ferr
 
 Guia: [Mensagens por ferramentas (MCP)](guias/mcp.md). O `install.sh` registra o servidor com `claude mcp add --scope user`.
 
-### 6.6 Painel web v1 (o que roda hoje)
+### 6.6 Painel web v1 (histórico e fallback)
 
-Comando: `painel.py servir --raiz <projeto>` (padrão `http://127.0.0.1:8765`). Uma página HTML única ([`painel_web.html`](../scripts/painel_web.html)), que refaz `GET /api/estado` a cada 5 s. **Só leitura.** Guia: [Painel web](userguide/painel.md). Decisão: [ADR-0005](adr/0005-painel-web-local-somente-leitura.md).
+O v1 é uma página HTML única ([`painel_web.html`](../scripts/painel_web.html)) que refaz `GET /api/estado` a cada 5 s. Hoje só roda se não houver o build do v2 em `scripts/painel_web/`. **Só leitura.** Decisão: [ADR-0005](adr/0005-painel-web-local-somente-leitura.md) (a 0010 substitui o "sem build" e o polling).
 
 | Área | Mostra |
 |---|---|
@@ -644,9 +644,9 @@ Comando: `painel.py servir --raiz <projeto>` (padrão `http://127.0.0.1:8765`). 
 
 O painel **não** mostra o corpo das mensagens, porque ele não fica no log (só o assunto).
 
-### 6.7 Painel web v2 (**em construção**)
+### 6.7 Painel web v2
 
-Plano: [`planos/painel-v2.md`](planos/painel-v2.md). Decisão: [ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md), aceita pelo CEO em 2026-10-20. Referência visual: o projeto externo `Claude-Code-Agent-Monitor`. Contrato da API: [`painel-api.md`](referencia/painel-api.md). Tokens visuais: [`design-system/MASTER.md`](../design-system/MASTER.md).
+Comando: `painel.py servir [--raiz <projeto>] [--porta 8765]`, em `http://127.0.0.1:8765`. Um servidor atende todos os projetos do cadastro. Guia: [Painel web](userguide/painel.md). Plano (todas as fases concluídas): [`planos/painel-v2.md`](planos/painel-v2.md). Decisão: [ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md), aceita pelo CEO em 2026-10-20. Referência visual: o projeto externo `Claude-Code-Agent-Monitor`. Contrato da API: [`painel-api.md`](referencia/painel-api.md). Tokens visuais: [`design-system/MASTER.md`](../design-system/MASTER.md).
 
 #### Decisões
 
@@ -657,37 +657,32 @@ Plano: [`planos/painel-v2.md`](planos/painel-v2.md). Decisão: [ADR-0010](adr/00
 | Tempo real | **SSE** no lugar do polling de 5 s. |
 | Projetos | **Multi-projeto**: um servidor atende todos os projetos do cadastro. |
 | Telemetria | Nenhuma nova: sem hook novo e sem transcript. Só log, cadastro, `avisos.log`, pendentes, notas e `orca terminal list`. |
-| Segurança | Herdada: só leitura, `127.0.0.1`, checagem de `Host`, conteúdo do log como texto. |
+| Segurança | Só leitura (outros métodos, inclusive `HEAD` e `OPTIONS`, respondem 405), `127.0.0.1`, checagem de `Host`, CSP sem script inline, conteúdo do log como texto. |
 | Fora do escopo | Custo, tokens, ferramenta por ferramenta e subagentes, porque exigiriam telemetria. |
 
-#### Estado de cada parte (no momento desta redação)
+#### Estado de cada parte
 
 | Parte | Estado | Evidência |
 |---|---|---|
-| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e mergeada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (53 testes) |
-| Casca da SPA | **Pronta e mergeada em `feat/painel-v2`** | Sidebar, rotas, tema escuro, seletor de projeto, seletor de período, indicador "live", cliente da API, cliente SSE, componentes de UI; ADR-0010 e design system |
-| Dashboard | **Em construção**: só os 6 cartões de KPI estão commitados; cartões dos agentes e atividade recente estão em desenvolvimento | Placeholder em `web/src/pages/Dashboard/index.tsx`; arquivos novos não commitados na worktree `painel-dashboard` |
-| Kanban | **Em construção** (tela vazia "Em construção" na base; trabalho em andamento) | Worktree `painel-kanban` |
-| Conversas e detalhe | **Em construção** | Worktree `painel-conversas` |
-| Activity Feed | **Em construção** | Worktree `painel-feed` |
-| Analytics | **Em construção** | Worktree `painel-analytics` |
-| Workflows | **Planejado** (sem arquivos novos na worktree no momento) | Worktree `painel-workflows` |
-| Office: modo Hub | **Planejado** (sem arquivos novos na worktree no momento) | Worktree `painel-office-hub` |
-| Office: modos Mapa e Grade | Contrato entre modos commitado; Mapa em desenvolvimento | `feat/painel-v2` (commit `19304bd`), worktree `painel-office-mapa` |
-| Build da SPA em `scripts/painel_web/` | **Ainda não existe no repositório**. O servidor cai no painel v1 enquanto não houver build | `cmd_web._spa()` |
-| `test_web.py`, Vitest, Playwright de fumaça, versão 1.11.0, merge na `main` | Fase 6 do plano, **não feita** | [`planos/painel-v2.md`](planos/painel-v2.md) |
+| API v2 (`/api/*`) e SSE (`/api/stream`) | **Pronta e integrada em `feat/painel-v2`** | `cmd_web.py`, `painel_dados.py`, `painel_stream.py`, `painel_orca.py`; `test_web.py` (54 testes) |
+| Casca da SPA | **Pronta** | Sidebar, rotas, tema escuro, seletor de projeto e de período, indicador Live, clientes da API e do SSE, componentes de UI |
+| Dashboard, Kanban, Conversas e detalhe, Activity Feed, Analytics, Workflows | **Prontas e integradas** | `web/src/pages/*`; 159 testes Vitest no total |
+| Office: Hub, Mapa e Grade, gaveta, Live Logs e modo TV | **Prontos e integrados** | `web/src/pages/Office/` |
+| CSP sem script inline; `HEAD` e `OPTIONS` com 405 | **Corrigidos** (divergências 4 e 5) | `cmd_web.py` |
+| Build da SPA em `scripts/painel_web/` | Gerado e commitado no release (`npm ci && npm run build`). Sem ele, o servidor cai no painel v1 | `cmd_web._spa()` |
+| Playwright de fumaça | **Não feito** (ficou de fora do release) | [`planos/painel-v2.md`](planos/painel-v2.md) |
 
-#### Telas planejadas
+#### Telas
 
-| Tela | Conteúdo previsto |
+| Tela | O que mostra |
 |---|---|
-| **Dashboard** | KPIs (agentes trabalhando, pedidos abertos, pendentes, atrasados, aguardando revisão, tempo de resposta p50 e p90, mensagens e entregas de hoje), cartões dos agentes (status, tarefa atual, tela do terminal) e atividade recente |
-| **Kanban** | Toggle **Tarefas** (Pedido, Em andamento, Aguardando revisão, Aprovado ou Rejeitado, com raia de Atrasado) e toggle **Agentes** (Trabalhando, Esperando você, Com pendente, Parado, Offline) |
-| **Conversas** | Cada pedido com sua thread (andamentos, respostas, entrega, revisão), duração, participantes, issues e branch. Lista filtrável |
-| **Activity Feed** | Stream ao vivo das mensagens, com filtros (agente, tipo, issue), busca, pausa e agrupamento por tarefa. Avisos e cobranças entram como eventos de sistema |
-| **Analytics** | Heatmap de 52 semanas, mensagens e entregas por dia, tempo de resposta por agente, taxa de rejeição, entregas por manager, alertas de ping-pong e horários de pico |
-| **Workflows** | Grafo em colunas (Master, Managers, Issues, Revisão, Resultado), Sankey, grafo de comunicação e fluxos mais comuns |
-| **Office** (nova) | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa plataforma central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens |
+| **Dashboard** | Oito cartões (agentes trabalhando, pedidos abertos, pendentes, atrasados, aguardando revisão, tempo de resposta com p90, mensagens e entregas), faixa de alertas (cadeia de hash, ping-pong, atrasos), cartões dos agentes (status, tarefa atual, tela do terminal) e atividade recente |
+| **Kanban** | Modo **Tarefas** (Atrasado, Aberto, Em andamento, Aguardando revisão, Aprovado, Rejeitado, Concluído) e modo **Agentes** (Trabalhando, Esperando você, Com pendente, Parado, Offline) |
+| **Conversas** | Cada pedido com sua thread, duração, participantes, issues e branch. Lista filtrável e ordenável; o detalhe tem o ciclo (pedido, andamento, entrega, revisão) e a timeline |
+| **Activity Feed** | Mensagens ao vivo, com filtros (agente, tipo, issue, datas), busca, pausa e agrupamento por conversa. Avisos e cobranças como eventos de sistema ficaram de fora |
+| **Analytics** | Últimos 30 dias: heatmap de 371 dias, mensagens e entregas por dia, tipos, horas de pico, tempo de resposta por agente, taxa de rejeição e alertas de ping-pong |
+| **Workflows** | Grafo em colunas (Master, Managers e researchers, Issues, Revisão, Resultado), grafo de comunicação e os 10 fluxos mais comuns |
+| **Office** | Canvas com zoom e arraste, modo TV e três modos: **Hub** (master numa sala central, managers em mesas, mensagens como pulsos de luz), **Mapa** (organograma, por hierarquia ou por time) e **Grade** (um cartão rico por agente). Clicar abre uma gaveta com a tela do terminal, a tarefa atual e as últimas mensagens; o botão Live Logs abre o feed por cima |
 
 #### Rotas da API v2 (já implementadas)
 
@@ -733,7 +728,7 @@ O status vem do `orca terminal list`: título com *spinner*, saída recente e te
 | `offline` | O handle não está aberto no Orca |
 | `desconhecido` | O Orca não respondeu, ou o agente é do Maestri |
 
-O status vem de uma heurística sobre o formato do título e da tela do Orca, que pode mudar ([riscos do plano](planos/painel-v2.md)).
+A ordem de checagem no código é: `desconhecido`, `offline`, `esperando`, `trabalhando`, `pendente`, `parado`. O status vem de uma heurística sobre o formato do título e da tela do Orca, que pode mudar ([riscos do plano](planos/painel-v2.md)).
 
 ---
 
@@ -815,16 +810,16 @@ Dependências do front (só desenvolvimento): React 18.3.1, Vite 8.3.2, TypeScri
 | `test_agent_board.py` (hook, política, avisos, bloqueios) | 101 | Sim |
 | `test_politica.py` | 35 | Sim |
 | `test_maestri.py` (com CLI `maestri` falsa) | 35 | Sim |
-| `test_web.py` (API, SSE, servidor) | 53 | Sim |
+| `test_web.py` (API, SSE, servidor) | 54 | Sim |
 | `test_contrato.py` | 26 | Sim |
 | `test_registro.py` (log, hash, arquivo morto) | 23 | Sim |
 | `test_time.py` (notas, resumo, worktree, notificação) | 19 | Sim |
 | `test_mcp.py` | 15 | Sim |
 | `test_docs.py` (links e âncoras da documentação) | 2 | Sim |
 | `test_omp.py` (adaptador no `bun`) | 14 | **Não** |
-| **Total** | **323** | 9 de 10 suítes |
+| **Total** | **324** | 9 de 10 suítes |
 
-Contagem feita rodando as suítes em Python 3.12.3. A CI roda 3.8 e 3.12, mais `ruff` (versão 0.17.0, regras `E4`, `E7`, `E9`, `F`). Atenção: `test_agent_board.py` falha 5 verificações de aviso se rodado **dentro de um terminal aberto pelo Orca server** (seção [14](#14-divergências-encontradas)).
+Contagem feita rodando as suítes em Python 3.12.3. O front tem mais **159 testes** (Vitest, 14 arquivos, `cd web && npx vitest run`), que a CI também não roda. A CI roda 3.8 e 3.12, mais `ruff` (versão 0.17.0, regras `E4`, `E7`, `E9`, `F`). Atenção: `test_agent_board.py` falha 5 verificações de aviso se rodado **dentro de um terminal aberto pelo Orca server** (seção [14](#14-divergências-encontradas)).
 
 ---
 
@@ -991,9 +986,9 @@ Dez ADRs em [`docs/adr/`](adr/0001-toon-so-na-saida.md). Todas com status **acei
 |---|---|---|---|
 | Original | BFLabsAI | 2026-10-09 | Versão **1.5.1**: Orca, papéis, log, cobrança. |
 | Fork | davioliveeira (Davi Oliveira) | 2026-10-12 a 2026-10-13 | Versões 1.6 a **1.10.0**: log confiável, tarefas, MCP, painel web, Maestri, interface no setup, documentação didática. |
-| Esta VPS | root | 2026-10-14 em diante | **1.10.1** e **1.10.2** (entrega fecha o pedido, adaptador do OMP corrigido, Orca server) e o **painel v2** em construção. |
+| Esta VPS | root | 2026-10-14 em diante | **1.10.1** e **1.10.2** (entrega fecha o pedido, adaptador do OMP corrigido, Orca server) e o **painel v2** (release **1.11.0**). |
 
-O repositório tem 62 commits: 1 do original, 45 do fork (`davioliveeira` e `Davi Oliveira`) e 16 de `root`. A skill instalada nesta VPS (`~/.agents/skills/agent-board`) está em `main`, versão 1.10.2, **sem** o painel v2.
+O repositório tem 62 commits: 1 do original, 45 do fork (`davioliveeira` e `Davi Oliveira`) e 16 de `root`. A skill instalada nesta VPS (`~/.agents/skills/agent-board`) está em `main`, versão 1.10.2, **sem** o painel v2 até o clone ser atualizado para a 1.11.0.
 
 ### 11.2 Versões
 
@@ -1001,6 +996,7 @@ Fonte: [CHANGELOG.md](../CHANGELOG.md).
 
 | Versão | Data | Destaques |
 |---|---|---|
+| **1.11.0** | 2026-10-20 | **Painel v2**: sete telas, SSE, multi-projeto, build commitado ([ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md)), CSP sem script inline, `HEAD` e `OPTIONS` com 405. Esta base de conhecimento. |
 | **1.10.2** | 2026-10-14 | `achar_orca()` procura primeiro o shim do Orca server, antes do relay SSH. Corrige "no live pane bound to a Run". |
 | **1.10.1** | 2026-10-14 | `entrega --responde-a` fecha o pedido ([ADR-0009](adr/0009-entrega-fecha-o-pedido.md)). Rodapé mostra `entrega` e `resposta`. **OMP**: adaptador traduz ferramentas, barra subagent, confere o resultado do envio, trata `edit` com vários arquivos, `ast_edit` e `eval`. `test_omp.py` (14 testes). `AGENT_BOARD_PYTHON`. |
 | **1.10.0** | 2026-10-13 | Interface (Orca ou Maestri) escolhida no `init`. Contrato adaptado. `cadastrar` recusa terminal da outra interface. `contrato.py` e `test_contrato.py`. |
@@ -1055,19 +1051,19 @@ Leitura: o produto está em uso diário e a cadeia de hash está íntegra. O `an
 
 ### 11.4 Roadmap
 
-#### Painel v2 (plano em 7 fases)
+#### Painel v2 (plano em 7 fases, concluído)
 
 Fonte: [`planos/painel-v2.md`](planos/painel-v2.md). Decisões do CEO em 2026-10-20.
 
 | Fase | Entrega | Estado |
 |---|---|---|
-| 0. Desenho | ADR-0010, tokens do design system, mockups para aprovar | **Feita** (ADR e design system na `feat/painel-v2`) |
-| 1. Fundações | API nova + SSE + leitura de status do Orca; casca da SPA | **Feita** (issues #2 e #3 mergeadas na `feat/painel-v2`) |
-| 2. Telas base | Dashboard, Kanban, Activity Feed | **Em construção** (worktrees em andamento) |
-| 3. Profundidade | Conversas e detalhe, Analytics | **Em construção** |
-| 4. Workflows | Grafo em colunas, Sankey, grafo de comunicação | **Planejada** |
-| 5. Office | Hub isométrico com pulsos, Mapa, Grade, gaveta, modo TV | **Planejada** (contrato entre modos já commitado) |
-| 6. Fechamento | `test_web.py`, Vitest, Playwright de fumaça, `userguide/painel.md`, CHANGELOG, **versão 1.11.0**, merge na `main` e atualização do clone da skill | **Pendente** |
+| 0. Desenho | ADR-0010, tokens do design system, mockups para aprovar | **Feita** |
+| 1. Fundações | API nova + SSE + leitura de status do Orca; casca da SPA | **Feita** |
+| 2. Telas base | Dashboard, Kanban, Activity Feed | **Feita** |
+| 3. Profundidade | Conversas e detalhe, Analytics | **Feita** |
+| 4. Workflows | Grafo em colunas, grafo de comunicação, fluxos mais comuns | **Feita** |
+| 5. Office | Hub isométrico com pulsos, Mapa, Grade, gaveta, modo TV | **Feita** |
+| 6. Fechamento | `test_web.py`, Vitest, Playwright de fumaça, `userguide/painel.md`, CHANGELOG, **versão 1.11.0**, merge na `main` e atualização do clone da skill | **Feita**, menos o Playwright de fumaça. O bump da versão, o merge na `main` e a atualização do clone são do master |
 
 Riscos do plano: o status vindo do Orca é heurístico; o peso do build entra no repositório (meta abaixo de 600 KB gzip, com chunks separados para Workflows e Office); SSE em `http.server` exige threads e heartbeat.
 
@@ -1104,7 +1100,7 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | Codex e Gemini funcionam? | Codex participa por contrato, sem trava. Gemini não tem suporte. Veja [7.1](#71-harnesses-o-programa-que-hospeda-o-agente). |
 | O painel web envia mensagens? | Não. Só leitura. |
 | Posso expor o painel na internet? | Não é suportado. Use túnel SSH. |
-| O painel v2 já está no ar? | Não. Está em construção. Hoje roda o v1. |
+| O painel v2 já está no ar? | Sim, a partir da 1.11.0, depois do merge e da atualização do clone. Até lá a instalação desta VPS roda o v1. |
 | Qual a licença? | MIT ([LICENSE](../LICENSE)). |
 
 ### 12.2 Mensagem barrada
@@ -1212,13 +1208,13 @@ Os guias "4-problemas" completos: [Orca](guias/orca/4-problemas.md) e [Maestri](
 | `docs/guias/orca/`, `docs/guias/maestri/` | Fazer, em 4 passos cada (instalar, montar o time, dia a dia, problemas). Índices: [Orca](guias/orca/README.md) e [Maestri](guias/maestri/README.md) |
 | [`docs/guias/mcp.md`](guias/mcp.md) | Guia do servidor MCP |
 | `docs/referencia/` | Consultar: [comandos](referencia/comandos.md), [config](referencia/config.md), [arquivos e estado](referencia/arquivos-e-estado.md), [hooks e limites](referencia/hooks-e-limites.md), [API do painel](referencia/painel-api.md) |
-| [`docs/userguide/painel.md`](userguide/painel.md) | Guia do painel web (v1) |
+| [`docs/userguide/painel.md`](userguide/painel.md) | Guia do painel web (v2), em quatro páginas |
 | [`docs/adr/`](adr/0001-toon-so-na-saida.md) | As dez decisões de arquitetura |
 | [`docs/planos/painel-v2.md`](planos/painel-v2.md) | Plano do painel v2 |
 | [`docs/MELHORIAS.md`](MELHORIAS.md) | O que mudou desde o fork, em linguagem simples |
 | [`docs/ESTILO.md`](ESTILO.md) | Guia de estilo da documentação |
-| [`design-system/MASTER.md`](../design-system/MASTER.md) | Tokens visuais do painel v2 (cores por papel, status, estado, tipo; animações; componentes). Há também `design-system/mockups/painel-mockup.svg` |
-| `web/` | Código-fonte da SPA do painel v2 (React, Vite, TypeScript, Tailwind). Veja [`web/README.md`](../web/README.md). O build vai para `scripts/painel_web/` (**ainda não existe**) |
+| [`design-system/MASTER.md`](../design-system/MASTER.md) | Tokens visuais do painel v2 (cores por papel, status, estado, tipo; animações; componentes). Há também `design-system/mockups/painel-mockup.svg`, o mockup do painel antigo (histórico) |
+| `web/` | Código-fonte da SPA do painel v2 (React, Vite, TypeScript, Tailwind). Veja [`web/README.md`](../web/README.md). O build vai para `scripts/painel_web/` e é commitado no release |
 
 ### 13.2 Em `scripts/`
 
@@ -1321,32 +1317,32 @@ Onde a documentação e o código discordam, ou onde o código faz algo que a do
 
 | # | Onde a doc diz | O que o código faz | Gravidade | Evidência |
 |---|---|---|---|---|
-| 1 | "Remetente provado: a identidade é o terminal cadastrado, não o nome que o agente diz ter" ([README](../README.md), [regras](conceitos/regras.md)) | No `board.py` e no MCP, a identidade vem do ambiente do próprio processo. O hook do shell reconhece `board.py` ignorando prefixos `VAR=valor` e só confere subagent. Um agente que conhece o handle de outro pode prefixar `ORCA_TERMINAL_HANDLE=<outro>` e o log grava o outro como remetente. Pelo `orca orchestration send`, o hook lê o ambiente do hook e não tem o problema | **Média** | **Reproduzido.** `hook_core.py`: `chama_board`, `decide_board`; `base.meu_handle` |
-| 2 | `resumo`: "quem espera resposta (no log inteiro)", ["mesma regra da cobrança do Stop, sem o corte do cadastro"](referencia/comandos.md) | `cmd_time.pendentes` só trata `resposta` como retorno. Conta `andamento` como se esperasse resposta e ignora `entrega --responde-a` como retorno. Um pedido já entregue e aprovado aparece como pendente no `resumo`, enquanto o Stop não cobra nada | Média | **Reproduzido** com pedido, andamento, entrega e resposta com veredito: `resumo` lista 2 pendentes, `politica.pendentes` lista 0 |
-| 3 | [ADR-0009](adr/0009-entrega-fecha-o-pedido.md): `entrega --responde-a` fecha o pedido; `arquivar` "nunca move mensagem que espera resposta" | `registro.arquivar` só trata `resposta` como fechamento. Um pedido fechado **só por entrega** é considerado "esperando" e **nunca é arquivado**, mesmo aprovado | Baixa | **Reproduzido:** pedido, entrega e resposta com veredito; `arquivar` move 2 linhas e deixa o pedido no log ativo |
-| 4 | [ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md) e [painel-api.md](referencia/painel-api.md): "CSP `default-src 'self'`", "sem script inline" | `cmd_web.CSP` é `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:`. O `'unsafe-inline'` é necessário para o `painel_web.html` do v1, que é uma página com script e estilo embutidos | Baixa | **Reproduzido** (cabeçalho da resposta). `cmd_web.py` |
-| 5 | ADR-0010 e painel-api.md: "qualquer método diferente de GET responde 405" | O handler define só `do_GET` e recusa `POST`, `PUT`, `PATCH` e `DELETE` com 405. `HEAD` e `OPTIONS` caem no padrão do `http.server` e respondem **501**, sem os cabeçalhos de segurança | Baixa | **Reproduzido** |
-| 6 | [Hooks e limites](referencia/hooks-e-limites.md), tabela do que o hook barra: "Subagent … `board.py` e `board_send`: só no Claude Code". [Como funciona](conceitos/como-funciona.md): "A trava de subagent no `board.py` vale só no Claude Code". [Contrato](../templates/CONTRATO.md): "No OMP, o hook só vê o shell; o resto é regra deste contrato" | Desde a 1.10.1 o adaptador do OMP manda `agent_id` para subagent (`ctx.agent.kind === "sub"`) e repassa o `board.py` e o `board_send`. O core barra. A própria seção do OMP em hooks-e-limites.md e o CHANGELOG 1.10.1 dizem isso. As três frases acima ficaram desatualizadas | Baixa (doc) | `omp-agent-board.ts` (`BOARD_PY`, `MCP_BOARD_SEND`, `identidade`); `test_omp.py` |
+| 1 | "Remetente provado: a identidade é o terminal cadastrado, não o nome que o agente diz ter" ([README](../README.md), [regras](conceitos/regras.md)) | No `board.py` e no MCP, a identidade vem do ambiente do próprio processo. O hook do shell reconhece `board.py` ignorando prefixos `VAR=valor` e só confere subagent. Um agente que conhece o handle de outro pode prefixar `ORCA_TERMINAL_HANDLE=<outro>` e o log grava o outro como remetente. Pelo `orca orchestration send`, o hook lê o ambiente do hook e não tem o problema | **Média** | **Reproduzido.** `hook_core.py`: `chama_board`, `decide_board`; `base.meu_handle` Issue [#13](https://github.com/BFLabsAI/agent-board/issues/13). |
+| 2 | `resumo`: "quem espera resposta (no log inteiro)", ["mesma regra da cobrança do Stop, sem o corte do cadastro"](referencia/comandos.md) | `cmd_time.pendentes` só trata `resposta` como retorno. Conta `andamento` como se esperasse resposta e ignora `entrega --responde-a` como retorno. Um pedido já entregue e aprovado aparece como pendente no `resumo`, enquanto o Stop não cobra nada | Média | **Reproduzido** com pedido, andamento, entrega e resposta com veredito: `resumo` lista 2 pendentes, `politica.pendentes` lista 0 Issue [#14](https://github.com/BFLabsAI/agent-board/issues/14). |
+| 3 | [ADR-0009](adr/0009-entrega-fecha-o-pedido.md): `entrega --responde-a` fecha o pedido; `arquivar` "nunca move mensagem que espera resposta" | `registro.arquivar` só trata `resposta` como fechamento. Um pedido fechado **só por entrega** é considerado "esperando" e **nunca é arquivado**, mesmo aprovado | Baixa | **Reproduzido:** pedido, entrega e resposta com veredito; `arquivar` move 2 linhas e deixa o pedido no log ativo Issue [#15](https://github.com/BFLabsAI/agent-board/issues/15). |
+| 4 | [ADR-0010](adr/0010-painel-v2-spa-com-build-e-sse.md) e [painel-api.md](referencia/painel-api.md): "CSP `default-src 'self'`", "sem script inline" | `cmd_web.CSP` é `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:`. O `'unsafe-inline'` é necessário para o `painel_web.html` do v1, que é uma página com script e estilo embutidos | Baixa | **Reproduzido** (cabeçalho da resposta). `cmd_web.py`  **Corrigido em 1.11.0.** A `CSP` agora é `script-src 'self'`; o `'unsafe-inline'` de script só vale para o `painel_web.html` do v1. |
+| 5 | ADR-0010 e painel-api.md: "qualquer método diferente de GET responde 405" | O handler define só `do_GET` e recusa `POST`, `PUT`, `PATCH` e `DELETE` com 405. `HEAD` e `OPTIONS` caem no padrão do `http.server` e respondem **501**, sem os cabeçalhos de segurança | Baixa | **Reproduzido**  **Corrigido em 1.11.0.** `HEAD` e `OPTIONS` respondem 405, com os cabeçalhos de segurança. |
+| 6 | [Hooks e limites](referencia/hooks-e-limites.md), tabela do que o hook barra: "Subagent … `board.py` e `board_send`: só no Claude Code". [Como funciona](conceitos/como-funciona.md): "A trava de subagent no `board.py` vale só no Claude Code". [Contrato](../templates/CONTRATO.md): "No OMP, o hook só vê o shell; o resto é regra deste contrato" | Desde a 1.10.1 o adaptador do OMP manda `agent_id` para subagent (`ctx.agent.kind === "sub"`) e repassa o `board.py` e o `board_send`. O core barra. A própria seção do OMP em hooks-e-limites.md e o CHANGELOG 1.10.1 dizem isso. As três frases acima ficaram desatualizadas | Baixa (doc) | `omp-agent-board.ts` (`BOARD_PY`, `MCP_BOARD_SEND`, `identidade`); `test_omp.py`  **Corrigido em 1.11.0.** Corrigido em `como-funciona.md`, `hooks-e-limites.md` e `templates/CONTRATO.md`. |
 | 7 | A documentação lista só Claude Code e OMP como harnesses cobertos | O core aceita `--dialect` na linha de comando, mas `main()` ignora o valor e usa sempre `"claude"`. `normalize()` reconhece nomes de ferramenta de outros harnesses (`exec_command`, `apply_patch`, `run_shell_command`, `write_file`, `replace`) e o comentário diz que o Codex usa o mesmo formato. Nada instala nem testa isso | Informativo | `hook_core.py` (`SHELL_TOOLS`, `EDIT_TOOLS`, `main`). Não conta como suporte |
-| 8 | Hooks e limites: "O hook só vê o que passa pelas ferramentas…" e [arquivos e estado](referencia/arquivos-e-estado.md): `envios/` "comando completo de cada envio" | O comando guardado inclui o **corpo da mensagem**, por 7 dias, em arquivo com a permissão padrão do sistema (sem `chmod 600`). O [guia do painel](userguide/painel.md) diz que o corpo "não fica no log", o que continua verdade, mas o corpo fica em outro lugar | Baixa a média | `hook_core.guardar_envio` |
+| 8 | Hooks e limites: "O hook só vê o que passa pelas ferramentas…" e [arquivos e estado](referencia/arquivos-e-estado.md): `envios/` "comando completo de cada envio" | O comando guardado inclui o **corpo da mensagem**, por 7 dias, em arquivo com a permissão padrão do sistema (sem `chmod 600`). O [guia do painel](userguide/painel.md) diz que o corpo "não fica no log", o que continua verdade, mas o corpo fica em outro lugar | Baixa a média | `hook_core.guardar_envio` Issue [#16](https://github.com/BFLabsAI/agent-board/issues/16). |
 
 ### 14.2 Testes e números
 
 | # | Onde a doc diz | O que é de fato | Evidência |
 |---|---|---|---|
-| 9 | [README](../README.md): "256 testes em 9 suítes", "8 ADRs", "até a 1.10.0". [MELHORIAS](MELHORIAS.md): "9 suítes… mais de 250 testes", "8 ADRs", "até a 1.10.0". [Arquivos e estado](referencia/arquivos-e-estado.md): testes `agent_board, registro, politica, mcp, time, web, maestri` | **323 testes em 10 suítes** (faltam `contrato`, `docs` e `omp` na lista de arquivos-e-estado), **10 ADRs**, versão **1.10.2**. O CHANGELOG também guarda contagens antigas (`test_contrato` 25, `test_maestri` 34; hoje 26 e 35) | Execução das suítes; [`scripts/VERSION`](../scripts/VERSION); `docs/adr/` |
-| 10 | CHANGELOG 1.10.1: "`test_omp.py` (14 testes)"; "CI com 9 suítes" | A CI roda 9 suítes e **não roda `test_omp.py`**. A suíte se pula sozinha sem o `bun`, então rodá-la na CI exigiria instalar o `bun` | [`.github/workflows/test.yml`](../.github/workflows/test.yml) |
-| 11 | Guias de instalação: "Rodar os testes… cada arquivo termina com `OK`" | Dentro de um terminal aberto pelo **Orca server** (com `ORCA_CLI_BIN_DIR` definido), `test_agent_board.py` dá **96 de 101** e falha 5 verificações de aviso. Desde a 1.10.2 o `ORCA_CLI_BIN_DIR` vem antes do `ORCA_REMOTE_CLI_BIN_DIR` na busca do `orca`, e o teste monta um `orca` falso só no segundo. Com `env -u ORCA_CLI_BIN_DIR` dá 101 de 101. Não afeta a CI | **Reproduzido** nesta VPS. `base.achar_orca`; `test_agent_board.teste_aviso` |
+| 9 | [README](../README.md): "256 testes em 9 suítes", "8 ADRs", "até a 1.10.0". [MELHORIAS](MELHORIAS.md): "9 suítes… mais de 250 testes", "8 ADRs", "até a 1.10.0". [Arquivos e estado](referencia/arquivos-e-estado.md): testes `agent_board, registro, politica, mcp, time, web, maestri` | **323 testes em 10 suítes** (faltam `contrato`, `docs` e `omp` na lista de arquivos-e-estado), **10 ADRs**, versão **1.10.2**. O CHANGELOG também guarda contagens antigas (`test_contrato` 25, `test_maestri` 34; hoje 26 e 35) | Execução das suítes; [`scripts/VERSION`](../scripts/VERSION); `docs/adr/`  **Corrigido em 1.11.0.** README, MELHORIAS e arquivos-e-estado atualizados (324 testes Python em 10 suítes, 159 do Vitest, 10 ADRs). O histórico do CHANGELOG não foi reescrito. |
+| 10 | CHANGELOG 1.10.1: "`test_omp.py` (14 testes)"; "CI com 9 suítes" | A CI roda 9 suítes e **não roda `test_omp.py`**. A suíte se pula sozinha sem o `bun`, então rodá-la na CI exigiria instalar o `bun` | [`.github/workflows/test.yml`](../.github/workflows/test.yml) Acompanhado em [#18](https://github.com/BFLabsAI/agent-board/issues/18). |
+| 11 | Guias de instalação: "Rodar os testes… cada arquivo termina com `OK`" | Dentro de um terminal aberto pelo **Orca server** (com `ORCA_CLI_BIN_DIR` definido), `test_agent_board.py` dá **96 de 101** e falha 5 verificações de aviso. Desde a 1.10.2 o `ORCA_CLI_BIN_DIR` vem antes do `ORCA_REMOTE_CLI_BIN_DIR` na busca do `orca`, e o teste monta um `orca` falso só no segundo. Com `env -u ORCA_CLI_BIN_DIR` dá 101 de 101. Não afeta a CI | **Reproduzido** nesta VPS. `base.achar_orca`; `test_agent_board.teste_aviso` Issue [#17](https://github.com/BFLabsAI/agent-board/issues/17). |
 
 ### 14.3 Documentação desatualizada ou inconsistente
 
 | # | Onde | Problema |
 |---|---|---|
-| 12 | README e guia do Orca mandam clonar `davioliveeira/agent-board`; o guia do Maestri manda clonar `BFLabsAI/agent-board` | URL de clone inconsistente. O `origin` do repositório e o da skill instalada nesta VPS é `BFLabsAI/agent-board`. Este documento usa essa |
-| 13 | [`userguide/painel.md`](userguide/painel.md) e [ADR-0005](adr/0005-painel-web-local-somente-leitura.md) | Descrevem só o painel v1 ("atualiza a cada 5 s", página única). O código já serve a SPA quando existe `scripts/painel_web/index.html` e expõe 10 rotas novas e o SSE. Como o build ainda não existe, hoje o que roda é o v1. O guia do v2 está previsto para a fase 6 do plano |
-| 14 | [`SKILL.md`](../SKILL.md) | A lista de subcomandos do `painel.py` na tabela de peças omite `eu`, `solicitar`, `solicitacoes` e `maestri`, que são descritos em outras partes do mesmo arquivo |
-| 15 | [`agents/openai.yaml`](../agents/openai.yaml) | A descrição de exibição diz "via Orca" e não cita o Maestri |
-| 16 | [Plano do painel v2](planos/painel-v2.md) × [API](referencia/painel-api.md) | O plano fala em heatmap de 52 semanas; a API devolve 371 dias (53 semanas). O plano usa o evento `status_agente`; a API e o código usam `agente` |
+| 12 | README e guia do Orca mandam clonar `davioliveeira/agent-board`; o guia do Maestri manda clonar `BFLabsAI/agent-board` | URL de clone inconsistente. O `origin` do repositório e o da skill instalada nesta VPS é `BFLabsAI/agent-board`. Este documento usa essa  **Corrigido em 1.11.0.** |
+| 13 | [`userguide/painel.md`](userguide/painel.md) e [ADR-0005](adr/0005-painel-web-local-somente-leitura.md) | Descrevem só o painel v1 ("atualiza a cada 5 s", página única). O código já serve a SPA quando existe `scripts/painel_web/index.html` e expõe 10 rotas novas e o SSE. Como o build ainda não existe, hoje o que roda é o v1. O guia do v2 está previsto para a fase 6 do plano  **Corrigido em 1.11.0.** Guia reescrito para o v2; a ADR-0005 foi substituída em parte pela 0010. |
+| 14 | [`SKILL.md`](../SKILL.md) | A lista de subcomandos do `painel.py` na tabela de peças omite `eu`, `solicitar`, `solicitacoes` e `maestri`, que são descritos em outras partes do mesmo arquivo  **Corrigido em 1.11.0.** |
+| 15 | [`agents/openai.yaml`](../agents/openai.yaml) | A descrição de exibição diz "via Orca" e não cita o Maestri  **Corrigido em 1.11.0.** |
+| 16 | [Plano do painel v2](planos/painel-v2.md) × [API](referencia/painel-api.md) | O plano fala em heatmap de 52 semanas; a API devolve 371 dias (53 semanas). O plano usa o evento `status_agente`; a API e o código usam `agente`  **Corrigido em 1.11.0.** |
 | 17 | Documentação de `painel.py cadastrar` e `remover` | O contrato diz que são do master, mas o código **não confere** (por isso a coluna "Quem roda" distingue regra e trava). Não é erro, mas é diferente de `arquivar`, `reenviar`, `vigiar` e `maestri`, que o código trava |
 
 ### 14.4 Onde a doc e o código estão de acordo (conferido)
