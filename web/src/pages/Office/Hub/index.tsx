@@ -5,6 +5,7 @@ import type { Agente, Tarefa } from "../../../api/tipos";
 import type { PropsModoOffice } from "../tipos";
 import { BibliotecaCena, DEFS_BIBLIOTECA } from "./Biblioteca";
 import { calcularLayout, ligacao, MATRIZ_CHAO, pontoMaster, rotaEntre, trechoIda, ALTURA_PLATAFORMA, type Ligacao, type Pt } from "./geometria";
+import { type PosSub } from "./Drones";
 import { Mesa } from "./Mesa";
 import { CamadaBaloes, CamadaPulsos } from "./Pulsos";
 import { DEFS_SALA, SalaFrente, SalaFundo } from "./SalaMaster";
@@ -33,11 +34,12 @@ const MOTES = Array.from({ length: 16 }, (_, i) => ({
 }));
 
 /** Modo Hub: o escritório isométrico, com o master numa sala de vidro e as mesas ao redor. */
-export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: PropsModoOffice) {
+export default function Hub({ agentes, tarefas, selecionado, aoSelecionar, aoSelecionarSub }: PropsModoOffice) {
   const reduzido = useReduzirMovimento();
   const layout = useMemo(() => calcularLayout(agentes), [agentes]);
   const { abertos, revisao, atrasados } = useMemo(() => contarTarefas(tarefas), [tarefas]);
   const [hover, setHover] = useState<string | null>(null);
+  const [hoverSub, setHoverSub] = useState<PosSub | null>(null);
 
   const ligs = useMemo(() => {
     const m = new Map<string, Ligacao>();
@@ -74,6 +76,8 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
       flash={flashes[m.agente.agente] ?? null}
       aoSelecionar={aoSelecionar}
       aoHover={setHover}
+      aoHoverSub={setHoverSub}
+      aoSelecionarSub={aoSelecionarSub}
     />
   );
 
@@ -155,6 +159,8 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
           flash={flashes[layout.master.agente] ?? null}
           aoSelecionar={aoSelecionar}
           aoHover={setHover}
+          aoHoverSub={setHoverSub}
+          aoSelecionarSub={aoSelecionarSub}
         />
       ) : (
         <text x={0} y={-ALTURA_PLATAFORMA} textAnchor="middle" fontSize={13} fill="#6b7280">sem master cadastrado</text>
@@ -165,7 +171,7 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
       <CamadaPulsos pulsos={pulsos} reduzido={reduzido} />
       <CamadaBaloes baloes={Object.values(baloes)} ancoras={ancoras} />
 
-      {alvoTip && posTip && (
+      {alvoTip && posTip && !hoverSub && (
         <g transform={`translate(${posTip.x} ${posTip.y - 150 * posTip.escala})`} pointerEvents="none" data-testid="tooltip-mesa">
           <rect x={-92} y={-50} width={184} height={alvoTip.tarefa_atual ? 50 : 38} rx={8} fill="#2a2a3d" fillOpacity={0.97} stroke="#363650" />
           <text x={0} y={-33} textAnchor="middle" fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(alvoTip.agente, 28)}</text>
@@ -176,6 +182,20 @@ export default function Hub({ agentes, tarefas, selecionado, aoSelecionar }: Pro
           {alvoTip.tarefa_atual && <text x={0} y={-3} textAnchor="middle" fontSize={10} fill="#818cf8">{truncar(alvoTip.tarefa_atual.assunto, 30)}</text>}
         </g>
       )}
+      {hoverSub && <TooltipSub p={hoverSub} />}
     </svg>
+  );
+}
+
+function TooltipSub({ p }: { p: PosSub }) {
+  const { sub } = p;
+  const ult = sub.ultima_atividade;
+  return (
+    <g transform={`translate(${p.x} ${p.y - 24})`} pointerEvents="none" data-testid="tooltip-sub">
+      <rect x={-112} y={-62} width={224} height={62} rx={8} fill="#2a2a3d" fillOpacity={0.97} stroke="#363650" />
+      <text x={-102} y={-45} fontSize={11.5} fontWeight={700} fill="#e4e4ed">{truncar(sub.tipo ?? "sub-agent", 26)}</text>
+      <text x={-102} y={-30} fontSize={10.5} fill="#9ca3af">{truncar(sub.descricao ?? "sem descrição", 38)}</text>
+      <text x={-102} y={-12} className="hub-mono" fontSize={9.5} fill="#6ee7b7">{truncar(ult ? `${ult.ferramenta} ${ult.resumo}` : "sem atividade", 40)}</text>
+    </g>
   );
 }

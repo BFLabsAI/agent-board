@@ -5,6 +5,7 @@ import { cliente } from "../../api/cliente";
 import type { Agente, Tarefa } from "../../api/tipos";
 import { useApi } from "../../api/useApi";
 import { useEvento } from "../../api/useStream";
+import { mesclarSub } from "./subagentes";
 import { EmptyState, PageHeader, Segmented, Skeleton } from "../../components/ui";
 import { useContextoPainel } from "../../context/ContextoPainel";
 import { CanvasZoom } from "./CanvasZoom";
@@ -43,6 +44,7 @@ export default function Office() {
   const [medidaMapa, setMedidaMapa] = useState<{ w: number; h: number } | null>(null);
   const aoMedir = useCallback((w: number, h: number) => setMedidaMapa((m) => (m && m.w === w && m.h === h ? m : { w, h })), []);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [subFoco, setSubFoco] = useState<string | null>(null);
 
   useEffect(() => {
     if (apiAgentes.dados) setAgentes(apiAgentes.dados);
@@ -53,6 +55,11 @@ export default function Office() {
 
   useEvento("agente", (a) => setAgentes((l) => (l.some((x) => x.agente === a.agente) ? l.map((x) => (x.agente === a.agente ? a : x)) : [...l, a])));
   useEvento("tarefa", (t) => setTarefas((l) => (l.some((x) => x.id === t.id) ? l.map((x) => (x.id === t.id ? t : x)) : [t, ...l])));
+
+  // sub-agent novo/atualizado: entra no array do pai (insere ou substitui por id, ordenado)
+  useEvento("subagente", (sub) =>
+    setAgentes((l) => l.map((a) => (a.agente === sub.agente ? { ...a, subagentes: mesclarSub(a.subagentes ?? [], sub) } : a))),
+  );
 
   const atualizar = useCallback(
     (chave: string, valor: string | null) =>
@@ -92,11 +99,18 @@ export default function Office() {
     if (selecionado && agentes.length > 0 && !agentes.some((a) => a.agente === selecionado)) setSelecionado(null);
   }, [agentes, selecionado]);
 
-  const aoSelecionar = useCallback((nome: string) => setSelecionado((s) => (s === nome ? null : nome)), []);
+  const aoSelecionar = useCallback((nome: string) => {
+    setSubFoco(null);
+    setSelecionado((s) => (s === nome ? null : nome));
+  }, []);
+  const aoSelecionarSub = useCallback((nome: string, subId: string) => {
+    setSelecionado(nome);
+    setSubFoco(subId);
+  }, []);
   const agenteAberto = useMemo(() => agentes.find((a) => a.agente === selecionado) ?? null, [agentes, selecionado]);
 
   const carregando = (apiAgentes.carregando || apiTarefas.carregando) && agentes.length === 0;
-  const props = { agentes, tarefas, selecionado, aoSelecionar };
+  const props = { agentes, tarefas, selecionado, aoSelecionar, aoSelecionarSub };
 
   const seletor = <Segmented opcoes={MODOS} valor={modo} onChange={escolherModo} ariaLabel="Modo de visualização" tamanho={tv ? "sm" : "md"} />;
   const botaoTv = (
@@ -163,7 +177,7 @@ export default function Office() {
           </div>
         )}
         <LiveLogs deslocado={!!agenteAberto} aoAbrir={() => setSelecionado(null)} />
-        <Gaveta agente={agenteAberto} tarefas={tarefas} aoFechar={() => setSelecionado(null)} />
+        <Gaveta agente={agenteAberto} tarefas={tarefas} subFoco={subFoco} aoFechar={() => { setSelecionado(null); setSubFoco(null); }} />
       </div>
     </div>
   );
