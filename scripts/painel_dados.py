@@ -418,11 +418,17 @@ def workflows(msgs, convs, periodo, agora, papeis, estados, subs=None):
             agente(m["para"], "manager")
             aresta(m["de"], m["para"])
     sel_subs = [s for s in subs or [] if s["status"] == "rodando" or (_ts(s["inicio"]) or agora) >= desde]
-    for sb in sel_subs:  # agente -> sub:<tipo>, um nó por tipo
-        no = "sub:" + (sb.get("nome") or "subagent-cc")  # agrupado por harness: subagent-cc / subagent-omp
-        agente(sb["agente"], "manager")
-        colunas[no], rotulos[no] = "subagente", no[4:]
-        aresta(sb["agente"], no)
+    sub_n, sub_issue = {}, {}   # sub-agents por pai; (pai, issue) -> sub-agents do pai ligados à issue
+    for sb in sel_subs:  # agente -> sub:<agente> -> #NNN: o trabalho passa pelos sub-agents
+        no, pai = "sub:" + sb["agente"], sb["agente"]
+        agente(pai, "manager")
+        colunas[no], rotulos[no] = "subagente", pai
+        aresta(pai, no)
+        sub_n[pai] = sub_n.get(pai, 0) + 1
+        for i in sb.get("issues") or []:
+            colunas[f"#{i}"], rotulos[f"#{i}"] = "issue", f"#{i}"
+            aresta(no, f"#{i}")
+            sub_issue[(pai, i)] = sub_issue.get((pai, i), 0) + 1
     aprov = rej = 0
     ate_entrega, tamanhos, fluxos = [], [], {}
     for c, th in sel:
@@ -435,7 +441,8 @@ def workflows(msgs, convs, periodo, agora, papeis, estados, subs=None):
         rej += est_ent == "rejeitado"
         for i in c["issues"]:
             colunas[f"#{i}"], rotulos[f"#{i}"] = "issue", f"#{i}"
-            aresta(ex, f"#{i}")
+            if (ex, i) not in sub_issue:  # com sub-agent ligado à issue, o caminho passa por ele
+                aresta(ex, f"#{i}")
             aresta(f"#{i}", "revisao" if entregas else res)
         if entregas:
             if not c["issues"]:
@@ -477,6 +484,7 @@ def workflows(msgs, convs, periodo, agora, papeis, estados, subs=None):
                  "tempo_ate_entrega_p50_min": percentil(ate_entrega, 0.5),
                  "fluxo_mais_comum": " > ".join(top[0][0]) if top else None,
                  "msgs_por_conversa": round(sum(tamanhos) / len(tamanhos), 1) if tamanhos else None,
-                 "subagentes": len(sel_subs)},
+                 "subagentes": len(sel_subs),
+                 "subagentes_com_issue": round(sum(1 for x in sel_subs if x.get("issues")) / len(sel_subs), 3) if sel_subs else None},
     }
 

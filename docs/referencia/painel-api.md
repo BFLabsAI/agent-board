@@ -253,3 +253,22 @@ Um projeto do cadastro com raiz inexistente ou config ilegível **não derruba a
 ### `GET /api/stream?projeto=*`
 
 É o mesmo stream da seção anterior, mas para **todos** os projetos numa conexão só, que conta 1 vaga no limite de 16. Os eventos `mensagem`, `agente`, `tarefa` e `subagente` chegam com o campo extra `projeto` no `data`. O `ola` traz `{projeto: "*", projetos: string[], agora}`. Quando um projeto entra ou sai do cadastro, o servidor percebe em até 5 s e passa a vigiar só os projetos atuais.
+
+## Sub-agents no processo (1.13.1)
+
+Os sub-agents fazem parte do fluxo de trabalho: o agente recebe a tarefa, dispara sub-agents e eles trabalham nas issues. A faixa lateral da 1.13 sai.
+
+### Ligação sub-agent → tarefa e issues
+
+- `SubAgente.tarefa`: a tarefa aberta mais recente em que o pai é `para`. Se não houver, vale o pedido aberto mais recente que o pai **enviou** (`de`), que é o caso do master. Em ambos os casos, a tarefa precisa existir no momento do `inicio`.
+- `SubAgente.issues: number[]` (novo) reúne os `#NNN` encontrados na `descricao` (regex `#(\d{1,6})\b`) com as `issues` da tarefa ligada. Sem duplicatas, em ordem crescente.
+
+### `/api/workflows`: nós e arestas de sub-agent
+
+- **Nós de sub-agent:** um por agente pai, com id `sub:<agente>`, `coluna: "subagente"`, `rotulo: <agente>` e `n` = total de sub-agents do pai no período. O front monta o rótulo, por exemplo "manager01-cc · 36 sub-agents". Os nós por harness `sub:subagent-cc`/`sub:subagent-omp` da 1.12.2 deixam de existir.
+- **Arestas:**
+  - `agente → sub:<agente>`, com `n` = total de sub-agents do pai;
+  - `sub:<agente> → #NNN`, com `n` = sub-agents do pai ligados àquela issue;
+  - `agente → #NNN` direta só quando **nenhum** sub-agent do pai está ligado àquela issue. Assim, o trabalho que passou por sub-agents aparece passando por eles.
+- **Ordem das colunas:** master → manager/researcher → **subagente** → issue → revisao → resultado.
+- `kpis.subagentes` continua igual. Novo `kpis.subagentes_com_issue`, a fração de 0 a 1 dos sub-agents com pelo menos uma issue.

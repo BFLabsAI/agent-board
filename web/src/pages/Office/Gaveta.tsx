@@ -9,6 +9,8 @@ import { LinkPainel } from "../../components/LinkPainel";
 import { AgentAvatar, Badge, Skeleton, StatusBadge, TempoRelativo, TipoMsgBadge } from "../../components/ui";
 import { estiloPapel, ESTILO_ESTADO_TAREFA } from "../../lib/cores";
 import { nomeCurto, truncar } from "../../lib/formato";
+import { IssueChips } from "../../components/SubLinha";
+import { agruparPorIssue, issuesSub } from "../../lib/subStatus";
 import { DuracaoSub } from "./DuracaoSub";
 import { descricaoSub, emDestaque, ESTILO_SUB, mesclarSub, ordenarSubs, resumoTerminados, nomeSub, subsDe, tipoDetalhe, textoAtividade } from "./subagentes";
 import { useReduzirMovimento } from "./useReduzirMovimento";
@@ -136,6 +138,7 @@ function ItemSub({ sub, foco, projeto }: { sub: SubAgente; foco: boolean; projet
         {sub.fundo && (
           <span data-testid="sub-fundo" className="rounded border border-border-light px-1 py-px text-[9px] uppercase tracking-wider text-texto-fraco">em segundo plano</span>
         )}
+        <IssueChips issues={issuesSub(sub)} tarefaId={sub.tarefa?.id} />
         <span className={e.texto}>{e.rotulo}</span>
         <DuracaoSub sub={sub} className="font-mono tabular-nums text-texto-suave" />
       </div>
@@ -176,6 +179,7 @@ function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | n
   const visiveisTerm = todos ? terminados : terminados.slice(0, SUBS_VISIVEIS);
   const rodando = locais.filter((s) => s.status === "rodando").length;
   const resumo = resumoTerminados(terminados);
+  const gruposComIssue = terminados.some((s) => issuesSub(s).length > 0);
   return (
     <Secao icone={Bot} titulo="Sub-agents" extra={<span className="font-semibold text-texto" data-testid="subs-rodando">{rodando} rodando</span>}>
       {lista.length === 0 ? (
@@ -206,11 +210,20 @@ function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | n
                 {resumo && <span className="font-normal normal-case tracking-normal">{resumo}</span>}
               </button>
               {mostrarTerminados && (
-                <ul className="mt-1.5 space-y-1.5" data-testid="subs-terminados-lista">
-                  {visiveisTerm.map((s) => (
-                    <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} />
+                <div className="mt-1.5 space-y-2" data-testid="subs-terminados-lista">
+                  {agruparPorIssue(visiveisTerm).map((g) => (
+                    <div key={g.issue ?? "sem"} data-grupo={g.issue ?? "sem"}>
+                      {gruposComIssue && (
+                        <h5 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-texto-fraco">{g.issue === null ? "Sem issue" : `#${g.issue}`} ({g.subs.length})</h5>
+                      )}
+                      <ul className="space-y-1.5">
+                        {g.subs.map((s) => (
+                          <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} />
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </div>
           )}

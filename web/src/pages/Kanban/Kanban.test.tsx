@@ -136,25 +136,58 @@ describe("Kanban: agentes", () => {
 });
 
 describe("Kanban: sub-agents", () => {
-  it("modo Agentes aninha os sub-agents abaixo do pai, com +N expansível", async () => {
+  it("modo Agentes: rodando em linha completa, terminados em resumo expansível, sem placeholder", async () => {
     renderPainel("/kanban?modo=agentes");
     await screen.findAllByText("manager01-cc");
     const card = document.querySelector('[data-agente="r7one-manager01-cc"]') as HTMLElement;
-    expect(within(card).getAllByRole("listitem")).toHaveLength(3);
+    expect(card.querySelectorAll("[data-sublista] > ul > li")).toHaveLength(2);
     expect(within(card).getByText("Backoff exponencial no cliente")).toBeInTheDocument();
     expect(within(card).getAllByText(/^subagent-(cc|omp)$/).length).toBeGreaterThan(0);
     expect(within(card).getAllByText(/^Bash$|^Edit$/).length).toBeGreaterThan(0);
+    expect(within(card).queryByText("Achar usos de polling")).toBeNull();
+    const resumo = within(card).getByRole("button", { name: /1 concluído/ });
+    await userEvent.click(resumo);
+    expect(within(card).getByText("Achar usos de polling")).toBeInTheDocument();
+    expect(card.textContent).not.toMatch(/sem descrição|sem atividade/);
   });
 
-  it("+N expande a lista quando há mais de 3", async () => {
+  it("master: sub-agents antigos sem descrição viram só o resumo, nunca 'sem descrição' nem 0s", async () => {
+    renderPainel("/kanban?modo=agentes");
+    await screen.findAllByText("manager01-cc");
+    const card = document.querySelector(`[data-agente="${MASTER}"]`) as HTMLElement;
+    expect(card.textContent).not.toMatch(/sem descrição|sem atividade|\b0s\b/);
+    expect(within(card).getByRole("button", { name: /✓ \d+ conclu.*✕ 1 erro/ })).toBeInTheDocument();
+    // o rodando de sessão antiga (início aproximado) mostra "há ≥ X min"
+    expect(card.textContent).toMatch(/há ≥ \d+ min/);
+  });
+
+  it("chips de issue nos rodando, linkando para a conversa da tarefa", async () => {
+    renderPainel("/kanban?modo=agentes");
+    await screen.findAllByText("manager01-cc");
+    const card = document.querySelector('[data-agente="r7one-manager01-cc"]') as HTMLElement;
+    const chip = within(card).getAllByText("#425")[0].closest("a") as HTMLAnchorElement;
+    expect(chip.getAttribute("href")).toMatch(/^\/conversas\/p-0145/);
+  });
+
+  it("chip sem tarefa linka para a busca por #issue", async () => {
     const base = agentesFixture().find((x) => x.agente === MASTER)!;
-    const subs = Array.from({ length: 5 }, (_, i) => ({ ...base.subagentes[0], id: `z${i}`, descricao: `sub ${i}`, status: "concluido" as const, inicio: new Date(Date.now() - i * 60000).toISOString(), duracao_s: 10 }));
+    const sub = { ...base.subagentes[0], id: "q1", status: "rodando" as const, tarefa: null, issues: [588], descricao: "Rodando #588" };
+    vi.spyOn(cliente, "agentes").mockResolvedValue([{ ...base, subagentes: [sub] }]);
+    renderPainel("/kanban?modo=agentes");
+    const a = (await screen.findByText("#588")).closest("a") as HTMLAnchorElement;
+    expect(a.getAttribute("href")).toContain("/conversas?q=%23588");
+  });
+
+  it("terminados agrupados por issue no resumo", async () => {
+    const base = agentesFixture().find((x) => x.agente === MASTER)!;
+    const mk = (i: number, issues: number[]) => ({ ...base.subagentes[0], id: `t${i}`, status: "concluido" as const, descricao: null, tipo: null, ultima_atividade: null, tarefa: null, issues, duracao_s: null, inicio_aproximado: true });
+    const subs = [mk(1, [587]), mk(2, [587]), mk(3, [587]), mk(4, [588]), mk(5, [])];
     vi.spyOn(cliente, "agentes").mockResolvedValue([{ ...base, subagentes: subs }]);
     renderPainel("/kanban?modo=agentes");
-    const mais = await screen.findByRole("button", { name: /\+2/ });
-    expect(screen.getAllByText(/^sub \d$/)).toHaveLength(3);
-    await userEvent.click(mais);
-    expect(screen.getAllByText(/^sub \d$/)).toHaveLength(5);
+    const b = await screen.findByRole("button", { name: /3 concluídos em #587 · 1 em #588 · 1 sem issue/ });
+    await userEvent.click(b);
+    expect(document.querySelectorAll('[data-grupo]')).toHaveLength(3);
+    expect(document.body.textContent).not.toMatch(/sem descrição|\b0s\b/);
   });
 
   it("tolera subagentes ausente no JSON real", async () => {
@@ -181,7 +214,10 @@ describe("Kanban: sub-agents", () => {
     });
     expect(await screen.findByText("Sub recém-criado")).toBeInTheDocument();
     act(() => fonte().emitir("subagente", { ...s, id: "novo1", descricao: "Sub recém-criado", status: "erro" }));
-    await waitFor(() => expect(document.querySelector('[data-sub="novo1"]')).toHaveAttribute("data-status", "erro"));
+    await waitFor(() => expect(screen.queryByText("Sub recém-criado")).toBeNull());
+    expect(screen.getAllByRole("button", { name: /✕ 1 erro/ }).length).toBeGreaterThan(0);
+    // terminado sai da linha completa e vai para o resumo expansível
+    expect(screen.queryByText("Sub recém-criado")).toBeNull();
   });
 
   it("modo Tarefas mostra 'N sub-agents (M rodando)' e expande a lista", async () => {
@@ -194,5 +230,6 @@ describe("Kanban: sub-agents", () => {
     await userEvent.click(botao);
     expect(within(card).getByRole("list", { name: "Sub-agents da tarefa" })).toBeInTheDocument();
     expect(within(card).getByText("Backoff exponencial no cliente")).toBeInTheDocument();
+    expect(card.querySelector("[data-issues]")).not.toBeNull();
   });
 });

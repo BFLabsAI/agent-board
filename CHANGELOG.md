@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.13.1 — 2026-10-20
+
+### Alterado
+- **Sub-agents no processo (Workflows):** o grafo passa a ser Master → Agentes → **Sub-agents de cada agente** → Issues → Revisão → Resultado. Cada agente tem um nó "N sub-agents" ligado às issues em que eles trabalharam. A ligação direta agente → issue só fica quando nenhum sub-agent daquele agente tocou a issue. Saíram a faixa lateral, os selos e os trilhos tracejados da 1.13.0. O KPI de sub-agents mostra quantos % estão ligados a issues.
+- **Sub-agents ligados a issues:** campo novo `issues`, com os `#NNN` da descrição mais as issues da tarefa do pai. O master liga pelo pedido aberto que enviou.
+- **Kanban, Dashboard e Office:** mesmas regras em todas as telas. Só os sub-agents rodando aparecem por inteiro; os terminados viram um resumo agrupado por issue ("✓ 8 concluídos em #587 · 2 sem issue"). Os chips das issues levam à conversa. Nenhuma tela mostra mais "sem descrição", "sem atividade" ou "0s".
+
 ## 1.13.0 — 2026-10-20
 
 Painel multi-squad e sub-agents mais claros. Um **squad** é um projeto do cadastro. Ver o [guia da Visão geral e do Andar](docs/userguide/painel-geral.md). Issues [#20](https://github.com/BFLabsAI/agent-board/issues/20) e [#25](https://github.com/BFLabsAI/agent-board/issues/25) a [#28](https://github.com/BFLabsAI/agent-board/issues/28).

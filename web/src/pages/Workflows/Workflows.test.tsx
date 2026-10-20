@@ -7,7 +7,7 @@ import { projetosFixture, workflowsFixture } from "../../api/fixtures";
 import type { Workflows as TWorkflows } from "../../api/tipos";
 import { ProvedorPainel } from "../../context/ContextoPainel";
 import { FonteFalsa, fabricaFalsa } from "../../test/utils";
-import { ALT_SUB, LARGURA, agentesDoSub, agruparIssues, caminhoDe, chipDoTipo, colunasDoGrafo, filtroFluxos, layoutGrafo, maxCharsRotulo, posicionarTooltip, subsPorAgente } from "./derivar";
+import { ALT_SUB, agruparIssues, caminhoDe, chipDoTipo, colunasDoGrafo, filtroFluxos, layoutGrafo, maxCharsRotulo, posicionarTooltip } from "./derivar";
 import Workflows from ".";
 
 function montar() {
@@ -152,50 +152,100 @@ describe("derivar", () => {
   });
 });
 
-describe("Workflows: sub-agents", () => {
-  it("faixa SUB-AGENTS, arestas tracejadas, legenda e KPI", async () => {
+describe("Workflows: sub-agents no processo", () => {
+  const M0 = "r7one-manager01-cc";
+  const aresta = (g: Element, k: string) => g.querySelector(`[data-aresta="${k}"]`);
+
+  it("6 colunas na ordem do fluxo, sem faixa lateral nem selos", async () => {
     montar();
     const g = await screen.findByTestId("grafo-orquestracao");
-    expect(within(g).getByText("SUB-AGENTS")).toBeInTheDocument();
-    expect(g.querySelector('[data-no="sub:Explore"]')).not.toBeNull();
-    const tracejadas = g.querySelectorAll('[data-tipo-aresta="subagente"]');
-    expect(tracejadas.length).toBe(7);
-    tracejadas.forEach((p) => expect(p.getAttribute("stroke-dasharray")).toBe("5 4"));
-    expect(g.querySelector('[data-aresta="r7one-master>r7one-manager01-cc"]')?.getAttribute("stroke-dasharray")).toBeNull();
-    expect(within(screen.getByRole("list", { name: "Legenda" })).getByText("Sub-agent")).toBeInTheDocument();
+    const titulos = ["MASTER", "MANAGERS / RESEARCHERS", "SUB-AGENTS", "ISSUES", "REVISÃO", "RESULTADO"];
+    const achados = [...g.querySelectorAll("text")].map((t) => t.textContent).filter((t) => titulos.includes(t ?? ""));
+    expect(achados).toEqual(titulos);
+    expect(g.querySelector('[data-testid="faixa-subagentes"]')).toBeNull();
+    expect(g.querySelector("[data-satelite]")).toBeNull();
+    expect(g.textContent).not.toContain("⑂");
+    expect(g.querySelector('[data-no="sub:subagent-cc"]')).toBeNull();
+    expect(g.querySelectorAll('[data-no^="sub:"]')).toHaveLength(4);
+    expect(within(screen.getByRole("list", { name: "Legenda" })).getByText("Sub-agents (por agente)")).toBeInTheDocument();
+  });
+
+  it("nó sub:<agente> mostra o pai e o total, alinhado verticalmente ao pai", async () => {
+    montar();
+    const g = await screen.findByTestId("grafo-orquestracao");
+    const sub = g.querySelector(`[data-no="sub:${M0}"]`) as Element;
+    expect(sub).toHaveTextContent("manager01-cc");
+    expect(sub).toHaveTextContent("19 sub-agents");
+    const centro = (id: string) => {
+      const m = /translate\(([\d.]+) ([\d.]+)\)/.exec(g.querySelector(`[data-no="${id}"]`)!.getAttribute("transform")!)!;
+      const h = Number(g.querySelector(`[data-no="${id}"] rect`)!.getAttribute("height"));
+      return { x: Number(m[1]), y: Number(m[2]) + h / 2 };
+    };
+    const pai = centro(M0);
+    const filho = centro(`sub:${M0}`);
+    expect(filho.y).toBeCloseTo(pai.y, 1);
+    expect(filho.x).toBeGreaterThan(pai.x);
+    expect(centro("#412").x).toBeGreaterThan(filho.x);
+  });
+
+  it("arestas agente → sub e sub → issue; direta só sem sub-agent", async () => {
+    montar();
+    const g = await screen.findByTestId("grafo-orquestracao");
+    expect(aresta(g, `${M0}>sub:${M0}`)).not.toBeNull();
+    expect(aresta(g, `sub:${M0}>#412`)).not.toBeNull();
+    expect(aresta(g, `sub:${M0}>#425`)).not.toBeNull();
+    expect(g.querySelectorAll('[data-tipo-aresta="agente-sub"]')).toHaveLength(4);
+    expect(g.querySelectorAll('[data-tipo-aresta="sub-issue"]')).toHaveLength(4);
+    expect(aresta(g, `${M0}>#412`)).toBeNull();
+    // manager03 não tem sub-agents: liga direto à issue
+    expect(aresta(g, "r7one-manager03-cc>#421")).not.toBeNull();
+    // espessura cresce com o número de sub-agents na issue
+    const w = (k: string) => Number(aresta(g, k)!.getAttribute("stroke-width"));
+    expect(w(`sub:${M0}>#412`)).toBeGreaterThan(w("sub:r7one-master>#421"));
+  });
+
+  it("passar o mouse num nó de sub-agents destaca o caminho completo", async () => {
+    montar();
+    const g = await screen.findByTestId("grafo-orquestracao");
+    await userEvent.hover(g.querySelector(`[data-no="sub:${M0}"]`) as Element);
+    const op = (k: string) => aresta(g, k)!.getAttribute("opacity");
+    expect(op(`r7one-master>${M0}`)).toBe("0.85");
+    expect(op(`${M0}>sub:${M0}`)).toBe("0.85");
+    expect(op(`sub:${M0}>#412`)).toBe("0.85");
+    expect(op("#412>revisao")).toBe("0.85");
+    expect(op("revisao>aprovado")).toBe("0.85");
+    expect(op("sub:r7one-master>#421")).toBe("0.07");
+    expect(op("r7one-manager03-cc>#421")).toBe("0.07");
+  });
+
+  it("KPI mostra o total e a porcentagem ligada a issues", async () => {
+    montar();
+    await screen.findByTestId("grafo-orquestracao");
     const kpi = screen.getByText("Sub-agents", { selector: "span" }).closest('[data-testid="kpi"]') as HTMLElement;
-    expect(within(kpi).getByText("62")).toBeInTheDocument();
+    expect(within(kpi).getByText("49", { exact: false })).toBeInTheDocument();
+    expect(within(kpi).getByTestId("kpi-sub-issue")).toHaveTextContent("71% em issues");
   });
 
-  it("clicar num sub-agent destaca os agentes que o usam", async () => {
-    montar();
-    const g = await screen.findByTestId("grafo-orquestracao");
-    await userEvent.click(g.querySelector('[data-no="sub:task"]') as Element);
-    const detalhe = await screen.findByTestId("usado-por");
-    expect(detalhe).toHaveTextContent("manager02-omp");
-    const aresta = (k: string) => g.querySelector(`[data-aresta="${k}"]`)!;
-    expect(aresta("r7one-manager02-omp>sub:task").getAttribute("opacity")).toBe("0.85");
-    expect(aresta("r7one-manager01-cc>sub:general-purpose").getAttribute("opacity")).toBe("0.07");
-  });
-
-  it("tolera JSON sem nós de sub-agent nem kpis.subagentes", async () => {
+  it("tolera JSON sem nós de sub-agent: 5 colunas, sem buraco", async () => {
     espiao.mockImplementation(async () => {
       const w = workflowsFixture();
       const k = { ...w.kpis } as Partial<TWorkflows["kpis"]>;
       delete k.subagentes;
-      return { ...w, kpis: k as TWorkflows["kpis"], nos: w.nos.filter((n) => n.coluna !== "subagente"), arestas: w.arestas.filter((a) => !a.para.startsWith("sub:")) };
+      delete k.subagentes_com_issue;
+      return { ...w, kpis: k as TWorkflows["kpis"], nos: w.nos.filter((n) => n.coluna !== "subagente"), arestas: w.arestas.filter((a) => !a.para.startsWith("sub:") && !a.de.startsWith("sub:")) };
     });
     montar();
     const g = await screen.findByTestId("grafo-orquestracao");
     expect(within(g).queryByText("SUB-AGENTS")).toBeNull();
     expect(g.querySelector("[data-no]")).not.toBeNull();
+    expect(screen.queryByTestId("kpi-sub-issue")).toBeNull();
   });
 
-  it("derivar: colunas condicionais e agentes de um tipo", () => {
-    expect(colunasDoGrafo()).toHaveLength(5);
-    const r = agentesDoSub("sub:x", [{ de: "a", para: "sub:x", n: 1 }, { de: "b", para: "sub:y", n: 1 }, { de: "m", para: "a", n: 1 }]);
-    expect([...r.nos].sort()).toEqual(["a", "sub:x"]);
-    expect(caminhoDe("sub:x", [{ de: "m", para: "a", n: 1 }, { de: "a", para: "sub:x", n: 1 }]).nos.has("m")).toBe(true);
+  it("derivar: colunas condicionais e caminho passa pelo sub", () => {
+    expect(colunasDoGrafo()).toHaveLength(6);
+    expect(colunasDoGrafo([{ coluna: "issue" }])).toHaveLength(5);
+    const c = caminhoDe("sub:a", [{ de: "m", para: "a", n: 1 }, { de: "a", para: "sub:a", n: 1 }, { de: "sub:a", para: "#1", n: 1 }, { de: "#1", para: "revisao", n: 1 }]);
+    expect([...c.nos].sort()).toEqual(["#1", "a", "m", "revisao", "sub:a"]);
   });
 });
 
@@ -206,31 +256,25 @@ describe("Workflows: layout sem sobreposição", () => {
     { id: "b", coluna: "manager" as const, rotulo: "manager02-omp1", n: 1 },
     { id: "#1", coluna: "issue" as const, rotulo: "#1", n: 3 },
     { id: "revisao", coluna: "revisao" as const, rotulo: "Revisão", n: 3 },
-    { id: "sub:subagent-cc", coluna: "subagente" as const, rotulo: "subagent-cc", n: 16 },
-    { id: "sub:subagent-omp", coluna: "subagente" as const, rotulo: "subagent-omp", n: 4 },
+    { id: "sub:m", coluna: "subagente" as const, rotulo: "m", n: 16 },
+    { id: "sub:a", coluna: "subagente" as const, rotulo: "manager01-omp31", n: 4 },
   ];
   const cruza = (p: { x: number; y: number; w: number; h: number }, q: typeof p) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
 
-  it("sub-agents ficam numa faixa abaixo, fora das colunas principais, sem sobrepor nós", () => {
+  it("sub-agents ficam na coluna própria, alinhados ao pai e sem sobrepor nós", () => {
     const l = layoutGrafo(nos);
-    expect(l.pos.some((p) => p.coluna === "subagente")).toBe(false);
-    expect(l.subPos).toHaveLength(2);
-    const fim = Math.max(...l.pos.map((p) => p.y + p.h));
-    for (const s of l.subPos) {
-      expect(s.y).toBeGreaterThan(fim);
-      expect(s.h).toBe(ALT_SUB);
-      expect(s.x + s.w).toBeLessThanOrEqual(LARGURA);
-    }
-    const todos = [...l.pos, ...l.subPos];
-    for (let i = 0; i < todos.length; i++) for (let j = i + 1; j < todos.length; j++) expect(cruza(todos[i], todos[j])).toBe(false);
-    expect(l.altura).toBeGreaterThan(l.alturaGrafo);
-    expect(layoutGrafo(nos.filter((n) => n.coluna !== "subagente")).faixa).toBeNull();
+    const subs = l.pos.filter((p) => p.coluna === "subagente");
+    expect(subs).toHaveLength(2);
+    const xs = new Set(subs.map((s) => s.x));
+    expect(xs.size).toBe(1);
+    for (const s of subs) expect(s.h).toBe(ALT_SUB);
+    for (let i = 0; i < l.pos.length; i++) for (let j = i + 1; j < l.pos.length; j++) expect(cruza(l.pos[i], l.pos[j])).toBe(false);
+    const fundo = Math.max(...l.pos.map((p) => p.y + p.h));
+    expect(l.alturaGrafo).toBeGreaterThanOrEqual(fundo);
+    expect(layoutGrafo(nos.filter((n) => n.coluna !== "subagente")).pos.some((p) => p.coluna === "subagente")).toBe(false);
   });
 
-  it("contagem por agente (master incluído) e rótulo que não invade o badge", () => {
-    const m = subsPorAgente([{ de: "m", para: "sub:subagent-cc", n: 2 }, { de: "m", para: "sub:subagent-omp", n: 1 }, { de: "a", para: "#1", n: 9 }]);
-    expect(m.get("m")).toBe(3);
-    expect(m.has("a")).toBe(false);
+  it("rótulo que não invade o badge", () => {
     const l = layoutGrafo(nos);
     for (const p of l.pos) {
       const n = formatarNumeroTeste(p.n);
@@ -261,23 +305,6 @@ describe("Workflows: layout sem sobreposição", () => {
     expect(await screen.findByTestId("tooltip-aresta")).toHaveTextContent("→");
     await userEvent.unhover(hit);
     expect(screen.queryByTestId("tooltip-aresta")).toBeNull();
-  });
-
-  it("rótulos de sub-agent por harness (genérico) e selo no agente, sem 'desconhecido'", async () => {
-    espiao.mockImplementation(async () => {
-      const w = workflowsFixture();
-      return {
-        ...w,
-        nos: [...w.nos.filter((n) => n.coluna !== "subagente"), { id: "sub:subagent-cc", coluna: "subagente", rotulo: "subagent-cc", n: 7 }, { id: "sub:subagent-omp", coluna: "subagente", rotulo: "subagent-omp", n: 2 }],
-        arestas: [...w.arestas.filter((a) => !a.para.startsWith("sub:")), { de: "r7one-master", para: "sub:subagent-cc", n: 7 }, { de: "r7one-master", para: "sub:subagent-omp", n: 2 }],
-      };
-    });
-    montar();
-    const g = await screen.findByTestId("grafo-orquestracao");
-    expect(g.querySelectorAll('[data-no^="sub:"]')).toHaveLength(2);
-    expect(within(g).getByRole("button", { name: "subagent-omp: 2" })).toBeInTheDocument();
-    expect(within(g).queryByText(/desconhecido/)).toBeNull();
-    expect(g.querySelector('[data-satelite="r7one-master"]')).toHaveTextContent("9");
   });
 });
 

@@ -78,3 +78,72 @@ export function ordenarSub<T extends Pick<SubAgente, "status" | "inicio">>(l: T[
     return ra - rb || b.inicio.localeCompare(a.inicio);
   });
 }
+
+/** Em destaque: rodando e perdido (âmbar). */
+export const emDestaqueSub = (s: Pick<SubAgente, "status">): boolean => s.status === "rodando" || s.status === "perdido";
+
+/** Issues do sub-agent, sem repetição e em ordem. */
+export function issuesSub(s: Pick<SubAgente, "issues">): number[] {
+  return Array.from(new Set((Array.isArray(s.issues) ? s.issues : []).filter((n) => Number.isInteger(n) && n > 0)));
+}
+
+/** Destino do chip: conversa da tarefa, se houver; senão a busca pela issue. */
+export function destinoIssue(n: number, tarefaId?: string | null): string {
+  return tarefaId ? `/conversas/${encodeURIComponent(tarefaId)}` : `/conversas?q=${encodeURIComponent(`#${n}`)}`;
+}
+
+/** Texto do tempo, ou null (omitir). Duração desconhecida nunca vira "0s"; rodando com início aproximado vira "há ≥ X min". */
+export function textoDuracaoSub(s: SubAgente, agora: number): string | null {
+  const aprox = s.status === "rodando" && s.inicio_aproximado;
+  const d = duracaoSub(s, agora);
+  if (d === null) return null;
+  if (aprox) {
+    if (d >= 3600) {
+      const dt = new Date(s.inicio);
+      return `desde ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+    }
+    return `há ≥ ${Math.max(1, Math.floor(d / 60))} min`;
+  }
+  return formatarSegundos(d);
+}
+
+/** Descrição só se existir. */
+export const descricaoSubTexto = (s: Pick<SubAgente, "descricao">): string | null => s.descricao?.trim() || null;
+
+export interface GrupoIssue {
+  /** null = sem issue */
+  issue: number | null;
+  subs: SubAgente[];
+}
+
+/** Agrupa pela primeira issue de cada sub-agent; grupos com mais itens primeiro, "sem issue" por último. */
+export function agruparPorIssue(lista: SubAgente[]): GrupoIssue[] {
+  const m = new Map<number | null, SubAgente[]>();
+  for (const s of lista) {
+    const k = issuesSub(s)[0] ?? null;
+    m.set(k, [...(m.get(k) ?? []), s]);
+  }
+  return [...m.entries()]
+    .map(([issue, subs]) => ({ issue, subs }))
+    .sort((a, b) => (a.issue === null ? 1 : b.issue === null ? -1 : b.subs.length - a.subs.length || b.issue - a.issue));
+}
+
+/** "✓ 11 concluídos · ✕ 1 erro" ou, com issues, "✓ 8 concluídos em #587 · 3 em #588 · 2 sem issue · ✕ 1 erro". */
+export function resumoTerminadosSub(terminados: SubAgente[], agrupar = true): string | null {
+  const ok = terminados.filter((s) => s.status === "concluido");
+  const er = terminados.length - ok.length;
+  const partes: string[] = [];
+  if (ok.length > 0) {
+    const grupos = agrupar && ok.some((s) => issuesSub(s).length > 0) ? agruparPorIssue(ok) : [];
+    if (grupos.length === 0) partes.push(`✓ ${ok.length} ${ok.length === 1 ? "concluído" : "concluídos"}`);
+    else {
+      const ft = (g: GrupoIssue) => (g.issue === null ? "sem issue" : `#${g.issue}`);
+      const [g0, ...resto] = grupos.slice(0, 3);
+      partes.push(`✓ ${g0.subs.length} ${g0.subs.length === 1 ? "concluído" : "concluídos"} ${g0.issue === null ? "" : "em "}${ft(g0)}`);
+      for (const g of resto) partes.push(`${g.subs.length} ${g.issue === null ? "" : "em "}${ft(g)}`);
+      if (grupos.length > 3) partes.push(`+${grupos.length - 3}`);
+    }
+  }
+  if (er > 0) partes.push(`✕ ${er} ${er === 1 ? "erro" : "erros"}`);
+  return partes.length ? partes.join(" · ") : null;
+}

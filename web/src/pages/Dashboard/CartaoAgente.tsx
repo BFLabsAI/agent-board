@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import { Clock, GitBranch, Inbox, Terminal, Workflow } from "lucide-react";
 import type { Agente } from "../../api/tipos";
+import { IssueChips, ResumoTerminados } from "../../components/SubLinha";
 import { AgentAvatar, Badge, StatusBadge, TempoRelativo } from "../../components/ui";
-import { duracaoSub, formatarSegundos, tipoSub, useRelogio } from "../../lib/subStatus";
+import { descricaoSubTexto, issuesSub, textoDuracaoSub, tipoSub, useRelogio } from "../../lib/subStatus";
 import { estiloPapel } from "../../lib/cores";
 import { nomeCurto, truncar } from "../../lib/formato";
 import { linhasDaTela } from "./dados";
@@ -15,24 +16,29 @@ const BORDA: Partial<Record<Agente["status"], string>> = {
 /** Chips dos sub-agents rodando, aninhados abaixo da tarefa do pai. */
 function ChipsSub({ agente }: { agente: Agente }) {
   const rodando = (agente.subagentes ?? []).filter((x) => x.status === "rodando");
+  const terminados = (agente.subagentes ?? []).filter((x) => x.status === "concluido" || x.status === "erro");
   const agora = useRelogio(rodando.length > 0);
-  if (rodando.length === 0) return null;
+  if (rodando.length === 0 && terminados.length === 0) return null;
   return (
-    <ul aria-label="Sub-agents rodando" data-subs-rodando className="mt-2 flex flex-wrap gap-1.5 border-l border-border-light pl-3">
+    <div className="mt-2">
+    {rodando.length > 0 && <ul aria-label="Sub-agents rodando" data-subs-rodando className="flex flex-wrap gap-1.5 border-l border-border-light pl-3">
       {rodando.map((s) => (
         <li
           key={s.id}
           data-sub={s.id}
-          title={`${tipoSub(s)}: ${s.descricao ?? ""}`}
+          title={[tipoSub(s), descricaoSubTexto(s)].filter(Boolean).join(": ")}
           className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[11px]"
         >
           <Workflow className="h-3 w-3 shrink-0 animate-pulse-dot text-emerald-300" aria-hidden="true" />
           <span className="shrink-0 font-mono text-emerald-300">{tipoSub(s)}</span>
-          <span className="min-w-0 truncate text-texto-suave">{truncar(s.descricao, 36)}</span>
-          <span className="shrink-0 font-mono tabular-nums text-texto-fraco">{formatarSegundos(duracaoSub(s, agora))}</span>
+          {descricaoSubTexto(s) && <span className="min-w-0 truncate text-texto-suave">{truncar(descricaoSubTexto(s), 36)}</span>}
+          <IssueChips issues={issuesSub(s)} tarefaId={s.tarefa?.id} max={2} />
+          {textoDuracaoSub(s, agora) && <span className="shrink-0 font-mono tabular-nums text-texto-fraco">{textoDuracaoSub(s, agora)}</span>}
         </li>
       ))}
-    </ul>
+    </ul>}
+    <ResumoTerminados subs={terminados} agora={agora} className="mt-1" />
+    </div>
   );
 }
 
