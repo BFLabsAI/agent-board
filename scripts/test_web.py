@@ -408,7 +408,7 @@ class Dados(Cenario):
         ids = [c["id"] for c, _ in painel_dados.conversas(self.msgs(), agora_local())]
         self.assertEqual(ids, ["p2", "p1", "p3"])  # e1 tem pai, aviso e nota não são raiz
         c = painel_dados.conversa_por_id(painel_dados.conversas(self.msgs(), agora_local()), "p1")["conversa"]
-        self.assertEqual((c["tipo"], c["estado"], c["issues"], c["branch"]), ("pedido", "concluido", [7], "ab/alpha-manager01-cc"))
+        self.assertEqual((c["tipo"], c["estado"], c["issues"], c["branch"]), ("pedido", "aprovado", [7], "ab/alpha-manager01-cc"))
         self.assertEqual((c["participantes"], c["duracao_min"], c["de"], c["para"]), ([M, G], 30.0, M, G))
         self.assertIsNone(painel_dados.conversa_por_id(painel_dados.conversas(self.msgs(), agora_local()), "e1"))
 
