@@ -50,6 +50,36 @@ def tarefas(msgs, agora):
     return out
 
 
+SPINNERS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒✻✽✶·"  # o ✳ do Claude parado fica de fora
+PEDE_ACAO = ("Do you want", "[y/n]", "Allow", "❯ 1.")
+SAIDA_RECENTE_MS = 10000
+
+
+def pede_acao(tela):
+    """A tela (últimas linhas do terminal) pede confirmação humana."""
+    fim = "\n".join([l for l in str(tela or "").splitlines() if l.strip()][-15:])
+    return any(p in fim for p in PEDE_ACAO) or "permission" in fim.lower()
+
+
+def status_agente(terminal, pendentes, agora_ms, orca_ok=True, maestri=False):
+    """Status do agente (heurística do contrato, docs/referencia/painel-api.md).
+
+    `terminal`: dict do Orca (title, preview, lastOutputAt) ou None se o handle não está aberto.
+    `orca_ok`: False quando o orca não respondeu. Maestri não lista terminais: desconhecido.
+    """
+    if maestri or not orca_ok:
+        return "desconhecido"
+    if terminal is None:
+        return "offline"
+    if pede_acao(terminal.get("preview")):
+        return "esperando"
+    titulo = terminal.get("title") or ""
+    ultima = terminal.get("lastOutputAt")
+    if (titulo[:1] and titulo[0] in SPINNERS) or (isinstance(ultima, (int, float)) and 0 <= agora_ms - ultima < SAIDA_RECENTE_MS):
+        return "trabalhando"
+    return "pendente" if pendentes > 0 else "parado"
+
+
 def pendentes(msgs, agentes):
     """Mesma regra do Stop (politica.pendentes), a partir do cadastro de cada agente."""
     return {ag["agente"]: [m["id"] for m in politica.pendentes(ag["agente"], msgs, ag.get("cadastrado_em") or "")]
