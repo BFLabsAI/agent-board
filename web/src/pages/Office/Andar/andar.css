@@ -1,0 +1,13 @@
+/* Andar: só transform e opacity. */
+@keyframes andar-pisca { 0% { opacity: 0; } 18% { opacity: 0.34; } 100% { opacity: 0; } }
+.andar-pisca { animation: andar-pisca 1.2s ease-out forwards; }
+
+.andar-placa { cursor: pointer; outline: none; }
+.andar-placa .andar-placa-caixa { transition: stroke-opacity 0.18s; }
+.andar-placa:hover .andar-placa-caixa, .andar-placa:focus-visible .andar-placa-caixa { stroke-opacity: 1; stroke-width: 3; }
+.andar-placa { transition: opacity 0.18s; }
+.andar-placa:hover { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .andar-pisca { animation: none !important; opacity: 0.18; }
+}

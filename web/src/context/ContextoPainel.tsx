@@ -28,11 +28,14 @@ interface Valor {
   tv: boolean;
   /** true na tela Visão geral (/geral): todos os squads, sem projeto único */
   geral: boolean;
+  /** true no Office em modo Andar (/office?modo=andar): também usa o stream de todos os squads */
+  andar: boolean;
   /** true enquanto se decide se a abertura em "/" vai para /geral (esperando o cadastro) */
   inicioPendente: boolean;
 }
 
 export const CAMINHO_GERAL = "/geral";
+export const CAMINHO_OFFICE = "/office";
 
 const Ctx = createContext<Valor | null>(null);
 
@@ -44,7 +47,9 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
   const [params, setParams] = useSearchParams();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const geral = pathname === CAMINHO_GERAL;
+  const andar = pathname === CAMINHO_OFFICE && (params.get("modo") === "andar" || params.get("projeto") === PROJETO_TODOS);
+  // Visão geral e Office/Andar olham todos os squads: stream "*" e seletor em "Todos os squads"
+  const geral = pathname === CAMINHO_GERAL || andar;
   // abriu em "/" sem ?projeto=: com mais de 1 projeto no cadastro, cai na Visão geral (uma vez só)
   const [inicioPendente, setInicioPendente] = useState(() => pathname === "/" && !params.get("projeto"));
   const [projetos, setProjetos] = useState<Projeto[]>([]);
@@ -100,7 +105,7 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
   const setProjeto = useCallback(
     (nome: string) => {
       if (geral) {
-        // da Visão geral para um squad: vai ao Dashboard dele
+        // da Visão geral para um squad: vai ao Dashboard dele (do Andar, ao Office dele)
         if (nome === PROJETO_TODOS) return;
         gravarLocal(CHAVE_PROJETO, nome);
         const n = new URLSearchParams({ projeto: nome });
@@ -108,7 +113,7 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
           const v = params.get(k);
           if (v) n.set(k, v);
         }
-        navigate({ pathname: "/", search: `?${n.toString()}` });
+        navigate({ pathname: andar ? CAMINHO_OFFICE : "/", search: `?${n.toString()}` });
         return;
       }
       if (nome === PROJETO_TODOS) {
@@ -123,7 +128,7 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
       gravarLocal(CHAVE_PROJETO, nome);
       atualizar("projeto", nome);
     },
-    [atualizar, geral, navigate, params],
+    [atualizar, geral, andar, navigate, params],
   );
   const setPeriodo = useCallback(
     (p: Periodo) => {
@@ -149,9 +154,10 @@ export function ProvedorPainel({ children, fabricaStream }: { children: ReactNod
       setPeriodo,
       tv,
       geral,
+      andar,
       inicioPendente,
     }),
-    [projeto, projetos, projetosCarregando, setProjeto, periodo, setPeriodo, tv, geral, inicioPendente],
+    [projeto, projetos, projetosCarregando, setProjeto, periodo, setPeriodo, tv, geral, andar, inicioPendente],
   );
 
   return (

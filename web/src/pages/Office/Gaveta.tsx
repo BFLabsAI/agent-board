@@ -73,11 +73,15 @@ function Terminal({ agente }: { agente: Agente }) {
   );
 }
 
-function UltimasMensagens({ agente }: { agente: string }) {
-  const { dados, carregando, erro } = useApi((c, s) => cliente.mensagens({ projeto: c.projeto, agente, limite: 10 }, s), [agente]);
+/** Querystring `?projeto=` para links da gaveta quando o agente é de um projeto que não é o da URL (Office/Andar). */
+const qsProjeto = (projeto?: string) => (projeto ? `projeto=${encodeURIComponent(projeto)}` : "");
+
+function UltimasMensagens({ agente, projeto }: { agente: string; projeto?: string }) {
+  const { dados, carregando, erro } = useApi((c, s) => cliente.mensagens({ projeto: projeto ?? c.projeto, agente, limite: 10 }, s), [agente, projeto]);
   const [novas, setNovas] = useState<Mensagem[]>([]);
-  useEffect(() => setNovas([]), [agente]);
+  useEffect(() => setNovas([]), [agente, projeto]);
   useEvento("mensagem", (m) => {
+    if (projeto && (m as { projeto?: string }).projeto !== projeto) return;
     if (m.de === agente || m.para === agente) setNovas((n) => [m, ...n].slice(0, 10));
   });
   const lista = useMemo(() => {
@@ -109,7 +113,7 @@ function UltimasMensagens({ agente }: { agente: string }) {
   );
 }
 
-function ItemSub({ sub, foco }: { sub: SubAgente; foco: boolean }) {
+function ItemSub({ sub, foco, projeto }: { sub: SubAgente; foco: boolean; projeto?: string }) {
   const e = ESTILO_SUB[sub.status];
   const atividade = textoAtividade(sub);
   const ref = useRef<HTMLLIElement>(null);
@@ -138,7 +142,7 @@ function ItemSub({ sub, foco }: { sub: SubAgente; foco: boolean }) {
       {descricaoSub(sub) && <p className="mt-1 text-[13px] leading-snug text-texto">{truncar(descricaoSub(sub), 140)}</p>}
       {atividade && <p className="mt-1 truncate font-mono text-[10.5px] text-texto-fraco" title={atividade}>{atividade}</p>}
       {sub.tarefa && (
-        <LinkPainel to={`/conversas/${encodeURIComponent(sub.tarefa.id)}`} className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] text-accent-hover hover:underline" title={sub.tarefa.assunto}>
+        <LinkPainel to={`/conversas/${encodeURIComponent(sub.tarefa.id)}${projeto ? `?${qsProjeto(projeto)}` : ""}`} className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] text-accent-hover hover:underline" title={sub.tarefa.assunto}>
           <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{sub.tarefa.id} · {truncar(sub.tarefa.assunto, 48)}</span>
         </LinkPainel>
@@ -147,13 +151,13 @@ function ItemSub({ sub, foco }: { sub: SubAgente; foco: boolean }) {
   );
 }
 
-function SecaoSubs({ agente, foco }: { agente: Agente; foco: string | null }) {
+function SecaoSubs({ agente, foco, projeto }: { agente: Agente; foco: string | null; projeto?: string }) {
   const locais = useMemo(() => ordenarSubs(subsDe(agente)), [agente]);
   const [todos, setTodos] = useState(false);
   useEffect(() => {
     setTodos(false);
   }, [agente.agente]);
-  const api = useApi((c, s) => (todos ? cliente.subagentes({ projeto: c.projeto, agente: agente.agente, periodo: "24h" }, s) : Promise.resolve<SubAgente[]>([])), [todos, agente.agente]);
+  const api = useApi((c, s) => (todos ? cliente.subagentes({ projeto: projeto ?? c.projeto, agente: agente.agente, periodo: "24h" }, s) : Promise.resolve<SubAgente[]>([])), [todos, agente.agente, projeto]);
   const lista = useMemo(() => {
     if (!todos) return locais;
     // eventos ao vivo (locais) prevalecem sobre a listagem carregada
@@ -183,7 +187,7 @@ function SecaoSubs({ agente, foco }: { agente: Agente; foco: string | null }) {
               <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-texto-fraco">Rodando</h4>
               <ul className="space-y-1.5" data-testid="subs-rodando-lista">
                 {destaque.map((s) => (
-                  <ItemSub key={s.id} sub={s} foco={foco === s.id} />
+                  <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} />
                 ))}
               </ul>
             </div>
@@ -204,7 +208,7 @@ function SecaoSubs({ agente, foco }: { agente: Agente; foco: string | null }) {
               {mostrarTerminados && (
                 <ul className="mt-1.5 space-y-1.5" data-testid="subs-terminados-lista">
                   {visiveisTerm.map((s) => (
-                    <ItemSub key={s.id} sub={s} foco={foco === s.id} />
+                    <ItemSub key={s.id} sub={s} foco={foco === s.id} projeto={projeto} />
                   ))}
                 </ul>
               )}
@@ -223,7 +227,8 @@ function SecaoSubs({ agente, foco }: { agente: Agente; foco: string | null }) {
 }
 
 /** Gaveta lateral com o trabalho do agente selecionado. */
-export function Gaveta({ agente, tarefas, aoFechar, subFoco = null }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void; subFoco?: string | null }) {
+/** `projeto`: squad do agente quando ele não é o da URL (Office/Andar, stream de todos os squads). */
+export function Gaveta({ agente, tarefas, aoFechar, subFoco = null, projeto }: { agente: Agente | null; tarefas: Tarefa[]; aoFechar: () => void; subFoco?: string | null; projeto?: string }) {
   const reduzido = useReduzirMovimento();
   useEffect(() => {
     if (!agente) return;
@@ -245,6 +250,7 @@ export function Gaveta({ agente, tarefas, aoFechar, subFoco = null }: { agente: 
           role="complementary"
           aria-label={`Trabalho de ${agente.agente}`}
           data-testid="gaveta"
+          data-projeto={projeto}
           initial={reduzido ? { opacity: 0 } : { x: 420, opacity: 0.4 }}
           animate={reduzido ? { opacity: 1 } : { x: 0, opacity: 1 }}
           exit={reduzido ? { opacity: 0 } : { x: 420, opacity: 0 }}
@@ -302,7 +308,7 @@ export function Gaveta({ agente, tarefas, aoFechar, subFoco = null }: { agente: 
             )}
           </Secao>
 
-          <SecaoSubs agente={agente} foco={subFoco} />
+          <SecaoSubs agente={agente} foco={subFoco} projeto={projeto} />
 
           <Secao icone={Inbox} titulo="Mensagens sem resposta" extra={<span className="font-semibold text-texto" data-testid="sem-resposta">{agente.pendentes}</span>}>
             <p className="text-sm text-texto-fraco">
@@ -329,12 +335,12 @@ export function Gaveta({ agente, tarefas, aoFechar, subFoco = null }: { agente: 
           </Secao>
 
           <Secao icone={MessagesSquare} titulo="Últimas mensagens">
-            <UltimasMensagens agente={agente.agente} />
+            <UltimasMensagens agente={agente.agente} projeto={projeto} />
           </Secao>
 
           <div className="mt-auto border-t border-border px-5 py-3">
             <LinkPainel
-              to={`/conversas?agente=${encodeURIComponent(agente.agente)}`}
+              to={`/conversas?agente=${encodeURIComponent(agente.agente)}${projeto ? `&${qsProjeto(projeto)}` : ""}`}
               className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-accent-hover transition-colors hover:bg-accent-muted"
             >
               Ver conversas de {nomeCurto(agente.agente)} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
